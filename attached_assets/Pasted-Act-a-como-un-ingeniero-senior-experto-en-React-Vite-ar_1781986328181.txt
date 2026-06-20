@@ -1,0 +1,98 @@
+Actúa como un ingeniero senior experto en React + Vite + arquitecturas modulares.
+
+Tu tarea es GENERAR UN PROYECTO COMPLETO FUNCIONAL, NO EXPLICACIONES.
+
+IMPORTANTE:
+- Debes entregar todos los archivos necesarios para que el proyecto corra en Replit inmediatamente.
+- No des explicaciones.
+- No des pseudocódigo.
+- No dejes partes incompletas.
+- Si falta algo, lo creas tú.
+
+OBJETIVO: UNIVERSO HBG (PASO 1 COMPLETO)
+
+Debes crear una aplicación React + TypeScript + Vite completamente funcional.
+
+========================
+FUNCIONALIDAD OBLIGATORIA
+========================
+
+Crear un sistema modular llamado HBG CORE con navegación tipo “sistema operativo”.
+
+Módulos:
+- universo (home)
+- instinto
+- vibra
+- terminador
+
+Debe existir:
+- Sidebar funcional
+- Panel dinámico central
+- Cambio de módulos sin errores
+- Persistencia en localStorage del módulo activo
+
+========================
+ARQUITECTURA OBLIGATORIA
+========================
+
+src/
+  core/
+    hbgCore.ts
+  modules/
+    universo.tsx
+    instinto.tsx
+    vibra.tsx
+    terminador.tsx
+  ui/
+    Sidebar.tsx
+    Shell.tsx
+  styles/
+    cyber.css
+  App.tsx
+  main.tsx
+
+========================
+REQUISITOS TÉCNICOS
+========================
+
+1. Usa React + TypeScript
+2. Usa Vite (incluye configuración si es necesaria)
+3. No usar backend
+4. Estado global mínimo en clase HBGCore
+5. Comunicación por subscribe pattern
+6. Persistencia en localStorage
+
+========================
+UI
+========================
+
+- Estilo cyberpunk oscuro
+- Sidebar izquierda fija
+- Panel central dinámico
+- Botones con hover neon
+- Diseño limpio tipo sistema operativo futurista
+
+========================
+HBG CORE
+========================
+
+Debe incluir:
+- getModule()
+- setModule(module)
+- subscribe(callback)
+- init() leyendo localStorage
+
+========================
+REGLA CRÍTICA DE SALIDA
+========================
+
+Debes entregar el proyecto en este formato:
+
+1. Lista de archivos
+2. Código completo de cada archivo
+
+NO OMITAS NINGÚN ARCHIVO NECESARIO.
+
+El proyecto debe poder copiarse en Replit y ejecutarse inmediatamente con npm install + npm run dev.
+
+SI NO ES EJECUTABLE, ES INCORRECTO.
