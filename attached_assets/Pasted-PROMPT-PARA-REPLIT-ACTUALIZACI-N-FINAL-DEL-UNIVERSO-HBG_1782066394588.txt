@@ -1,0 +1,119 @@
+PROMPT PARA REPLIT
+ACTUALIZACIÓN FINAL DEL UNIVERSO HBG
+
+Usa como referencia visual principal la última imagen del dashboard cósmico morado del Universo HRT/HBG que ya fue generada anteriormente.
+
+La interfaz mostrada en esa imagen es la identidad definitiva del proyecto.
+
+Mantener:
+
+tema espacial;
+tonos morados y azules;
+neón suave;
+estilo premium;
+diseño limpio;
+responsive para móvil y escritorio;
+PWA.
+ESTRUCTURA PÚBLICA DEL UNIVERSO
+
+Mostrar únicamente:
+
+INSTINTO
+
+Aplicación creativa.
+
+VIBRA
+
+Aplicación musical.
+
+HBG CORE
+
+Asistente inteligente principal.
+
+NO mostrar Terminador IA al usuario.
+
+Terminador IA queda oculto para administración y mantenimiento interno.
+
+CORREGIR VIBRA
+
+Actualmente el reproductor NO está leyendo las canciones.
+
+Revisar completamente:
+
+Importación de música.
+
+Verificar:
+
+selector de archivos;
+permisos;
+rutas;
+almacenamiento local.
+Biblioteca persistente.
+
+Las canciones importadas deben conservarse después de cerrar la aplicación.
+
+Usar:
+
+IndexedDB para archivos;
+localStorage para configuraciones.
+PlayerEngine.
+
+Corregir:
+
+reproducción;
+pausa;
+siguiente;
+anterior;
+barra de progreso;
+duración;
+volumen.
+Compatibilidad.
+
+Aceptar:
+
+mp3;
+wav;
+ogg;
+flac.
+Manejo de errores.
+
+Si una canción falla:
+
+no cerrar la aplicación;
+mostrar mensaje;
+continuar funcionando.
+Al reiniciar VIBRA recuperar:
+última canción;
+volumen;
+playlist;
+modo activo.
+NO AGREGAR MÁS FUNCIONES
+
+Prioridad absoluta:
+
+Reparar reproducción.
+Corregir errores.
+Optimizar rendimiento.
+Mejorar UX.
+Mejorar responsive.
+Estabilizar todo el ecosistema.
+
+NO rediseñar la arquitectura.
+
+NO añadir nuevos módulos.
+
+La versión actual debe convertirse en la versión estable 1.0 del Universo HBG.
+
+IMPORTANTE PARA VIBRA
+
+Si el sistema actual de reproducción está dañado o es demasiado complejo:
+
+RECONSTRUIR EL PLAYERENGINE DESDE CERO.
+
+Es preferible un reproductor simple y estable antes que uno complejo que no funcione.
+
+Objetivo:
+
+importar música → guardarla → reproducirla correctamente → mantenerla entre sesiones.
+
+Ese flujo debe quedar completamente funcional antes de continuar con cualquier otra mejora.

@@ -1,162 +1,363 @@
-import { useState, useEffect, useRef } from "react";
-import { hbgCore } from "../core/hbgCore";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { UniversoScreen } from "../components/UniversoScreen";
+import {
+  saveAudioBlob,
+  getAudioBlob,
+  saveTrackMeta,
+  getAllTrackMeta,
+  deleteAudioBlob,
+  deleteTrackMeta,
+  getAudioDuration,
+  parseFilename,
+  formatDuration,
+  type TrackMeta,
+} from "../core/vibraDB";
 
 type MoodMode = "party" | "focus" | "creative" | "chill" | "nostalgia" | "sad" | "happy" | "normal";
-type ViewMode = "splash" | "player" | "library" | "playlists" | "modes" | "eq" | "perfil" | "universo";
-type PlayerState = "stopped" | "playing" | "paused";
-
-interface Track {
-  title: string;
-  artist: string;
-  duration: string;
-  bpm: number;
-  genre: string;
-}
+type ViewMode = "player" | "library" | "playlists" | "modes" | "eq" | "perfil" | "universo";
 
 interface Playlist {
   id: string;
   name: string;
-  tracks: number[];
+  trackIds: string[];
   color: string;
 }
 
 const STORAGE_KEYS = {
   volume: "hbg_vibra_volume",
   mood: "hbg_vibra_mood",
-  track: "hbg_vibra_track",
-  favorites: "hbg_vibra_favorites",
+  trackId: "hbg_vibra_track_id",
+  trackTime: "hbg_vibra_track_time",
   playlists: "hbg_vibra_playlists",
+  favorites: "hbg_vibra_favorites",
 };
 
-const MOODS = [
-  { mode: "party" as MoodMode, label: "PARTY", color: "var(--neon-pink)", bpm: [120, 160] as [number,number], icon: "⚡" },
-  { mode: "focus" as MoodMode, label: "FOCUS", color: "var(--neon-cyan)", bpm: [60, 90] as [number,number], icon: "◎" },
-  { mode: "creative" as MoodMode, label: "CREATIVE", color: "#ff9100", bpm: [80, 110] as [number,number], icon: "◈" },
-  { mode: "chill" as MoodMode, label: "CHILL", color: "var(--neon-green)", bpm: [50, 75] as [number,number], icon: "◉" },
-  { mode: "nostalgia" as MoodMode, label: "NOSTALGIA", color: "#b388ff", bpm: [70, 100] as [number,number], icon: "◇" },
-  { mode: "sad" as MoodMode, label: "SAD", color: "#42a5f5", bpm: [45, 70] as [number,number], icon: "◑" },
-  { mode: "happy" as MoodMode, label: "HAPPY", color: "#ffd740", bpm: [100, 140] as [number,number], icon: "◐" },
-  { mode: "normal" as MoodMode, label: "NORMAL", color: "var(--neon-purple)", bpm: [90, 120] as [number,number], icon: "◆" },
+const MOODS: { mode: MoodMode; label: string; color: string; bpm: [number, number]; icon: string }[] = [
+  { mode: "party", label: "PARTY", color: "var(--neon-pink)", bpm: [120, 160], icon: "⚡" },
+  { mode: "focus", label: "FOCUS", color: "var(--neon-cyan)", bpm: [60, 90], icon: "◎" },
+  { mode: "creative", label: "CREATIVE", color: "#ff9100", bpm: [80, 110], icon: "◈" },
+  { mode: "chill", label: "CHILL", color: "var(--neon-green)", bpm: [50, 75], icon: "◉" },
+  { mode: "nostalgia", label: "NOSTALGIA", color: "#b388ff", bpm: [70, 100], icon: "◇" },
+  { mode: "sad", label: "SAD", color: "#42a5f5", bpm: [45, 70], icon: "◑" },
+  { mode: "happy", label: "HAPPY", color: "#ffd740", bpm: [100, 140], icon: "◐" },
+  { mode: "normal", label: "NORMAL", color: "var(--neon-purple)", bpm: [90, 120], icon: "◆" },
 ];
 
-const MOCK_TRACKS: Track[] = [
-  { title: "Deep Neural Flow", artist: "HBG Audio Lab", duration: "4:32", bpm: 85, genre: "Lofi" },
-  { title: "Neon Protocol", artist: "Cyber Collective", duration: "3:58", bpm: 128, genre: "Electrónica" },
-  { title: "Instinto Prime", artist: "UNIVERSO HBG", duration: "5:11", bpm: 93, genre: "Indie" },
-  { title: "Terminador Beat", artist: "AI Orchestra", duration: "3:22", bpm: 140, genre: "Trap" },
-  { title: "Memoria Infinite", artist: "DJEngine X", duration: "6:04", bpm: 72, genre: "Ambient" },
-  { title: "Sync Pulse", artist: "MoodEngine", duration: "4:17", bpm: 110, genre: "Funk" },
-  { title: "Lobo en la Ciudad", artist: "UNIVERSO HBG", duration: "3:45", bpm: 96, genre: "Pop" },
-  { title: "Nostalgia Core", artist: "HBG Retro", duration: "4:58", bpm: 78, genre: "Retro" },
-];
-
-const EQ_BANDS = [
-  { hz: "60", label: "60Hz" }, { hz: "170", label: "170Hz" }, { hz: "310", label: "310Hz" },
-  { hz: "600", label: "600Hz" }, { hz: "1k", label: "1kHz" }, { hz: "3k", label: "3kHz" },
-  { hz: "6k", label: "6kHz" }, { hz: "12k", label: "12kHz" }, { hz: "14k", label: "14kHz" }, { hz: "16k", label: "16kHz" },
-];
-
-const AMBIENT_SOUNDS = [
-  { id: "rain", label: "LLUVIA", icon: "🌧" }, { id: "ocean", label: "MAR", icon: "🌊" },
-  { id: "forest", label: "BOSQUE", icon: "🌲" }, { id: "white", label: "RUIDO BLANCO", icon: "📡" },
-];
+const EQ_BANDS = ["60Hz", "170Hz", "310Hz", "600Hz", "1kHz", "3kHz", "6kHz", "12kHz", "14kHz", "16kHz"];
 
 function VisualizerBars({ active, color }: { active: boolean; color: string }) {
-  const [heights, setHeights] = useState<number[]>(new Array(28).fill(4));
+  const [heights, setHeights] = useState<number[]>(() => Array(24).fill(4));
   useEffect(() => {
-    if (!active) { setHeights(new Array(28).fill(4)); return; }
-    const id = setInterval(() => setHeights(Array.from({ length: 28 }, () => Math.random() * 52 + 4)), 80);
+    if (!active) { setHeights(Array(24).fill(4)); return; }
+    const id = setInterval(() => {
+      setHeights(Array.from({ length: 24 }, () => Math.random() * 50 + 4));
+    }, 90);
     return () => clearInterval(id);
   }, [active]);
   return (
-    <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 60, padding: "0 4px" }}>
-      {heights.map((h, i) => <div key={i} style={{ flex: 1, height: `${h}px`, background: color, borderRadius: "1px 1px 0 0", boxShadow: active ? `0 0 4px ${color}` : "none", transition: "height 0.08s ease", opacity: 0.7 }} />)}
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 56, padding: "0 4px" }}>
+      {heights.map((h, i) => (
+        <div key={i} style={{ flex: 1, height: `${h}px`, background: color, borderRadius: "1px 1px 0 0", boxShadow: active ? `0 0 4px ${color}` : "none", transition: "height 0.09s ease", opacity: 0.75 }} />
+      ))}
     </div>
   );
 }
 
 export function VibraModule() {
-  const [splashDone, setSplashDone] = useState(() => !!localStorage.getItem(STORAGE_KEYS.mood));
-  const [view, setView] = useState<ViewMode>(splashDone ? "player" : "splash");
+  // Restore persisted values
   const [activeMode, setActiveMode] = useState<MoodMode>(() => (localStorage.getItem(STORAGE_KEYS.mood) as MoodMode) || "focus");
-  const [playerState, setPlayerState] = useState<PlayerState>("stopped");
-  const [currentTrack, setCurrentTrack] = useState(() => Number(localStorage.getItem(STORAGE_KEYS.track) ?? 0));
   const [volume, setVolume] = useState(() => Number(localStorage.getItem(STORAGE_KEYS.volume) ?? 80));
-  const [progress, setProgress] = useState(0);
-  const [eqValues, setEqValues] = useState<Record<string, number>>(() => Object.fromEntries(EQ_BANDS.map((b) => [b.hz, 50])));
-  const [favorites, setFavorites] = useState<Set<number>>(() => {
-    try { return new Set(JSON.parse(localStorage.getItem(STORAGE_KEYS.favorites) ?? "[]")); } catch { return new Set([0, 2]); }
+  const [favorites, setFavorites] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(STORAGE_KEYS.favorites) ?? "[]")); } catch { return new Set(); }
   });
   const [playlists, setPlaylists] = useState<Playlist[]>(() => {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.playlists) ?? "null") ?? [{ id: "1", name: "Mis favoritos", tracks: [0, 2], color: "var(--neon-pink)" }]; } catch { return []; }
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.playlists) ?? "[]"); } catch { return []; }
   });
-  const [partyLights, setPartyLights] = useState(false);
-  const [ambientMode, setAmbientMode] = useState<string | null>(null);
-  const [partyColor, setPartyColor] = useState("var(--neon-pink)");
-  const [newPlaylistName, setNewPlaylistName] = useState("");
+
+  const [view, setView] = useState<ViewMode>("player");
+  const [tracks, setTracks] = useState<TrackMeta[]>([]);
+  const [currentId, setCurrentId] = useState<string | null>(() => localStorage.getItem(STORAGE_KEYS.trackId));
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [progress, setProgress] = useState(0); // 0–1
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const [searchQ, setSearchQ] = useState("");
-  const [filterMode, setFilterMode] = useState<"todos" | "favoritos">("todos");
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [eqValues, setEqValues] = useState<Record<string, number>>(() => Object.fromEntries(EQ_BANDS.map((b) => [b, 50])));
+  const [newPlaylistName, setNewPlaylistName] = useState("");
+  const [filterFavs, setFilterFavs] = useState(false);
+
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const currentUrlRef = useRef<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const progressRafRef = useRef<number | null>(null);
 
   const mood = MOODS.find((m) => m.mode === activeMode)!;
-  const track = MOCK_TRACKS[currentTrack];
-  const isPlaying = playerState === "playing";
+  const currentTrack = tracks.find((t) => t.id === currentId) ?? null;
 
-  // Persist state
+  // Load all tracks from IndexedDB on mount
+  useEffect(() => {
+    getAllTrackMeta()
+      .then((metas) => {
+        const sorted = [...metas].sort((a, b) => a.importedAt - b.importedAt);
+        setTracks(sorted);
+      })
+      .catch(() => setTracks([]));
+  }, []);
+
+  // Persist config
   useEffect(() => { localStorage.setItem(STORAGE_KEYS.mood, activeMode); }, [activeMode]);
-  useEffect(() => { localStorage.setItem(STORAGE_KEYS.volume, String(volume)); }, [volume]);
-  useEffect(() => { localStorage.setItem(STORAGE_KEYS.track, String(currentTrack)); }, [currentTrack]);
+  useEffect(() => { localStorage.setItem(STORAGE_KEYS.volume, String(volume)); if (audioRef.current) audioRef.current.volume = volume / 100; }, [volume]);
   useEffect(() => { localStorage.setItem(STORAGE_KEYS.favorites, JSON.stringify([...favorites])); }, [favorites]);
   useEffect(() => { localStorage.setItem(STORAGE_KEYS.playlists, JSON.stringify(playlists)); }, [playlists]);
+  useEffect(() => { if (currentId) localStorage.setItem(STORAGE_KEYS.trackId, currentId); }, [currentId]);
 
-  // Progress
-  useEffect(() => {
-    if (isPlaying) {
-      intervalRef.current = setInterval(() => setProgress((p) => { if (p >= 100) { setCurrentTrack((c) => (c + 1) % MOCK_TRACKS.length); return 0; } return p + 0.3; }), 200);
-    } else {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+  // Load audio from IndexedDB and play
+  const loadTrack = useCallback(async (id: string, autoPlay = false, startTime = 0) => {
+    setError(null);
+    setLoading(true);
+    setProgress(0);
+    setCurrentTime(0);
+    setDuration(0);
+
+    try {
+      const blob = await getAudioBlob(id);
+      if (!blob) throw new Error("Archivo no encontrado en la biblioteca");
+
+      // Revoke previous URL
+      if (currentUrlRef.current) URL.revokeObjectURL(currentUrlRef.current);
+      const url = URL.createObjectURL(blob);
+      currentUrlRef.current = url;
+
+      const audio = audioRef.current!;
+      audio.src = url;
+      audio.volume = volume / 100;
+      audio.load();
+
+      await new Promise<void>((resolve, reject) => {
+        const onReady = () => { cleanup(); resolve(); };
+        const onErr = () => { cleanup(); reject(new Error("Error al cargar el audio")); };
+        const cleanup = () => { audio.removeEventListener("canplay", onReady); audio.removeEventListener("error", onErr); };
+        audio.addEventListener("canplay", onReady);
+        audio.addEventListener("error", onErr);
+      });
+
+      setDuration(audio.duration || 0);
+      if (startTime > 0 && isFinite(startTime)) audio.currentTime = startTime;
+
+      if (autoPlay) {
+        await audio.play();
+        setIsPlaying(true);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Error desconocido";
+      setError(msg);
+      setIsPlaying(false);
+    } finally {
+      setLoading(false);
     }
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [isPlaying]);
+  }, [volume]);
 
-  // Party lights
+  // Setup audio element event listeners
   useEffect(() => {
-    if (!partyLights) return;
-    const colors = ["var(--neon-pink)", "var(--neon-purple)", "var(--neon-cyan)", "var(--neon-green)", "var(--neon-yellow, #ffd740)"];
-    const id = setInterval(() => setPartyColor(colors[Math.floor(Math.random() * colors.length)]), 400);
-    return () => clearInterval(id);
-  }, [partyLights]);
+    const audio = new Audio();
+    audio.preload = "auto";
+    audioRef.current = audio;
 
-  // Splash timeout
+    const onTimeUpdate = () => {
+      if (audio.duration && isFinite(audio.duration)) {
+        setCurrentTime(audio.currentTime);
+        setProgress(audio.currentTime / audio.duration);
+      }
+    };
+    const onDurationChange = () => { if (isFinite(audio.duration)) setDuration(audio.duration); };
+    const onEnded = () => {
+      setIsPlaying(false);
+      setProgress(0);
+      setCurrentTime(0);
+      // Auto-advance
+      setTracks((prev) => {
+        setCurrentId((cid) => {
+          const idx = prev.findIndex((t) => t.id === cid);
+          if (idx >= 0 && idx < prev.length - 1) {
+            const nextId = prev[idx + 1].id;
+            setTimeout(() => loadTrack(nextId, true), 100);
+            return nextId;
+          }
+          return cid;
+        });
+        return prev;
+      });
+    };
+    const onError = () => {
+      setError("Error de reproducción — intenta reimportar el archivo");
+      setIsPlaying(false);
+    };
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
+
+    audio.addEventListener("timeupdate", onTimeUpdate);
+    audio.addEventListener("durationchange", onDurationChange);
+    audio.addEventListener("ended", onEnded);
+    audio.addEventListener("error", onError);
+    audio.addEventListener("play", onPlay);
+    audio.addEventListener("pause", onPause);
+
+    return () => {
+      audio.pause();
+      audio.removeEventListener("timeupdate", onTimeUpdate);
+      audio.removeEventListener("durationchange", onDurationChange);
+      audio.removeEventListener("ended", onEnded);
+      audio.removeEventListener("error", onError);
+      audio.removeEventListener("play", onPlay);
+      audio.removeEventListener("pause", onPause);
+      if (currentUrlRef.current) URL.revokeObjectURL(currentUrlRef.current);
+      audioRef.current = null;
+    };
+  }, [loadTrack]);
+
+  // Restore last track on mount (after tracks load)
+  const restoredRef = useRef(false);
   useEffect(() => {
-    if (!splashDone) {
-      const t = setTimeout(() => { setSplashDone(true); setView("player"); }, 2200);
-      return () => clearTimeout(t);
+    if (restoredRef.current || tracks.length === 0) return;
+    const savedId = localStorage.getItem(STORAGE_KEYS.trackId);
+    if (savedId && tracks.find((t) => t.id === savedId)) {
+      setCurrentId(savedId);
+      loadTrack(savedId, false, 0);
+      restoredRef.current = true;
+    } else if (tracks.length > 0) {
+      setCurrentId(tracks[0].id);
+      loadTrack(tracks[0].id, false, 0);
+      restoredRef.current = true;
     }
-  }, [splashDone]);
+  }, [tracks, loadTrack]);
 
-  const togglePlay = () => setPlayerState((s) => s === "playing" ? "paused" : "playing");
-  const stop = () => { setPlayerState("stopped"); setProgress(0); };
-  const nextTrack = () => { setCurrentTrack((i) => (i + 1) % MOCK_TRACKS.length); setProgress(0); setPlayerState("playing"); };
-  const prevTrack = () => { setCurrentTrack((i) => (i - 1 + MOCK_TRACKS.length) % MOCK_TRACKS.length); setProgress(0); };
-  const toggleFav = (i: number) => setFavorites((prev) => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; });
+  const togglePlay = async () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (!currentId && tracks.length > 0) {
+      const id = tracks[0].id;
+      setCurrentId(id);
+      await loadTrack(id, true);
+      return;
+    }
+    if (audio.src && audio.src !== window.location.href) {
+      if (isPlaying) { audio.pause(); }
+      else { try { await audio.play(); } catch (e) { setError("No se pudo reproducir — intenta de nuevo"); } }
+    } else if (currentId) {
+      await loadTrack(currentId, true);
+    }
+  };
+
+  const playTrack = async (id: string) => {
+    setCurrentId(id);
+    await loadTrack(id, true);
+  };
+
+  const nextTrack = () => {
+    const idx = tracks.findIndex((t) => t.id === currentId);
+    if (idx >= 0 && idx < tracks.length - 1) playTrack(tracks[idx + 1].id);
+  };
+
+  const prevTrack = () => {
+    const audio = audioRef.current;
+    // If more than 3s in, restart; otherwise go prev
+    if (audio && audio.currentTime > 3) { audio.currentTime = 0; return; }
+    const idx = tracks.findIndex((t) => t.id === currentId);
+    if (idx > 0) playTrack(tracks[idx - 1].id);
+  };
+
+  const seek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const audio = audioRef.current;
+    if (!audio || !duration) return;
+    const t = Number(e.target.value) / 100 * duration;
+    audio.currentTime = t;
+    setCurrentTime(t);
+    setProgress(t / duration);
+  };
+
+  const handleImport = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setImporting(true);
+    setImportMsg(null);
+    let imported = 0;
+    let failed = 0;
+
+    const supported = ["audio/mpeg", "audio/mp3", "audio/wav", "audio/ogg", "audio/flac", "audio/x-flac", "audio/aac", "audio/x-m4a", "audio/mp4"];
+
+    for (const file of Array.from(files)) {
+      try {
+        if (!supported.includes(file.type) && !file.name.match(/\.(mp3|wav|ogg|flac|aac|m4a)$/i)) {
+          failed++;
+          continue;
+        }
+        const id = `track_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        const { title, artist } = parseFilename(file.name);
+        const blob = new Blob([await file.arrayBuffer()], { type: file.type || "audio/mpeg" });
+        const dur = await getAudioDuration(blob);
+
+        const meta: TrackMeta = {
+          id, title, artist, album: "", duration: dur,
+          size: file.size, type: file.type || "audio/mpeg",
+          importedAt: Date.now(),
+        };
+
+        await saveAudioBlob(id, blob);
+        await saveTrackMeta(meta);
+        setTracks((prev) => [...prev, meta]);
+        imported++;
+
+        // Auto-select first imported track
+        if (imported === 1) {
+          setCurrentId(id);
+          loadTrack(id, false);
+        }
+      } catch {
+        failed++;
+      }
+    }
+
+    setImportMsg(
+      imported > 0
+        ? `✓ ${imported} canción${imported > 1 ? "es" : ""} importada${imported > 1 ? "s" : ""}${failed > 0 ? ` · ${failed} no compatible${failed > 1 ? "s" : ""}` : ""}`
+        : `✗ No se pudo importar — verifica el formato del archivo`
+    );
+    setTimeout(() => setImportMsg(null), 5000);
+    setImporting(false);
+  };
+
+  const deleteTrack = async (id: string) => {
+    if (id === currentId) {
+      audioRef.current?.pause();
+      setIsPlaying(false);
+      setCurrentId(null);
+      setProgress(0);
+      setCurrentTime(0);
+    }
+    await deleteAudioBlob(id);
+    await deleteTrackMeta(id);
+    setTracks((prev) => prev.filter((t) => t.id !== id));
+    setFavorites((prev) => { const n = new Set(prev); n.delete(id); return n; });
+  };
+
+  const toggleFav = (id: string) => setFavorites((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   const addPlaylist = () => {
     if (!newPlaylistName.trim()) return;
     const colors = ["var(--neon-pink)", "var(--neon-cyan)", "var(--neon-green)", "#ff9100", "var(--neon-purple)"];
-    setPlaylists((prev) => [...prev, { id: Date.now().toString(), name: newPlaylistName, tracks: [], color: colors[prev.length % colors.length] }]);
+    setPlaylists((prev) => [...prev, { id: Date.now().toString(), name: newPlaylistName.trim(), trackIds: [], color: colors[prev.length % colors.length] }]);
     setNewPlaylistName("");
   };
 
-  const filteredTracks = MOCK_TRACKS.filter((t, i) => {
-    if (filterMode === "favoritos" && !favorites.has(i)) return false;
-    if (searchQ && !t.title.toLowerCase().includes(searchQ.toLowerCase()) && !t.artist.toLowerCase().includes(searchQ.toLowerCase())) return false;
-    return true;
-  });
+  const filteredTracks = tracks
+    .filter((t) => !filterFavs || favorites.has(t.id))
+    .filter((t) => !searchQ || t.title.toLowerCase().includes(searchQ.toLowerCase()) || t.artist.toLowerCase().includes(searchQ.toLowerCase()));
 
-  const horasEscuchadas = 47;
-  const topGenre = "Lofi";
+  const progressPct = Math.round(progress * 100);
+  const horasEscuchadas = Math.round(tracks.reduce((a, t) => a + t.duration, 0) / 60);
 
   const NAV_ITEMS: { id: ViewMode; label: string }[] = [
     { id: "player", label: "REPRODUCTOR" },
@@ -168,31 +369,16 @@ export function VibraModule() {
     { id: "universo", label: "UNIVERSO HBG" },
   ];
 
-  if (view === "splash") {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: 400, gap: 20 }}>
-        <div style={{ fontSize: 60, filter: "drop-shadow(0 0 20px var(--neon-pink))", animation: "pulse-dot 1.5s infinite" }}>◉</div>
-        <div style={{ fontFamily: "var(--font-display)", fontSize: 20, fontWeight: 900, color: "var(--neon-pink)", letterSpacing: "0.2em", textShadow: "0 0 20px var(--neon-pink)" }}>VIBRA PRO</div>
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)" }}>// motor de audio v1.0 — cargando...</div>
-        <div style={{ width: 200, height: 3, background: "var(--bg-hover)", borderRadius: 2, overflow: "hidden" }}>
-          <div style={{ height: "100%", background: "var(--neon-pink)", animation: "slide-in 2s ease forwards", width: "100%", transform: "translateX(-100%)" }} />
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div style={{ background: partyLights ? `color-mix(in srgb, ${partyColor} 4%, transparent)` : undefined, transition: "background 0.4s" }}>
+    <div>
       <div className="mod-header" style={{ "--mod-color": mood.color } as React.CSSProperties}>
         <span className="mod-icon" style={{ color: mood.color, filter: `drop-shadow(0 0 12px ${mood.color})` }}>◉</span>
         <div className="mod-title-group">
           <div className="mod-title">VIBRA PRO</div>
-          <div className="mod-subtitle">// motor de audio 44100Hz · {mood.label} · {mood.bpm[0]}–{mood.bpm[1]} BPM</div>
+          <div className="mod-subtitle">// motor de audio · {mood.label} · {mood.bpm[0]}–{mood.bpm[1]} BPM</div>
         </div>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-          <button className="hbg-btn hbg-btn-ghost" style={{ padding: "6px 10px", fontSize: 9 }} onClick={() => setPartyLights(l => !l)}>
-            {partyLights ? "💡 LIGHTS ON" : "💡 LIGHTS"}
-          </button>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
+          {importMsg && <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: importMsg.startsWith("✓") ? "var(--neon-green)" : "var(--neon-pink)" }}>{importMsg}</span>}
           <span className="hbg-badge" style={{ background: `${mood.color}15`, borderColor: `${mood.color}50`, color: mood.color }}>{mood.icon} {mood.label}</span>
         </div>
       </div>
@@ -207,48 +393,109 @@ export function VibraModule() {
         ))}
       </div>
 
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".mp3,.wav,.ogg,.flac,.aac,.m4a,audio/*"
+        multiple
+        style={{ display: "none" }}
+        onChange={(e) => handleImport(e.target.files)}
+        onClick={(e) => { (e.target as HTMLInputElement).value = ""; }}
+      />
+
       {/* PLAYER */}
       {view === "player" && (
         <div>
           <div className="hbg-card hbg-card-accent" style={{ "--card-color": mood.color } as React.CSSProperties}>
+            {/* Visualizer */}
             <div style={{ background: "var(--bg-deep)", borderRadius: 3, marginBottom: 14, overflow: "hidden" }}>
-              <VisualizerBars active={isPlaying} color={partyLights ? partyColor : mood.color} />
+              <VisualizerBars active={isPlaying} color={mood.color} />
             </div>
-            <div style={{ textAlign: "center", marginBottom: 14 }}>
-              <div style={{ fontFamily: "var(--font-display)", fontSize: 16, fontWeight: 700, color: isPlaying ? mood.color : "var(--text-primary)", textShadow: isPlaying ? `0 0 16px ${mood.color}` : "none", marginBottom: 4, letterSpacing: "0.06em" }}>{track.title}</div>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-secondary)" }}>{track.artist}</div>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>{track.bpm} BPM · {track.duration} · {track.genre}</div>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>
-                {Math.floor(progress / 100 * 272)}s
-              </span>
-              <div className="hbg-progress" style={{ flex: 1, marginTop: 0 }}>
-                <div className="hbg-progress-bar" style={{ "--bar-color": mood.color, width: `${progress}%` } as React.CSSProperties} />
+
+            {/* Track info */}
+            {currentTrack ? (
+              <div style={{ textAlign: "center", marginBottom: 14 }}>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: 15, fontWeight: 700, color: isPlaying ? mood.color : "var(--text-primary)", textShadow: isPlaying ? `0 0 16px ${mood.color}` : "none", marginBottom: 4, letterSpacing: "0.06em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {currentTrack.title}
+                </div>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-secondary)" }}>{currentTrack.artist || "Artista desconocido"}</div>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
+                  {formatDuration(currentTrack.duration)}
+                  {currentTrack.type && ` · ${currentTrack.type.replace("audio/", "").toUpperCase()}`}
+                </div>
               </div>
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>{track.duration}</span>
+            ) : (
+              <div style={{ textAlign: "center", marginBottom: 14 }}>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: 13, color: "var(--text-muted)", marginBottom: 6 }}>Sin música importada</div>
+                <button className="hbg-btn hbg-btn-primary" onClick={() => fileInputRef.current?.click()} style={{ margin: "0 auto" }}>
+                  ↑ IMPORTAR MÚSICA
+                </button>
+              </div>
+            )}
+
+            {/* Error */}
+            {error && (
+              <div style={{ background: "rgba(255,64,129,0.08)", border: "1px solid rgba(255,64,129,0.3)", borderRadius: 3, padding: "8px 12px", fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--neon-pink)", marginBottom: 10 }}>
+                ⚠ {error}
+              </div>
+            )}
+
+            {/* Progress bar */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", minWidth: 32 }}>
+                {formatDuration(currentTime)}
+              </span>
+              <input
+                type="range" min={0} max={100} value={progressPct}
+                onChange={seek}
+                style={{ flex: 1, accentColor: mood.color, cursor: "pointer", height: 4 }}
+                disabled={!currentTrack || loading}
+              />
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", minWidth: 32 }}>
+                {formatDuration(duration)}
+              </span>
             </div>
+
+            {/* Controls */}
             <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10, marginBottom: 12 }}>
-              <button className="hbg-btn hbg-btn-ghost" style={{ padding: "7px 12px" }} onClick={prevTrack}>⏮</button>
-              <button className="hbg-btn" style={{ padding: "9px 22px", background: `${mood.color}20`, borderColor: mood.color, color: mood.color, fontSize: 18, boxShadow: isPlaying ? `0 0 20px ${mood.color}40` : "none" }} onClick={togglePlay}>
-                {isPlaying ? "⏸" : "▶"}
+              <button className="hbg-btn hbg-btn-ghost" style={{ padding: "7px 12px" }} onClick={prevTrack} disabled={!currentTrack || tracks.length < 2}>⏮</button>
+              <button
+                className="hbg-btn"
+                style={{ padding: "9px 22px", background: `${mood.color}20`, borderColor: mood.color, color: mood.color, fontSize: 20, boxShadow: isPlaying ? `0 0 20px ${mood.color}40` : "none", opacity: loading ? 0.6 : 1 }}
+                onClick={togglePlay}
+                disabled={loading}
+              >
+                {loading ? "◎" : isPlaying ? "⏸" : "▶"}
               </button>
-              <button className="hbg-btn hbg-btn-ghost" style={{ padding: "7px 12px" }} onClick={stop}>⏹</button>
-              <button className="hbg-btn hbg-btn-ghost" style={{ padding: "7px 12px" }} onClick={nextTrack}>⏭</button>
-              <button className="hbg-btn hbg-btn-ghost" style={{ padding: "7px 12px" }} onClick={() => toggleFav(currentTrack)}>
-                <span style={{ color: favorites.has(currentTrack) ? "#ffd740" : undefined }}>{favorites.has(currentTrack) ? "★" : "☆"}</span>
+              <button className="hbg-btn hbg-btn-ghost" style={{ padding: "7px 12px" }} onClick={nextTrack} disabled={!currentTrack || tracks.length < 2}>⏭</button>
+              <button className="hbg-btn hbg-btn-ghost" style={{ padding: "7px 12px" }} onClick={() => currentId && toggleFav(currentId)}>
+                <span style={{ color: currentId && favorites.has(currentId) ? "#ffd740" : undefined }}>
+                  {currentId && favorites.has(currentId) ? "★" : "☆"}
+                </span>
               </button>
             </div>
+
+            {/* Volume */}
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)" }}>🔉</span>
-              <input type="range" min={0} max={100} value={volume} onChange={(e) => setVolume(Number(e.target.value))} style={{ flex: 1, accentColor: mood.color, cursor: "pointer" }} />
+              <input type="range" min={0} max={100} value={volume}
+                onChange={(e) => setVolume(Number(e.target.value))}
+                style={{ flex: 1, accentColor: mood.color, cursor: "pointer" }} />
               <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: mood.color, minWidth: 32 }}>{volume}%</span>
             </div>
           </div>
+
           <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-            <button className="hbg-btn hbg-btn-ghost" style={{ flex: 1, justifyContent: "center", fontSize: 9 }} onClick={() => hbgCore.setModule("universo")}>⬡ DJ ENGINE</button>
-            <button className="hbg-btn hbg-btn-ghost" style={{ flex: 1, justifyContent: "center", fontSize: 9 }}>↗ TRANSMITIR</button>
-            <button className="hbg-btn hbg-btn-ghost" style={{ flex: 1, justifyContent: "center", fontSize: 9 }}>↑ IMPORTAR</button>
+            <button className="hbg-btn hbg-btn-ghost" style={{ flex: 1, justifyContent: "center", fontSize: 9 }} onClick={() => fileInputRef.current?.click()} disabled={importing}>
+              {importing ? "◎ IMPORTANDO..." : "↑ IMPORTAR MÚSICA"}
+            </button>
+            <button className="hbg-btn hbg-btn-ghost" style={{ flex: 1, justifyContent: "center", fontSize: 9 }} onClick={() => setView("library")}>
+              ⬡ BIBLIOTECA ({tracks.length})
+            </button>
+            <button className="hbg-btn hbg-btn-ghost" style={{ flex: 1, justifyContent: "center", fontSize: 9 }} onClick={() => setView("modes")}>
+              ◆ {mood.label}
+            </button>
           </div>
         </div>
       )}
@@ -258,36 +505,54 @@ export function VibraModule() {
         <div>
           <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
             <input className="hbg-input" style={{ flex: 1 }} placeholder="// buscar en biblioteca..." value={searchQ} onChange={(e) => setSearchQ(e.target.value)} />
-            <button className="hbg-btn hbg-btn-primary" style={{ fontSize: 9 }}>↑ IMPORTAR</button>
+            <button className="hbg-btn hbg-btn-primary" onClick={() => fileInputRef.current?.click()} disabled={importing} style={{ whiteSpace: "nowrap" }}>
+              {importing ? "◎" : "↑ IMPORTAR"}
+            </button>
           </div>
-          <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-            {(["todos", "favoritos"] as const).map((f) => (
-              <button key={f} onClick={() => setFilterMode(f)}
-                className="hbg-badge"
-                style={{ cursor: "pointer", background: filterMode === f ? `${mood.color}18` : undefined, borderColor: filterMode === f ? mood.color : "var(--border-dim)", color: filterMode === f ? mood.color : "var(--text-muted)" }}>
-                {f.toUpperCase()}
-              </button>
-            ))}
-            <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginLeft: "auto", alignSelf: "center" }}>{filteredTracks.length} pistas</span>
+
+          <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+            <button className="hbg-badge" style={{ cursor: "pointer", background: !filterFavs ? `${mood.color}18` : undefined, borderColor: !filterFavs ? mood.color : "var(--border-dim)", color: !filterFavs ? mood.color : "var(--text-muted)" }} onClick={() => setFilterFavs(false)}>TODAS</button>
+            <button className="hbg-badge" style={{ cursor: "pointer", background: filterFavs ? `${mood.color}18` : undefined, borderColor: filterFavs ? mood.color : "var(--border-dim)", color: filterFavs ? mood.color : "var(--text-muted)" }} onClick={() => setFilterFavs(true)}>★ FAVORITAS</button>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginLeft: "auto", alignSelf: "center" }}>{filteredTracks.length} de {tracks.length} canciones</span>
           </div>
-          <div className="hbg-list">
-            {filteredTracks.map((t, rawIdx) => {
-              const i = MOCK_TRACKS.indexOf(t);
-              return (
-                <div key={i} className="hbg-list-item" style={{ cursor: "pointer", borderColor: i === currentTrack ? mood.color : undefined, background: i === currentTrack ? `${mood.color}08` : undefined }} onClick={() => { setCurrentTrack(i); setProgress(0); setPlayerState("playing"); setView("player"); }}>
-                  <div style={{ color: i === currentTrack ? mood.color : "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, minWidth: 20 }}>{rawIdx + 1}</div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontFamily: "var(--font-ui)", fontSize: 13, color: i === currentTrack ? mood.color : "var(--text-primary)" }}>{t.title}</div>
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{t.artist} · {t.genre} · {t.bpm} BPM</div>
+
+          {tracks.length === 0 ? (
+            <div className="hbg-card" style={{ textAlign: "center", padding: "30px 20px" }}>
+              <div style={{ fontSize: 36, marginBottom: 12 }}>◉</div>
+              <div style={{ fontFamily: "var(--font-display)", fontSize: 13, color: "var(--text-muted)", marginBottom: 12 }}>BIBLIOTECA VACÍA</div>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginBottom: 16 }}>Importa archivos MP3, WAV, OGG o FLAC</div>
+              <button className="hbg-btn hbg-btn-primary" onClick={() => fileInputRef.current?.click()}>↑ IMPORTAR MÚSICA</button>
+            </div>
+          ) : (
+            <div className="hbg-list">
+              {filteredTracks.map((t, idx) => (
+                <div key={t.id} className="hbg-list-item"
+                  style={{ cursor: "pointer", borderColor: t.id === currentId ? mood.color : undefined, background: t.id === currentId ? `${mood.color}08` : undefined }}
+                  onClick={() => playTrack(t.id)}>
+                  <div style={{ color: t.id === currentId ? mood.color : "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 10, minWidth: 20 }}>
+                    {t.id === currentId && isPlaying ? "♪" : (idx + 1)}
                   </div>
-                  <button onClick={(e) => { e.stopPropagation(); toggleFav(i); }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: favorites.has(i) ? "#ffd740" : "var(--text-muted)" }}>
-                    {favorites.has(i) ? "★" : "☆"}
+                  <div style={{ flex: 1, overflow: "hidden" }}>
+                    <div style={{ fontFamily: "var(--font-ui)", fontSize: 13, color: t.id === currentId ? mood.color : "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</div>
+                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+                      {t.artist} · {t.type.replace("audio/", "").toUpperCase()} · {(t.size / 1024 / 1024).toFixed(1)} MB
+                    </div>
+                  </div>
+                  <button onClick={(e) => { e.stopPropagation(); toggleFav(t.id); }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: favorites.has(t.id) ? "#ffd740" : "var(--text-muted)", flexShrink: 0 }}>
+                    {favorites.has(t.id) ? "★" : "☆"}
                   </button>
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)" }}>{t.duration}</span>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>{formatDuration(t.duration)}</span>
+                  <button onClick={(e) => { e.stopPropagation(); deleteTrack(t.id); }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "var(--text-muted)", flexShrink: 0, padding: "0 4px" }} title="Eliminar">✕</button>
                 </div>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          )}
+
+          {importMsg && (
+            <div style={{ marginTop: 12, padding: "8px 12px", background: "rgba(0,229,255,0.06)", border: "1px solid rgba(0,229,255,0.2)", borderRadius: 3, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--neon-cyan)" }}>
+              {importMsg}
+            </div>
+          )}
         </div>
       )}
 
@@ -296,20 +561,24 @@ export function VibraModule() {
         <div>
           <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
             <input className="hbg-input" style={{ flex: 1 }} placeholder="Nombre de la playlist..." value={newPlaylistName} onChange={(e) => setNewPlaylistName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addPlaylist()} />
-            <button className="hbg-btn hbg-btn-primary" onClick={addPlaylist}>+ NUEVA</button>
+            <button className="hbg-btn hbg-btn-primary" onClick={addPlaylist} disabled={!newPlaylistName.trim()}>+ CREAR</button>
           </div>
-          <div className="hbg-grid hbg-grid-2" style={{ gap: 10 }}>
-            {playlists.map((pl) => (
-              <div key={pl.id} className="hbg-card hbg-card-accent" style={{ "--card-color": pl.color, cursor: "pointer" } as React.CSSProperties}>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: 12, fontWeight: 700, color: pl.color, marginBottom: 6, letterSpacing: "0.08em" }}>{pl.name}</div>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>{pl.tracks.length} pistas</div>
-                <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-                  <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 9, padding: "4px 8px" }}>▶ PLAY</button>
-                  <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 9, padding: "4px 8px" }}>↓ EXPORTAR</button>
+          {playlists.length === 0 ? (
+            <div className="hbg-card" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)", textAlign: "center", padding: "20px" }}>// crea tu primera playlist</div>
+          ) : (
+            <div className="hbg-grid hbg-grid-2" style={{ gap: 10 }}>
+              {playlists.map((pl) => (
+                <div key={pl.id} className="hbg-card hbg-card-accent" style={{ "--card-color": pl.color } as React.CSSProperties}>
+                  <div style={{ fontFamily: "var(--font-display)", fontSize: 12, fontWeight: 700, color: pl.color, marginBottom: 6, letterSpacing: "0.08em" }}>{pl.name}</div>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>{pl.trackIds.length} canciones</div>
+                  <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+                    <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 9, padding: "4px 8px" }}>▶ PLAY</button>
+                    <button className="hbg-btn hbg-btn-danger" style={{ fontSize: 9, padding: "4px 8px" }} onClick={() => setPlaylists(p => p.filter(x => x.id !== pl.id))}>✕</button>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -317,10 +586,10 @@ export function VibraModule() {
       {view === "modes" && (
         <div>
           <div className="section-title">// seleccionar modo de ánimo</div>
-          <div className="hbg-grid" style={{ gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 20 }}>
+          <div className="hbg-grid" style={{ gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
             {MOODS.map((m) => (
               <button key={m.mode} className="hbg-card"
-                style={{ "--card-color": m.color, cursor: "pointer", textAlign: "left", padding: "12px 14px", border: `1px solid ${activeMode === m.mode ? m.color : "var(--border-dim)"}`, background: activeMode === m.mode ? `${m.color}10` : "var(--bg-card)", boxShadow: activeMode === m.mode ? `0 0 16px ${m.color}25` : "none" } as React.CSSProperties}
+                style={{ cursor: "pointer", textAlign: "left", padding: "12px 14px", border: `1px solid ${activeMode === m.mode ? m.color : "var(--border-dim)"}`, background: activeMode === m.mode ? `${m.color}10` : "var(--bg-card)", boxShadow: activeMode === m.mode ? `0 0 16px ${m.color}25` : "none" }}
                 onClick={() => setActiveMode(m.mode)}>
                 <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
                   <span style={{ fontSize: 16, color: m.color, filter: activeMode === m.mode ? `drop-shadow(0 0 6px ${m.color})` : "none" }}>{m.icon}</span>
@@ -330,31 +599,6 @@ export function VibraModule() {
               </button>
             ))}
           </div>
-
-          <div className="hbg-grid hbg-grid-2" style={{ gap: 12 }}>
-            <div className="hbg-card">
-              <div className="section-title">// modo descanso</div>
-              <div className="hbg-grid hbg-grid-2" style={{ gap: 8 }}>
-                {AMBIENT_SOUNDS.map((a) => (
-                  <button key={a.id} className="hbg-card" style={{ cursor: "pointer", textAlign: "center", background: ambientMode === a.id ? "rgba(105,255,71,0.08)" : undefined, borderColor: ambientMode === a.id ? "var(--neon-green)" : undefined, padding: 12 }} onClick={() => setAmbientMode(ambientMode === a.id ? null : a.id)}>
-                    <div style={{ fontSize: 22, marginBottom: 4 }}>{a.icon}</div>
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: ambientMode === a.id ? "var(--neon-green)" : "var(--text-muted)" }}>{a.label}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="hbg-card">
-              <div className="section-title">// modo enfoque</div>
-              <div className="hbg-list" style={{ gap: 8 }}>
-                {[{ label: "RUIDO BLANCO", icon: "📡" }, { label: "INSTRUMENTAL", icon: "🎵" }, { label: "BINAURAL 40Hz", icon: "◎" }].map((f) => (
-                  <button key={f.label} className="hbg-list-item" style={{ cursor: "pointer", background: "none", border: "1px solid var(--border-dim)", borderRadius: 3, width: "100%", justifyContent: "flex-start" }}>
-                    <span>{f.icon}</span>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-secondary)" }}>{f.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
@@ -362,35 +606,31 @@ export function VibraModule() {
       {view === "eq" && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <div className="section-title" style={{ marginBottom: 0 }}>// ecualizador pro — 10 bandas</div>
-            <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 9 }} onClick={() => setEqValues(Object.fromEntries(EQ_BANDS.map((b) => [b.hz, 50])))}>RESET</button>
+            <div className="section-title" style={{ marginBottom: 0 }}>// ecualizador visual — 10 bandas</div>
+            <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 9 }} onClick={() => setEqValues(Object.fromEntries(EQ_BANDS.map((b) => [b, 50])))}>RESET</button>
+          </div>
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginBottom: 12 }}>
+            ⓘ Ecualizador visual — en navegador web la reproducción no requiere EQ de software para funcionar correctamente.
           </div>
           <div className="hbg-card" style={{ background: "var(--bg-deep)" }}>
             <div style={{ display: "flex", gap: 12, alignItems: "flex-end", height: 180, padding: "16px 8px 8px" }}>
               {EQ_BANDS.map((band) => {
-                const val = eqValues[band.hz];
-                const dbVal = ((val - 50) / 50 * 12).toFixed(1);
+                const val = eqValues[band];
+                const db = ((val - 50) / 50 * 12).toFixed(1);
                 return (
-                  <div key={band.hz} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: val !== 50 ? mood.color : "var(--text-muted)", transition: "color 0.2s" }}>
-                      {Number(dbVal) > 0 ? "+" : ""}{dbVal}
+                  <div key={band} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: val !== 50 ? mood.color : "var(--text-muted)" }}>
+                      {Number(db) > 0 ? "+" : ""}{db}
                     </span>
                     <div style={{ flex: 1, width: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
                       <input type="range" min={0} max={100} value={val}
-                        onChange={(e) => setEqValues((prev) => ({ ...prev, [band.hz]: Number(e.target.value) }))}
+                        onChange={(e) => setEqValues((prev) => ({ ...prev, [band]: Number(e.target.value) }))}
                         style={{ writingMode: "vertical-lr", direction: "rtl", width: "100%", height: "100%", accentColor: mood.color, cursor: "pointer" } as React.CSSProperties} />
                     </div>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 8, color: "var(--text-muted)" }}>{band.label}</span>
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 8, color: "var(--text-muted)" }}>{band}</span>
                   </div>
                 );
               })}
-            </div>
-            <div style={{ display: "flex", gap: 6, marginTop: 12, justifyContent: "center", flexWrap: "wrap" }}>
-              {[{ name: "FLAT", vals: null }, { name: "BASS BOOST", vals: { "60": 80, "170": 70, "310": 60, "600": 50, "1k": 48, "3k": 46, "6k": 48, "12k": 50, "14k": 50, "16k": 50 } }, { name: "VOCAL", vals: { "60": 42, "170": 45, "310": 48, "600": 60, "1k": 70, "3k": 72, "6k": 65, "12k": 55, "14k": 50, "16k": 48 } }, { name: "TREBLE", vals: { "60": 45, "170": 47, "310": 49, "600": 50, "1k": 53, "3k": 60, "6k": 70, "12k": 78, "14k": 80, "16k": 75 } }].map((preset) => (
-                <button key={preset.name} className="hbg-badge hbg-badge-cyan" style={{ cursor: "pointer" }} onClick={() => setEqValues(preset.vals ?? Object.fromEntries(EQ_BANDS.map((b) => [b.hz, 50])))}>
-                  {preset.name}
-                </button>
-              ))}
             </div>
           </div>
         </div>
@@ -401,9 +641,9 @@ export function VibraModule() {
         <div>
           <div className="hbg-grid hbg-grid-3" style={{ gap: 10, marginBottom: 16 }}>
             {[
-              { label: "HORAS ESCUCHADAS", value: `${horasEscuchadas}h`, color: "var(--neon-pink)" },
-              { label: "CANCIONES FAVORITAS", value: `${favorites.size}`, color: "#ffd740" },
-              { label: "PLAYLISTS", value: `${playlists.length}`, color: "var(--neon-cyan)" },
+              { label: "CANCIONES EN BIBLIOTECA", value: tracks.length, color: "var(--neon-pink)" },
+              { label: "FAVORITAS", value: favorites.size, color: "#ffd740" },
+              { label: "DURACIÓN TOTAL (MIN)", value: horasEscuchadas, color: "var(--neon-cyan)" },
             ].map((stat) => (
               <div key={stat.label} className="hbg-card hbg-card-accent" style={{ "--card-color": stat.color } as React.CSSProperties}>
                 <div className="card-label">{stat.label}</div>
@@ -411,25 +651,22 @@ export function VibraModule() {
               </div>
             ))}
           </div>
+
           <div className="hbg-grid hbg-grid-2" style={{ gap: 10 }}>
             <div className="hbg-card">
-              <div className="section-title">// géneros favoritos</div>
-              {["Lofi", "Indie", "Ambient", "Electrónica", "Trap"].map((g, i) => (
-                <div key={g} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)", minWidth: 16 }}>{i + 1}.</span>
-                  <div className="hbg-progress" style={{ flex: 1, marginTop: 0 }}>
-                    <div className="hbg-progress-bar" style={{ "--bar-color": mood.color, width: `${90 - i * 14}%` } as React.CSSProperties} />
-                  </div>
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-secondary)", minWidth: 80 }}>{g}</span>
-                </div>
-              ))}
+              <div className="section-title">// modo activo</div>
+              <div style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 700, color: mood.color, textShadow: `0 0 14px ${mood.color}`, marginBottom: 8 }}>{mood.label}</div>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>BPM sugerido: {mood.bpm[0]}–{mood.bpm[1]}</div>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>Playlists: {playlists.length}</div>
             </div>
             <div className="hbg-card">
-              <div className="section-title">// modo más usado</div>
-              <div style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 700, color: mood.color, textShadow: `0 0 14px ${mood.color}`, marginBottom: 8 }}>{mood.label}</div>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>Género top: {topGenre}</div>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>BPM promedio: {Math.round((mood.bpm[0] + mood.bpm[1]) / 2)}</div>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>Sesión actual: activa</div>
+              <div className="section-title">// reproductores compatibles</div>
+              {["MP3", "WAV", "OGG", "FLAC", "AAC", "M4A"].map((fmt) => (
+                <div key={fmt} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--neon-green)", display: "inline-block" }} />
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-secondary)" }}>{fmt}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
