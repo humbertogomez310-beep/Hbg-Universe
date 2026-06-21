@@ -1,0 +1,503 @@
+La idea correcta del Universo HBG no es crear una sola aplicación gigante, sino un ecosistema modular, donde:
+
+Cada app funciona sola.
+Cada app puede instalarse individualmente.
+Cada app tiene identidad propia.
+Todas pueden comunicarse entre sí.
+Existe una pantalla universal para conectarse con las demás.
+HBG Core es el cerebro, pero no obliga a las demás aplicaciones a depender de él.
+El usuario puede compartir una sola app o todo el universo completo.
+
+Eso hace que el proyecto sea mucho más profesional y escalable.
+
+🌌 ARQUITECTURA DEFINITIVA DEL UNIVERSO HBG
+                 HBG CORE
+                     │
+ ┌───────────────────┼───────────────────┐
+ │                   │                   │
+VIBRA PRO        INSTINTO         TERMINADOR IA
+ │                   │                   │
+ └────────────── Share Engine ───────────┘
+                     │
+             Universo Musical HBG
+1. HBG CORE (EL CEREBRO)
+Función
+
+Es la conciencia del ecosistema.
+
+No es una aplicación tradicional.
+
+Es el servidor central y la memoria del Universo HBG.
+
+Pantallas
+Inicio
+Estado del sistema.
+Hora.
+Usuario activo.
+Estado emocional.
+Memoria actual.
+Red de Nodos
+
+Mostrar:
+
+🟢 Vibra conectado
+
+🟢 Instinto conectado
+
+🟢 Terminador conectado
+
+⚫ Desconectado
+
+Memoria
+
+Guardar:
+
+estados de ánimo;
+preferencias;
+canciones favoritas;
+proyectos;
+historial creativo;
+configuraciones.
+Voz
+
+Botón:
+
+ESCUCHA ACTIVA
+
+Funciones:
+
+reproducir música;
+abrir aplicaciones;
+cambiar modos;
+ejecutar automatizaciones.
+Sincronización
+
+Botones:
+
+Generar Token.
+Vincular dispositivo.
+Restaurar ecosistema.
+Exportar universo.
+2. SHARE ENGINE (EL CORAZÓN DEL ECOSISTEMA)
+
+Es posiblemente la pieza más importante.
+
+Todas las aplicaciones lo tendrán.
+
+Compartir aplicación
+
+Botón:
+
+Compartir App
+
+Genera:
+
+QR;
+enlace;
+código de invitación.
+Compartir Estado
+
+Ejemplo:
+
+Vibra detecta:
+
+Mood = Nostalgia
+
+Instinto recibe:
+
+Mood = Nostalgia
+
+Entonces:
+
+cambia colores;
+recomienda palabras;
+cambia ambiente visual.
+Compartir Proyecto
+
+Enviar:
+
+letras;
+playlists;
+notas;
+configuraciones.
+Compartir Universo Completo
+
+Exportar:
+
+universo_hbg.json
+
+Con:
+
+preferencias;
+temas;
+historial;
+configuraciones;
+módulos instalados.
+3. VIBRA PRO
+Misión
+
+Centro musical del ecosistema.
+
+Pantallas
+Splash
+
+Logo HBG.
+
+Inicio
+canción;
+artista;
+portada;
+tiempo.
+Biblioteca
+buscar;
+ordenar;
+favoritos;
+carpetas.
+Subir Música
+
+Botón:
+
+IMPORTAR
+
+Aceptar:
+
+mp3;
+wav;
+flac;
+ogg.
+Mood Engine
+
+Estados:
+
+Chill;
+Happy;
+Sad;
+Focus;
+Party;
+Nostalgia;
+Energía.
+Party Mode
+visualizador;
+luces;
+efectos.
+Modo Descanso
+sonidos ambientales;
+lluvia;
+mar;
+bosque.
+Modo Enfoque
+ruido blanco;
+instrumental.
+Ecualizador PRO
+
+Bandas:
+
+60 Hz;
+170 Hz;
+310 Hz;
+600 Hz;
+1 kHz;
+3 kHz;
+6 kHz;
+12 kHz;
+14 kHz;
+16 kHz.
+Perfil
+estadísticas;
+tiempo escuchado;
+géneros favoritos.
+Pantalla HBG
+
+Aquí aparecerán:
+
+Instinto;
+Terminador IA;
+HBG Core.
+
+Botones:
+
+Abrir Instinto
+Abrir Terminador
+Abrir HBG Core
+Botones Especiales
+DJ ENGINE
+
+Permite que HBG Core controle la reproducción.
+
+TRANSMITIR VIBRACIÓN
+
+Comparte:
+
+canción;
+estado emocional;
+portada.
+EXPORTAR PLAYLIST
+FAVORITOS
+OFFLINE
+4. INSTINTO
+Misión
+
+Creatividad.
+
+Pantallas
+Inicio
+
+Frase del día.
+
+Bloc de Notas
+texto enriquecido;
+títulos;
+colores.
+Letras
+
+Organizar:
+
+verso;
+coro;
+puente.
+Ideas
+
+Guardar:
+
+frases;
+conceptos;
+proyectos.
+Inspiración IA
+
+Botón:
+
+INSPIRACIÓN CORE
+
+Analiza:
+
+rimas;
+estructura;
+métrica.
+Mood Visual
+
+Recibe información de Vibra.
+
+Ejemplo:
+
+Si Vibra está triste:
+
+Instinto cambia a colores azules.
+
+Exportar
+
+Formatos:
+
+txt;
+pdf;
+docx;
+json.
+Pantalla Universo HBG
+
+Abrir:
+
+Vibra;
+Terminador;
+HBG Core.
+Botones
+NUEVO PROYECTO
+GUARDAR
+EXPORTAR
+COMPARTIR
+SINCRONIZAR
+5. TERMINADOR IA
+Misión
+
+Productividad y mantenimiento.
+
+Pantallas
+Dashboard
+
+Mostrar:
+
+CPU;
+RAM;
+almacenamiento;
+estado del servidor.
+Optimización
+
+Botón:
+
+OPTIMIZACIÓN MASIVA
+
+Acciones:
+
+limpiar caché;
+compactar registros;
+eliminar basura.
+Automatizaciones
+
+Crear:
+
+tareas;
+horarios;
+disparadores.
+Cron Jobs
+
+Ejemplos:
+
+Todos los días:
+
+23:00
+Respaldo automático
+Logs
+
+Ver:
+
+errores;
+advertencias;
+historial.
+Salud del Ecosistema
+
+Indicadores:
+
+🟢 Excelente
+
+🟡 Advertencia
+
+🔴 Crítico
+
+Pantalla Universo HBG
+
+Acceso a:
+
+Vibra;
+Instinto;
+HBG Core.
+6. UNIVERSO MUSICAL HBG
+
+Es la identidad artística.
+
+Aquí vivirán:
+
+canciones;
+letras;
+historias;
+personajes;
+portadas;
+videos.
+Proyectos actuales
+La Voz del Lobo
+Universo Musical HBG
+Branding HBG
+7. SISTEMA DE INSTALACIÓN
+Opción 1
+
+Instalar una sola aplicación:
+
+Vibra Pro
+
+o
+
+Instinto
+
+o
+
+Terminador IA
+Opción 2
+
+Instalar:
+
+Universo HBG Completo
+
+Incluye:
+
+Core;
+Vibra;
+Instinto;
+Terminador.
+8. SISTEMA DE ENLACE
+
+Cada app tendrá una pantalla llamada:
+
+UNIVERSO HBG
+
+Con:
+
+Aplicaciones instaladas
+Aplicaciones disponibles
+Conectar con Core
+Compartir aplicación
+Compartir Universo HBG
+Estado de sincronización
+9. PERSISTENCIA
+
+Guardar:
+
+localStorage
+
+para uso rápido.
+
+IndexedDB
+
+para archivos grandes.
+
+JSON
+
+para exportación.
+
+Base de datos central
+
+para sincronización.
+
+10. DOMINIO Y PUBLICACIÓN
+
+Cuando llegue el momento:
+
+universohbg.com
+
+o
+
+hbgcore.com
+
+o
+
+vibrapro.app
+
+o
+
+instinto.app
+FASES QUE AÚN FALTAN
+FASE 1
+
+Terminar VIBRA PRO.
+
+FASE 2
+
+Terminar INSTINTO.
+
+FASE 3
+
+Construir TERMINADOR IA.
+
+FASE 4
+
+Construir SHARE ENGINE.
+
+FASE 5
+
+Construir HBG CORE.
+
+FASE 6
+
+Conectar módulos.
+
+FASE 7
+
+Persistencia completa.
+
+FASE 8
+
+Comandos por voz.
+
+FASE 9
+
+Dominio propio.
+
+FASE 10
+
+Versión premium y publicación.
