@@ -179,11 +179,38 @@ export function TerminadorModule() {
     const normalized = command.toLowerCase();
     let action: HBGActionName | null = null;
     let payload: Record<string, unknown> | undefined;
-    let fallback = "No reconocí esa orden. Prueba: “pon play”, “pausa”, “siguiente”, “busca Bad Bunny” o “pon la segunda”.";
+    let fallback = "No reconocí esa orden. Prueba: “pon play”, “pon mis favoritos”, “crea una playlist” o “reproduce mi playlist”.";
 
     if (/^(abre|abrir|ve a|ir a).*(vibra|música)/.test(normalized)) {
       hbgCore.setModule("vibra");
       fallback = "VIBRA PRO abierto.";
+    } else if (/\b(pon|reproduce|reproducir)\b.*\b(mis favoritos|favoritos)\b/.test(normalized)) {
+      action = "music.playlist";
+      payload = { mode: "play", favorites: true, name: "Mis favoritos" };
+      fallback = "No pude reproducir tus favoritos. Verifica que tengas canciones favoritas.";
+    } else if (/\b(crea|crear)\b.*\b(playlist|lista)\b/.test(normalized)) {
+      action = "music.playlist";
+      const playlistName = command
+        .replace(/^.*?\b(crea|crear)\b/i, "")
+        .replace(/^\s*(una\s+)?(playlist|lista)(\s+(llamada|llamado|de))?\s*/i, "")
+        .trim();
+      payload = { mode: "create", name: playlistName || "Nueva playlist" };
+      fallback = "No pude crear la playlist.";
+    } else if (/\b(pon|reproduce|reproducir)\b.*\b(playlist|lista)\b/.test(normalized)) {
+      action = "music.playlist";
+      const playlistName = command
+        .replace(/^.*?\b(playlist|lista)\b/i, "")
+        .replace(/^\s*(mi|la)\s+/i, "")
+        .trim();
+      payload = { mode: "play", name: playlistName };
+      fallback = `No existe la playlist "${playlistName || "indicada"}".`;
+    } else if (/\b(agrega|añade|anade)\b.*\b(playlist|lista)\b/.test(normalized)) {
+      action = "music.playlist";
+      const playlistName = command
+        .replace(/^.*?\b(playlist|lista)\b/i, "")
+        .trim();
+      payload = { mode: "add", name: playlistName };
+      fallback = `No pude agregar la canción a "${playlistName || "la playlist"}".`;
     } else if (/\b(busca|buscar)\b/.test(normalized)) {
       action = "music.search";
       payload = { query: command.replace(/^.*?\b(busca|buscar)\b/i, "").trim() };
@@ -220,8 +247,14 @@ export function TerminadorModule() {
           ? `Búsqueda completada: ${((result.data as { results?: unknown[] })?.results ?? []).length} resultado(s).`
           : action === "music.volume"
             ? `Volumen ajustado al ${(result.data as { volume?: number })?.volume}%.`
-            : action === "music.playTrack"
+          : action === "music.playTrack"
               ? `Reproduciendo ${(result.data as { track?: { title?: string } })?.track?.title ?? "la selección"}.`
+              : action === "music.playlist"
+                ? (() => {
+                    const data = result.data as { playlist?: { name?: string }; track?: { title?: string }; added?: boolean };
+                    if (data.added) return `Canción agregada a "${data.playlist?.name ?? "la playlist"}".`;
+                    return `Reproduciendo ${data.playlist?.name ?? "la selección"}${data.track?.title ? ` · ${data.track.title}` : ""}.`;
+                  })()
               : "Acción ejecutada y verificada en VIBRA PRO."
         : result.error ?? fallback;
       setCoreMessages((prev) => [...prev, { id: `${Date.now()}-c`, role: "core", text: detail }]);

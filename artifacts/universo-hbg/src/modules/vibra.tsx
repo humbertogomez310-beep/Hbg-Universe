@@ -271,6 +271,21 @@ export function VibraModule() {
     if (idx > 0) playTrack(tracks[idx - 1].id);
   };
 
+  const playTrackSequence = async (trackIds: string[]) => {
+    const sequence = trackIds.map((id) => tracks.find((track) => track.id === id)).filter((track): track is TrackMeta => Boolean(track));
+    if (!sequence.length) {
+      return { success: false, error: "La playlist no tiene canciones disponibles en la biblioteca." };
+    }
+    if (sequence.length !== trackIds.length) {
+      return { success: false, error: "La playlist contiene canciones que ya no existen en la biblioteca." };
+    }
+    await playTrack(sequence[0].id);
+    const playing = audioRef.current?.paused === false;
+    return playing
+      ? { success: true, data: { playlist: sequence, track: sequence[0], isPlaying: true } }
+      : { success: false, error: "La playlist fue encontrada, pero no se pudo iniciar el audio." };
+  };
+
   // VIBRA exposes its real capabilities through HBG CORE. The handler is
   // registered only while this independent app is mounted; queued commands
   // are flushed by CORE when the user opens VIBRA.
@@ -339,8 +354,54 @@ export function VibraModule() {
       hbgCore.registerAction("music.favorite", (payload) => {
         const id = String(payload?.id ?? currentId ?? "");
         if (!tracks.some((t) => t.id === id)) return result(false, undefined, "No encontré esa canción");
-        toggleFav(id);
-        return result(true, { id, favorite: !favorites.has(id) });
+        const mode = String(payload?.mode ?? "toggle");
+        const currentlyFavorite = favorites.has(id);
+        const nextFavorite = mode === "add" ? true : mode === "remove" ? false : !currentlyFavorite;
+        if (nextFavorite !== currentlyFavorite) toggleFav(id);
+        return result(true, { id, favorite: nextFavorite });
+      }),
+      hbgCore.registerAction("music.playlist", async (payload) => {
+        const mode = String(payload?.mode ?? "play");
+        const requestedName = String(payload?.name ?? "").trim();
+
+        if (mode === "create") {
+          if (!requestedName) return result(false, undefined, "Debes indicar un nombre para la playlist");
+          if (playlists.some((playlist) => playlist.name.toLowerCase() === requestedName.toLowerCase())) {
+            return result(false, undefined, `La playlist "${requestedName}" ya existe`);
+          }
+          const colors = ["var(--neon-pink)", "var(--neon-cyan)", "var(--neon-green)", "#ff9100", "var(--neon-purple)"];
+          const playlist: Playlist = {
+            id: `playlist_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+            name: requestedName,
+            trackIds: [],
+            color: colors[playlists.length % colors.length],
+          };
+          setPlaylists((prev) => [...prev, playlist]);
+          return result(true, { playlist });
+        }
+
+        if (mode === "add") {
+          const id = String(payload?.id ?? currentId ?? "");
+          const playlist = playlists.find((candidate) => candidate.name.toLowerCase() === requestedName.toLowerCase() || candidate.id === requestedName);
+          if (!playlist) return result(false, undefined, `No existe la playlist "${requestedName}"`);
+          if (!tracks.some((track) => track.id === id)) return result(false, undefined, "No encontré la canción para agregar");
+          if (playlist.trackIds.includes(id)) return result(true, { playlist, added: false });
+          const updated = { ...playlist, trackIds: [...playlist.trackIds, id] };
+          setPlaylists((prev) => prev.map((candidate) => candidate.id === playlist.id ? updated : candidate));
+          return result(true, { playlist: updated, added: true });
+        }
+
+        const isFavorites = payload?.favorites === true || requestedName.toLowerCase() === "mis favoritos" || requestedName.toLowerCase() === "favoritos";
+        if (isFavorites) {
+          const favoriteIds = tracks.filter((track) => favorites.has(track.id)).map((track) => track.id);
+          const favoriteResult = await playTrackSequence(favoriteIds);
+          return result(favoriteResult.success, favoriteResult.data, favoriteResult.error);
+        }
+
+        const playlist = playlists.find((candidate) => candidate.name.toLowerCase() === requestedName.toLowerCase() || candidate.id === requestedName);
+        if (!playlist) return result(false, undefined, `No existe la playlist "${requestedName}"`);
+        const playlistResult = await playTrackSequence(playlist.trackIds);
+        return result(playlistResult.success, { ...playlistResult.data as object, playlist }, playlistResult.error);
       }),
     ];
     return () => unregister.forEach((off) => off());
@@ -648,7 +709,17 @@ export function VibraModule() {
                   <div style={{ fontFamily: "var(--font-display)", fontSize: 12, fontWeight: 700, color: pl.color, marginBottom: 6, letterSpacing: "0.08em" }}>{pl.name}</div>
                   <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>{pl.trackIds.length} canciones</div>
                   <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-                    <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 9, padding: "4px 8px" }}>▶ PLAY</button>
+                    <button
+                      className="hbg-btn hbg-btn-ghost"
+                      style={{ fontSize: 9, padding: "4px 8px" }}
+                      onClick={() => {
+                        void playTrackSequence(pl.trackIds);
+                        setView("player");
+                      }}
+                      disabled={pl.trackIds.length === 0}
+                    >
+                      ▶ PLAY
+                    </button>
                     <button className="hbg-btn hbg-btn-danger" style={{ fontSize: 9, padding: "4px 8px" }} onClick={() => setPlaylists(p => p.filter(x => x.id !== pl.id))}>✕</button>
                   </div>
                 </div>
