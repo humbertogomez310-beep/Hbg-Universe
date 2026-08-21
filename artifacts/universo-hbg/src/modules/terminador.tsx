@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { UniversoScreen } from "../components/UniversoScreen";
+import { hbgCore, type HBGActionName, type HBGActionResult } from "../core/hbgCore";
 
 type ViewMode = "dashboard" | "recursos" | "automatizaciones" | "cronjobs" | "logs" | "salud" | "universo";
 type HealthLevel = "excellent" | "warning" | "critical";
@@ -48,6 +49,12 @@ interface LogEntry {
   time: string;
   level: "INFO" | "WARN" | "OK" | "SCAN" | "OPTIM" | "CRON" | "ERR";
   message: string;
+}
+
+interface CoreMessage {
+  id: string;
+  role: "user" | "core";
+  text: string;
 }
 
 const HISTORY_KEY = "hbg_terminador_history";
@@ -117,6 +124,11 @@ export function TerminadorModule() {
   const [newTaskPriority, setNewTaskPriority] = useState<Priority>("media");
   const [cronFilter, setCronFilter] = useState<"todas" | "diaria" | "semanal" | "mensual">("todas");
   const [selectedRes, setSelectedRes] = useState<Set<string>>(new Set());
+  const [coreInput, setCoreInput] = useState("");
+  const [coreBusy, setCoreBusy] = useState(false);
+  const [coreMessages, setCoreMessages] = useState<CoreMessage[]>([
+    { id: "welcome", role: "core", text: "HBG CORE en línea. Puedo ejecutar órdenes reales en VIBRA PRO." },
+  ]);
   const logRef = useRef<HTMLDivElement>(null);
 
   const health = getHealth(metrics);
@@ -144,6 +156,81 @@ export function TerminadorModule() {
   const addHistory = (action: string, result: ActionHistory["result"], details: string) => {
     const entry: ActionHistory = { id: Date.now().toString(), action, result, time: new Date().toLocaleTimeString("es-ES", { hour12: false }), details };
     setHistory((prev) => [entry, ...prev.slice(0, 49)]);
+  };
+
+  const runCoreAction = async (
+    action: HBGActionName,
+    payload?: Record<string, unknown>,
+  ): Promise<HBGActionResult> => {
+    const isMusic = action.startsWith("music.");
+    if (isMusic && !hbgCore.getRegisteredActions().some((name) => name === action)) {
+      hbgCore.setModule("vibra");
+    }
+    return hbgCore.dispatchAction(action, payload);
+  };
+
+  const executeCoreCommand = async () => {
+    const command = coreInput.trim();
+    if (!command || coreBusy) return;
+    setCoreInput("");
+    setCoreMessages((prev) => [...prev, { id: `${Date.now()}-u`, role: "user", text: command }]);
+    setCoreBusy(true);
+
+    const normalized = command.toLowerCase();
+    let action: HBGActionName | null = null;
+    let payload: Record<string, unknown> | undefined;
+    let fallback = "No reconocí esa orden. Prueba: “pon play”, “pausa”, “siguiente”, “busca Bad Bunny” o “pon la segunda”.";
+
+    if (/^(abre|abrir|ve a|ir a).*(vibra|música)/.test(normalized)) {
+      hbgCore.setModule("vibra");
+      fallback = "VIBRA PRO abierto.";
+    } else if (/\b(busca|buscar)\b/.test(normalized)) {
+      action = "music.search";
+      payload = { query: command.replace(/^.*?\b(busca|buscar)\b/i, "").trim() };
+      fallback = "No encontré coincidencias en la biblioteca local.";
+    } else if (/\b(pon|reproduce|reproducir)\b.*\b(la )?(segunda|2)\b/.test(normalized)) {
+      action = "music.playTrack";
+      payload = { index: 2 };
+      fallback = "No encontré el segundo resultado de la búsqueda.";
+    } else if (/\b(pausa|pausar|detén|detener)\b/.test(normalized)) {
+      action = "music.pause";
+      fallback = "No pude pausar la reproducción.";
+    } else if (/\b(siguiente|siguiente canción|next)\b/.test(normalized)) {
+      action = "music.next";
+      fallback = "No hay una siguiente canción disponible.";
+    } else if (/\b(anterior|previous)\b/.test(normalized)) {
+      action = "music.previous";
+      fallback = "No hay una canción anterior disponible.";
+    } else if (/\b(play|reproduce|reproducir|pon música)\b/.test(normalized)) {
+      action = "music.play";
+      fallback = "No pude iniciar la reproducción.";
+    } else {
+      const volume = normalized.match(/volumen.*?(\d{1,3})|(\d{1,3}).*?%/);
+      if (volume) {
+        action = "music.volume";
+        payload = { volume: Number(volume[1] ?? volume[2]) };
+        fallback = "No pude cambiar el volumen.";
+      }
+    }
+
+    if (action) {
+      const result = await runCoreAction(action, payload);
+      const detail = result.success
+        ? action === "music.search"
+          ? `Búsqueda completada: ${((result.data as { results?: unknown[] })?.results ?? []).length} resultado(s).`
+          : action === "music.volume"
+            ? `Volumen ajustado al ${(result.data as { volume?: number })?.volume}%.`
+            : action === "music.playTrack"
+              ? `Reproduciendo ${(result.data as { track?: { title?: string } })?.track?.title ?? "la selección"}.`
+              : "Acción ejecutada y verificada en VIBRA PRO."
+        : result.error ?? fallback;
+      setCoreMessages((prev) => [...prev, { id: `${Date.now()}-c`, role: "core", text: detail }]);
+      addHistory(action, result.success ? "ok" : "error", detail);
+    } else {
+      setCoreMessages((prev) => [...prev, { id: `${Date.now()}-c`, role: "core", text: fallback }]);
+      if (/^(abre|abrir|ve a|ir a)/.test(normalized)) addHistory("NAVEGACIÓN", "ok", fallback);
+    }
+    setCoreBusy(false);
   };
 
   const runOperation = async (name: string, steps: Array<{ level: LogEntry["level"]; msg: string }>, onDone?: () => void) => {
@@ -297,6 +384,48 @@ export function TerminadorModule() {
                 </div>
               );
             })}
+          </div>
+
+          {/* HBG CORE command bridge */}
+          <div className="hbg-card hbg-card-accent" style={{ "--card-color": "var(--neon-green)", marginBottom: 16 } as React.CSSProperties}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <div>
+                <div className="card-label">HBG CORE · ACTION ROUTER</div>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: 13, color: "var(--neon-green)", letterSpacing: "0.08em" }}>EJECUCIÓN VERIFICADA</div>
+              </div>
+              <span className="hbg-badge" style={{ color: "var(--neon-cyan)", borderColor: "rgba(0,229,255,0.35)" }}>
+                {hbgCore.getRegisteredActions().length} CAPACIDADES
+              </span>
+            </div>
+            <div style={{ background: "var(--bg-deep)", border: "1px solid var(--border-dim)", borderRadius: 3, padding: "8px 10px", minHeight: 74, maxHeight: 138, overflowY: "auto", marginBottom: 8 }}>
+              {coreMessages.map((message) => (
+                <div key={message.id} style={{ display: "flex", gap: 8, marginBottom: 5, fontFamily: "var(--font-mono)", fontSize: 10, lineHeight: 1.45 }}>
+                  <span style={{ color: message.role === "user" ? "var(--neon-cyan)" : "var(--neon-green)", flexShrink: 0 }}>{message.role === "user" ? ">" : "CORE:"}</span>
+                  <span style={{ color: message.role === "user" ? "var(--text-primary)" : "var(--text-secondary)" }}>{message.text}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <input
+                className="hbg-input"
+                value={coreInput}
+                onChange={(e) => setCoreInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") void executeCoreCommand(); }}
+                placeholder='Ej: "pon play" · "busca Bad Bunny" · "pon la segunda"'
+                aria-label="Orden para HBG Core"
+                disabled={coreBusy}
+              />
+              <button className="hbg-btn hbg-btn-success" onClick={() => void executeCoreCommand()} disabled={coreBusy || !coreInput.trim()}>
+                {coreBusy ? "◎" : "EJECUTAR"}
+              </button>
+            </div>
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 8 }}>
+              {["PON PLAY", "PAUSA", "SIGUIENTE", "VOLUMEN 50%"].map((quick) => (
+                <button key={quick} className="hbg-badge" style={{ cursor: "pointer", color: "var(--text-muted)" }} onClick={() => { setCoreInput(quick); }}>
+                  {quick}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Action buttons */}

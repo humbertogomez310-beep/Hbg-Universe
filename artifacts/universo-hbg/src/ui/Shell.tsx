@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { hbgCore, type ModuleId } from "../core/hbgCore";
 import { Sidebar } from "./Sidebar";
 import { UniversoModule } from "../modules/universo";
@@ -28,7 +28,7 @@ function ModulePanel({ module }: { module: ModuleId }) {
     setDisplayModule(module);
   }, [module]);
 
-  const panels: Record<ModuleId, JSX.Element> = {
+  const panels: Record<ModuleId, ReactNode> = {
     universo: <UniversoModule />,
     instinto: <InstintoModule />,
     vibra: <VibraModule />,

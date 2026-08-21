@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { UniversoScreen } from "../components/UniversoScreen";
+import { hbgCore, type HBGActionResult } from "../core/hbgCore";
 import {
   saveAudioBlob,
   getAudioBlob,
@@ -269,6 +270,81 @@ export function VibraModule() {
     const idx = tracks.findIndex((t) => t.id === currentId);
     if (idx > 0) playTrack(tracks[idx - 1].id);
   };
+
+  // VIBRA exposes its real capabilities through HBG CORE. The handler is
+  // registered only while this independent app is mounted; queued commands
+  // are flushed by CORE when the user opens VIBRA.
+  useEffect(() => {
+    const result = (success: boolean, data?: unknown, error?: string): HBGActionResult => ({
+      success,
+      ...(data === undefined ? {} : { data }),
+      ...(error ? { error } : {}),
+    });
+
+    const unregister = [
+      hbgCore.registerAction("music.play", async () => {
+        const before = isPlaying;
+        await togglePlay();
+        const playing = audioRef.current?.paused === false;
+        return result(!before ? playing : !playing, { isPlaying: playing }, playing === !before ? undefined : "No se pudo cambiar la reproducción");
+      }),
+      hbgCore.registerAction("music.pause", () => {
+        audioRef.current?.pause();
+        const paused = audioRef.current?.paused !== false;
+        return result(paused, { isPlaying: !paused }, paused ? undefined : "No se pudo pausar");
+      }),
+      hbgCore.registerAction("music.next", async () => {
+        const idx = tracks.findIndex((t) => t.id === currentId);
+        if (idx < 0 || idx >= tracks.length - 1) return result(false, undefined, "No hay una siguiente canción");
+        await playTrack(tracks[idx + 1].id);
+        return result(audioRef.current?.paused === false, { track: tracks[idx + 1] }, "No se pudo iniciar la siguiente canción");
+      }),
+      hbgCore.registerAction("music.previous", async () => {
+        const audio = audioRef.current;
+        if (audio && audio.currentTime > 3) {
+          audio.currentTime = 0;
+          return result(true, { currentTime: 0 });
+        }
+        const idx = tracks.findIndex((t) => t.id === currentId);
+        if (idx <= 0) return result(false, undefined, "No hay una canción anterior");
+        await playTrack(tracks[idx - 1].id);
+        return result(audioRef.current?.paused === false, { track: tracks[idx - 1] }, "No se pudo iniciar la canción anterior");
+      }),
+      hbgCore.registerAction("music.search", (payload) => {
+        const query = String(payload?.query ?? "").trim().toLowerCase();
+        const matches = tracks.filter((t) => `${t.title} ${t.artist} ${t.album}`.toLowerCase().includes(query));
+        hbgCore.setContext("music.searchResults", matches);
+        return result(true, { query, results: matches });
+      }),
+      hbgCore.registerAction("music.playTrack", async (payload) => {
+        const requested = String(payload?.id ?? "");
+        const index = Number(payload?.index);
+        const context = hbgCore.getContext<TrackMeta[]>("music.searchResults") ?? [];
+        const track = requested
+          ? tracks.find((t) => t.id === requested)
+          : Number.isInteger(index) ? context[index - 1] : undefined;
+        if (!track) return result(false, undefined, "No encontré esa canción en la biblioteca");
+        await playTrack(track.id);
+        const playing = audioRef.current?.paused === false;
+        return result(playing, { track, isPlaying: playing }, playing ? undefined : "No se pudo iniciar la canción");
+      }),
+      hbgCore.registerAction("music.volume", (payload) => {
+        const requested = Number(payload?.volume);
+        if (!Number.isFinite(requested) || requested < 0 || requested > 100) {
+          return result(false, undefined, "El volumen debe estar entre 0 y 100");
+        }
+        setVolume(requested);
+        return result(true, { volume: requested });
+      }),
+      hbgCore.registerAction("music.favorite", (payload) => {
+        const id = String(payload?.id ?? currentId ?? "");
+        if (!tracks.some((t) => t.id === id)) return result(false, undefined, "No encontré esa canción");
+        toggleFav(id);
+        return result(true, { id, favorite: !favorites.has(id) });
+      }),
+    ];
+    return () => unregister.forEach((off) => off());
+  }, [currentId, favorites, isPlaying, playTrack, tracks, togglePlay, volume]);
 
   const seek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const audio = audioRef.current;

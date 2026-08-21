@@ -1,0 +1,577 @@
+Sí. Te conviene darle a Replit un prompt maestro, dejando claro que VIBRA WEB es el producto/app y VIBRA PRO es su versión objetivo, no un proyecto nuevo.
+
+Te dejo uno listo para copiar y pegar:
+
+VIBRA WEB / VIBRA PRO — PROMPT MAESTRO DE DESARROLLO
+
+1. IDENTIDAD DEL PROYECTO
+
+El proyecto actual es VIBRA WEB, cuya evolución y objetivo final es VIBRA PRO.
+
+IMPORTANTE:
+
+- NO crear una aplicación nueva desde cero.
+- NO reemplazar la arquitectura existente.
+- NO reconstruir sistemas que ya existen.
+- NO duplicar estados, engines, servicios o lógica.
+- Trabajar sobre el código actual y evolucionarlo de forma incremental.
+- Conservar todo lo que ya funciona.
+- Antes de modificar cualquier sistema, analizar el código real existente.
+
+VIBRA PRO forma parte del Universo HBG y debe poder integrarse con:
+
+- HBG CORE
+- INSTINTO
+- TERMINADOR IA
+- Futuras aplicaciones del ecosistema HBG
+
+HBG CORE debe mantenerse como núcleo central del ecosistema y VIBRA PRO como aplicación independiente conectada mediante contratos/adaptadores.
+
+---
+
+2. OBJETIVO PRINCIPAL
+
+Convertir el proyecto actual en una aplicación musical profesional llamada:
+
+VIBRA PRO
+
+Debe sentirse como una aplicación musical moderna, rápida, visual, profesional y preparada para crecer.
+
+El objetivo NO es solamente que "funcione".
+
+Debe tener:
+
+- UX profesional
+- diseño moderno
+- reproducción de audio real
+- biblioteca musical persistente
+- favoritos
+- playlists
+- estadísticas
+- modos musicales
+- visualizador
+- ecualizador
+- memoria de usuario
+- funcionamiento offline
+- PWA instalable
+- responsive real
+- integración preparada con HBG CORE
+- arquitectura modular
+- rendimiento estable
+
+---
+
+3. REGLA MÁS IMPORTANTE
+
+PRESERVAR LA ARQUITECTURA ACTUAL
+
+Antes de escribir código:
+
+1. Analizar el repositorio completo.
+2. Identificar la arquitectura actual.
+3. Identificar HBGCore.
+4. Identificar engines existentes.
+5. Identificar servicios existentes.
+6. Identificar componentes reutilizables.
+7. Identificar estado global.
+8. Identificar sistemas de audio.
+9. Identificar almacenamiento.
+10. Identificar integración con HBG CORE.
+11. Identificar qué ya está terminado.
+12. Identificar qué está incompleto.
+13. Identificar errores reales.
+
+Después de ese análisis, implementar solamente lo necesario.
+
+NO crear una segunda arquitectura paralela.
+
+NO crear otro HBGCore.
+
+NO crear otro sistema global de estado.
+
+NO crear otro FavoritesEngine si ya existe.
+
+NO duplicar MemoryEngine.
+
+NO duplicar PlayerEngine.
+
+NO duplicar lógica de reproducción.
+
+---
+
+4. FUENTE ÚNICA DE VERDAD
+
+HBGCore debe continuar siendo la fuente única de verdad para el estado global que corresponda.
+
+Los componentes React/UI deben consumir los datos desde la arquitectura existente.
+
+Evitar:
+
+- estados duplicados
+- sincronizaciones manuales innecesarias
+- estados paralelos
+- datos contradictorios
+- lógica duplicada entre componentes
+
+Si existe una función o engine para una responsabilidad, utilizarlo en lugar de crear otro.
+
+---
+
+5. ESTADO ACTUAL
+
+VIBRA PRO ya alcanzó una etapa RC-1.
+
+El sistema ya contiene partes importantes de:
+
+- interfaz
+- Player
+- Biblioteca
+- Favoritos
+- TrackDisplay
+- Playlist
+- PlayerControls
+- FavoritesScreen
+- HBGCore
+- FavoritesEngine
+- MemoryEngine
+- arquitectura modular
+
+El sistema debe evolucionar desde ese estado.
+
+NO tratar el proyecto como un prototipo vacío.
+
+---
+
+6. EXPERIENCIA VISUAL OBJETIVO
+
+La aplicación debe seguir una experiencia visual moderna y profesional.
+
+Pantallas/módulos objetivo:
+
+1. Splash
+2. Player
+3. Biblioteca
+4. Subir Música
+5. Modo Fiesta
+6. Modo Pro / Ecualizador
+7. Modo Descanso
+8. Modo Enfoque
+9. Modo Offline
+10. Perfil
+11. Universo HBG
+
+La navegación debe sentirse como una aplicación musical real.
+
+Debe existir una jerarquía visual clara entre:
+
+- navegación
+- biblioteca
+- canción actual
+- controles
+- playlists
+- favoritos
+- modos
+- perfil
+
+---
+
+7. RESPONSIVE
+
+VIBRA PRO debe funcionar correctamente en:
+
+- móvil
+- tablet
+- Chromebook
+- laptop
+- monitor de escritorio
+- pantallas grandes
+
+NO simplemente escalar elementos.
+
+La interfaz debe adaptarse realmente a cada tamaño.
+
+Evitar:
+
+- overflow horizontal
+- botones fuera de pantalla
+- textos cortados
+- reproductores deformados
+- paneles imposibles de utilizar
+- espacios excesivos
+- elementos superpuestos
+
+La experiencia móvil debe ser especialmente cuidada.
+
+---
+
+8. AUDIO — PRIORIDAD CRÍTICA
+
+La reproducción de audio debe ser REAL y estable.
+
+Verificar primero:
+
+- carga de archivos
+- selección de canción
+- play
+- pause
+- seek
+- duración
+- progreso
+- siguiente
+- anterior
+- volumen
+- reproducción continua
+- manejo de errores
+- estado de reproducción
+- actualización correcta de UI
+
+No implementar nuevas funciones musicales importantes hasta confirmar que el sistema de audio existente funciona correctamente.
+
+NO crear un segundo sistema de reproducción si ya existe uno.
+
+---
+
+9. BIBLIOTECA MUSICAL
+
+La biblioteca debe permitir:
+
+- agregar música
+- subir archivos
+- seleccionar múltiples archivos
+- seleccionar carpetas cuando el navegador lo permita
+- mostrar canciones
+- reproducir canciones
+- eliminar canciones
+- eliminar múltiples canciones
+- marcar favoritos
+- crear/gestionar playlists
+- conservar la biblioteca después de cerrar la aplicación
+
+La biblioteca debe ser persistente.
+
+Una canción solamente debe desaparecer cuando el usuario la elimine explícitamente.
+
+---
+
+10. FAVORITOS
+
+Mantener el sistema de favoritos existente.
+
+HBGCore debe continuar siendo la fuente de verdad.
+
+FavoritesEngine debe mantenerse integrado.
+
+No crear un segundo sistema de favoritos.
+
+Los favoritos deben actualizarse correctamente en tiempo real en:
+
+- Biblioteca
+- Player
+- Playlists
+- FavoritesScreen
+- cualquier otra vista que utilice canciones
+
+---
+
+11. MEMORY ENGINE
+
+Mantener MemoryEngine como sistema de memoria musical.
+
+Debe poder servir posteriormente para:
+
+- canciones más escuchadas
+- historial
+- preferencias
+- estadísticas
+- recomendaciones
+- comportamiento musical
+
+No duplicar esta responsabilidad.
+
+---
+
+12. MODOS DE VIBRA PRO
+
+La aplicación debe evolucionar hacia estos modos:
+
+Modo Fiesta
+
+Experiencia musical dinámica.
+
+Debe preparar posteriormente soporte para:
+
+- AutoDJ
+- transiciones
+- visualizador
+- selección automática
+- energía musical
+
+Modo Pro
+
+Ecualizador profesional.
+
+Debe permitir posteriormente:
+
+- bandas de ecualización
+- presets
+- ajustes personalizados
+
+Utilizar el sistema de ecualizador existente cuando esté disponible.
+
+Modo Descanso
+
+Experiencia musical tranquila.
+
+Modo Enfoque
+
+Experiencia orientada a concentración.
+
+Modo Offline
+
+La aplicación debe funcionar con música local sin depender permanentemente de internet.
+
+---
+
+13. PWA
+
+VIBRA PRO debe ser instalable como aplicación.
+
+Verificar:
+
+- manifest
+- iconos
+- service worker
+- caching apropiado
+- instalación
+- funcionamiento offline
+- experiencia móvil
+
+La IA y servicios online pueden requerir conexión, pero la reproducción y biblioteca local deben priorizar funcionamiento offline.
+
+---
+
+14. HBG CORE
+
+La integración con HBG CORE debe realizarse mediante el contrato/adaptador existente.
+
+Antes de modificar la integración:
+
+1. Revisar "hbgConnector.ts".
+2. Revisar "docs/hbg-core-integration-contract.md".
+3. Comparar implementación contra contrato.
+4. Corregir únicamente las incompatibilidades reales.
+5. No copiar HBG CORE dentro de VIBRA PRO.
+
+VIBRA PRO debe conectarse a HBG CORE, no convertirse en una copia de HBG CORE.
+
+---
+
+15. DISEÑO
+
+El diseño debe transmitir:
+
+- tecnología
+- música
+- energía
+- profesionalismo
+- modernidad
+- identidad HBG
+
+Pero la estética nunca debe sacrificar:
+
+- legibilidad
+- rendimiento
+- accesibilidad
+- facilidad de uso
+- responsive
+
+Evitar diseños excesivamente cargados.
+
+Cada pantalla debe tener una función clara.
+
+---
+
+16. CALIDAD DE CÓDIGO
+
+Cada cambio debe cumplir:
+
+- TypeScript correcto
+- componentes reutilizables
+- arquitectura modular
+- nombres claros
+- evitar código muerto
+- evitar duplicación
+- evitar hacks innecesarios
+- evitar soluciones temporales que después se conviertan en arquitectura
+- mantener compatibilidad con lo existente
+
+---
+
+17. PROCESO OBLIGATORIO
+
+Trabajar siempre en este orden:
+
+PASO 1 — AUDITORÍA
+
+Analizar el proyecto real antes de modificarlo.
+
+PASO 2 — MAPA
+
+Generar internamente un mapa de:
+
+- arquitectura
+- componentes
+- engines
+- servicios
+- almacenamiento
+- audio
+- HBGCore
+- integración
+- rutas
+- estilos
+
+PASO 3 — PRIORIZACIÓN
+
+Resolver primero:
+
+1. errores críticos
+2. reproducción de audio
+3. arquitectura/integración
+4. biblioteca
+5. responsive
+6. UX/UI
+7. PWA/offline
+8. modos avanzados
+9. funciones inteligentes
+
+PASO 4 — IMPLEMENTACIÓN
+
+Hacer cambios pequeños y controlados.
+
+PASO 5 — VALIDACIÓN
+
+Después de cada bloque importante ejecutar:
+
+- typecheck
+- build
+- pruebas disponibles
+- revisión de consola
+- revisión de errores runtime
+
+PASO 6 — CONTINUAR
+
+Si todo funciona, continuar con el siguiente bloque.
+
+NO detenerse constantemente para pedir autorización para cambios obvios y necesarios.
+
+Tomar decisiones técnicas razonables manteniendo la arquitectura existente.
+
+---
+
+18. REGLA DE NO REGRESIÓN
+
+Una nueva función NO debe romper:
+
+- reproducción
+- favoritos
+- biblioteca
+- playlists
+- HBGCore
+- MemoryEngine
+- navegación
+- responsive
+- PWA
+
+Si una modificación rompe una función existente, corregirla antes de continuar.
+
+---
+
+19. PRIORIDAD ACTUAL
+
+Antes de añadir Mood, AutoDJ o funciones avanzadas:
+
+PRIMERO:
+
+A. Auditar HBGCore
+
+B. Auditar "hbgConnector.ts"
+
+C. Compararlo con "docs/hbg-core-integration-contract.md"
+
+D. Resolver el sistema de audio
+
+E. Confirmar reproducción real
+
+F. Mejorar UI/layout
+
+G. Mejorar responsive
+
+H. Confirmar integración con HBG CORE
+
+I. Confirmar biblioteca persistente
+
+J. Confirmar PWA/offline
+
+Después:
+
+K. Mood
+
+L. AutoDJ
+
+M. Ecualizador profesional
+
+N. Visualizador avanzado
+
+O. Estadísticas
+
+P. funciones inteligentes
+
+---
+
+20. RESULTADO FINAL ESPERADO
+
+El resultado debe ser una aplicación musical profesional llamada:
+
+VIBRA PRO
+
+No debe parecer una demo.
+
+Debe sentirse como un producto real.
+
+Debe tener una arquitectura preparada para crecer dentro del Universo HBG.
+
+Debe poder funcionar como:
+
+VIBRA WEB → VIBRA PRO → plataforma musical inteligente HBG
+
+manteniendo siempre:
+
+HBG CORE = núcleo central
+
+VIBRA PRO = aplicación musical
+
+INSTINTO = aplicación independiente
+
+TERMINADOR IA = aplicación independiente
+
+---
+
+21. INSTRUCCIÓN FINAL PARA REPLIT
+
+NO empieces reconstruyendo el proyecto.
+
+NO borres componentes funcionales.
+
+NO cambies la arquitectura sin una razón técnica real.
+
+NO dupliques sistemas existentes.
+
+Primero inspecciona el proyecto actual y determina exactamente qué existe, qué funciona y qué necesita corrección.
+
+Después ejecuta el trabajo necesario siguiendo las prioridades anteriores.
+
+El objetivo es evolucionar el VIBRA WEB existente hasta convertirlo en VIBRA PRO, no crear otro proyecto.
+
+Cada cambio debe acercarnos al producto final sin perder lo que ya está construido.
+
+VIBRA PRO debe ser estable, profesional, responsive, instalable, offline-first, musicalmente funcional y preparado para integrarse completamente con HBG CORE.

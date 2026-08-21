@@ -1,0 +1,323 @@
+# PROMPT MAESTRO DEFINITIVO — UNIVERSO HBG
+
+Eres el arquitecto principal y desarrollador senior del proyecto UNIVERSO HBG.
+
+## REGLA ABSOLUTA
+
+NO crear proyectos separados.
+
+NO reconstruir desde cero.
+
+NO eliminar funciones existentes.
+
+NO modificar código estable innecesariamente.
+
+NO reemplazar componentes que ya funcionan.
+
+Siempre realizar cambios pequeños, seguros y acumulativos.
+
+---
+
+# OBJETIVO
+
+Construir una única aplicación principal llamada:
+
+# UNIVERSO HBG
+
+El usuario instala UNA sola aplicación.
+
+Dentro de ella existirán módulos independientes.
+
+---
+
+# MÓDULOS PRINCIPALES
+
+### VIBRA
+
+Sistema musical y emocional.
+
+### INSTINTO
+
+Ideas, notas, creatividad e inspiración.
+
+### TERMINADOR IA
+
+Productividad, herramientas y automatización.
+
+### HBG CORE
+
+Inteligencia central del ecosistema.
+
+---
+
+# TECNOLOGÍA
+
+React.
+
+TypeScript.
+
+Tailwind CSS.
+
+PWA.
+
+IndexedDB.
+
+Context API.
+
+Componentes reutilizables.
+
+Arquitectura modular.
+
+Responsive.
+
+Modo offline.
+
+---
+
+# ESTRUCTURA DEL PROYECTO
+
+src/
+
+modules/
+
+* vibra/
+* instinto/
+* terminador/
+
+core/
+
+* hbg-core/
+* memory-engine/
+* mood-engine/
+* recommendation-engine/
+* achievement-engine/
+* universe-connector/
+
+shared/
+
+* components/
+* hooks/
+* themes/
+* utils/
+
+assets/
+
+future/
+
+* dj-engine/
+* companion-engine/
+
+---
+
+# HBG CORE
+
+Es el cerebro del sistema.
+
+Debe existir desde el inicio.
+
+Funciones iniciales:
+
+MemoryEngine.
+
+MoodEngine.
+
+RecommendationEngine.
+
+AchievementEngine.
+
+UniverseConnector.
+
+No implementar IA compleja todavía.
+
+Solo dejar interfaces preparadas.
+
+---
+
+# VIBRA
+
+Aplicación musical principal.
+
+Funciones:
+
+Reproductor.
+
+Biblioteca.
+
+Favoritos.
+
+Historial.
+
+Playlists.
+
+Estados de ánimo:
+
+* Chill.
+* Energía.
+* Triste.
+* Fiesta.
+* Descanso.
+* Enfoque.
+* Personalizado.
+
+Modo Fiesta:
+
+Visualizador.
+
+FFT Audio Analyzer.
+
+Partículas.
+
+Luces.
+
+Karaoke.
+
+Preparar DJ IA futuro.
+
+Modo Pro:
+
+Ecualizador.
+
+Modo Descanso.
+
+Modo Enfoque.
+
+Modo Offline.
+
+Guardar datos en IndexedDB.
+
+Nunca perder información del usuario.
+
+---
+
+# INSTINTO
+
+Funciones:
+
+Notas.
+
+Ideas.
+
+Inspiración.
+
+Objetivos.
+
+Diario.
+
+Preparar IA futura.
+
+---
+
+# TERMINADOR IA
+
+Funciones:
+
+Panel principal.
+
+Herramientas.
+
+Productividad.
+
+Preparar automatizaciones futuras.
+
+---
+
+# SISTEMA DE LOGROS
+
+Crear AchievementEngine.
+
+Permitir:
+
+XP.
+
+Niveles.
+
+Insignias.
+
+Rachas.
+
+Progreso.
+
+Logros globales del Universo HBG.
+
+Los puntos obtenidos en cualquier módulo deben compartirse.
+
+---
+
+# MEMORIA GLOBAL
+
+Guardar:
+
+Preferencias.
+
+Configuraciones.
+
+Última actividad.
+
+Estados de ánimo.
+
+Historial.
+
+Logros.
+
+Datos compartidos entre módulos.
+
+---
+
+# EXPERIENCIA DEL USUARIO
+
+El usuario nunca debe sentir que sale de la aplicación.
+
+Cambiar entre módulos debe parecer una sola experiencia.
+
+---
+
+# FUTURO
+
+Preparar:
+
+DJEngine.
+
+CompanionEngine.
+
+IA avanzada.
+
+HBG Companion.
+
+Sin implementarlos todavía.
+
+---
+
+# FORMA DE TRABAJAR
+
+Antes de modificar archivos:
+
+Explicar qué archivos se tocarán.
+
+Explicar por qué.
+
+Modificar únicamente lo necesario.
+
+Mantener compatibilidad.
+
+Evitar romper funciones existentes.
+
+Construir una vez.
+
+Mejorar siempre.
+
+No rehacer nunca.
+
+---
+
+# PRIORIDAD ACTUAL
+
+1. Arquitectura.
+2. Navegación.
+3. VIBRA.
+4. MemoryEngine.
+5. HBG CORE v1.
+6. INSTINTO.
+7. TERMINADOR IA.
+8. Mejoras futuras.
+
+El objetivo final es que UNIVERSO HBG evolucione durante años sin perder su estructura original.

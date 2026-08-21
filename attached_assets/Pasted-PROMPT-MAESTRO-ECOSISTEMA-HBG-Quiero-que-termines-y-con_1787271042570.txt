@@ -1,0 +1,418 @@
+PROMPT MAESTRO — ECOSISTEMA HBG
+
+Quiero que termines y consolides el ecosistema HBG existente. NO reconstruyas desde cero, NO borres lo que funciona y NO dupliques arquitecturas, engines, estados o servicios. Primero audita el código actual y trabaja sobre lo que ya existe.
+
+VISIÓN
+
+El ecosistema debe quedar formado por:
+
+HBG CORE = núcleo tecnológico y coordinador.
+UNIVERSO HBG = centro visual y portal del ecosistema.
+VIBRA PRO = plataforma musical.
+INSTINTO = aplicación independiente.
+TERMINADOR IA = agente inteligente capaz de ejecutar acciones.
+
+Todas deben funcionar de forma independiente, pero conectarse mediante HBG CORE y poder unirse finalmente como un solo ecosistema.
+
+---
+
+1. HBG CORE
+
+Consolidar HBG CORE como fuente central para aquello que sea global:
+
+- identidad HBG / HBG ID
+- perfil
+- preferencias
+- memoria global
+- aplicaciones conectadas
+- capacidades
+- eventos
+- permisos
+- comunicación entre aplicaciones
+- navegación
+- servicios compartidos
+
+No mover a HBG CORE información que pertenezca exclusivamente a una aplicación.
+
+Utilizar connectors/adapters y contratos claros:
+
+APP → CONNECTOR → HBG CORE → SERVICIO/APP
+
+Revisar primero la implementación existente y reutilizarla.
+
+---
+
+2. UNIVERSO HBG
+
+Terminar UNIVERSO HBG como centro del ecosistema, no como simple landing page.
+
+Debe incluir:
+
+- Splash
+- Home / Dashboard
+- HBG CORE
+- Aplicaciones
+- Perfil HBG
+- ADN Digital
+- Memoria
+- TERMINADOR IA
+- Configuración
+- Estado de conexiones
+- Actividad del ecosistema
+
+Debe mostrar visualmente:
+
+HBG CORE en el centro
+
+con conexiones hacia:
+
+UNIVERSO HBG / VIBRA PRO / INSTINTO / TERMINADOR IA
+
+Debe permitir abrir y navegar hacia cada aplicación sin duplicarlas dentro del Universo.
+
+---
+
+3. VIBRA PRO
+
+Mantener VIBRA PRO como aplicación musical independiente conectada a HBG CORE.
+
+Conservar su arquitectura actual, incluyendo los sistemas existentes de:
+
+- Player
+- Biblioteca
+- Favoritos
+- Playlists
+- MemoryEngine
+- FavoritesEngine
+- HBGCore
+- Audio
+- almacenamiento persistente
+
+Prioridades:
+
+1. reparar/confirmar reproducción de audio REAL
+2. play/pause/next/previous/seek/volumen
+3. biblioteca persistente
+4. favoritos
+5. playlists
+6. responsive
+7. UI profesional
+8. PWA/offline
+9. ecualizador
+10. Mood
+11. AutoDJ
+12. visualizador
+
+No crear sistemas duplicados.
+
+---
+
+4. INSTINTO Y TERMINADOR IA
+
+Mantener INSTINTO como aplicación independiente.
+
+Mantener TERMINADOR IA como la inteligencia/agente del ecosistema.
+
+Todos deben conectarse mediante HBG CORE, aprovechando las conexiones que Replit ya haya construido.
+
+Primero verificar qué conexiones son reales y cuáles están incompletas.
+
+---
+
+5. FUNCIÓN CRÍTICA: EJECUCIÓN REAL
+
+Este punto es OBLIGATORIO.
+
+TERMINADOR IA/HBG CORE NO debe limitarse a responder texto.
+
+Cuando el usuario dé una orden, debe:
+
+INTERPRETAR → ENRUTAR → EJECUTAR → VERIFICAR → RESPONDER
+
+Ejemplo:
+
+«"Pon play."»
+
+Debe llamar realmente al reproductor de VIBRA PRO y comenzar el audio.
+
+«"Pausa."»
+
+Debe pausar realmente.
+
+«"Siguiente."»
+
+Debe cambiar realmente de canción.
+
+«"Busca Bad Bunny."»
+
+Debe realizar una búsqueda real.
+
+«"Pon la segunda."»
+
+Debe utilizar el resultado de la búsqueda anterior y reproducir realmente esa canción.
+
+«"Sube el volumen al 50%."»
+
+Debe modificar realmente el volumen.
+
+«"Pon mis favoritos."»
+
+Debe cargar y reproducir realmente los favoritos.
+
+«"Abre VIBRA."»
+
+Debe realizar realmente la navegación.
+
+---
+
+6. ACTION ROUTER
+
+Crear o consolidar un Action Router / Action Registry dentro de HBG CORE.
+
+No duplicar engines existentes.
+
+El Router debe dirigir acciones hacia las capacidades reales de cada aplicación.
+
+Ejemplos:
+
+VIBRA PRO
+
+- music.play
+- music.pause
+- music.next
+- music.previous
+- music.search
+- music.playTrack
+- music.volume
+- music.favorite
+- music.playlist
+
+UNIVERSO HBG
+
+- open
+- navigate
+- profile
+- applications
+
+INSTINTO
+
+- utilizar únicamente las acciones que INSTINTO exponga.
+
+TERMINADOR IA
+
+- interpretar y solicitar acciones.
+
+---
+
+7. REGLA DE VERACIDAD
+
+NO SIMULAR EJECUCIÓN.
+
+Nunca responder:
+
+"Listo, está reproduciendo."
+
+si realmente no está reproduciendo.
+
+Cada acción debe devolver un resultado:
+
+success / error / data
+
+Para acciones importantes, verificar el estado real después de ejecutarlas.
+
+Ejemplo:
+
+PLAY → ejecutar → comprobar "isPlaying" → responder.
+
+Si falla:
+
+"No pude iniciar la reproducción."
+
+No inventar éxito.
+
+---
+
+8. CONTEXTO Y CADENAS
+
+TERMINADOR IA debe comprender contexto.
+
+Ejemplo:
+
+"Busca una canción de Peso Pluma y ponla."
+
+Debe:
+
+SEARCH → seleccionar resultado → PLAY → verificar → responder.
+
+También debe entender:
+
+"Busca Bad Bunny."
+
+"Pon la segunda."
+
+"Ahora pausa."
+
+"Siguiente."
+
+Las acciones deben compartir contexto reciente.
+
+---
+
+9. ARQUITECTURA DE EJECUCIÓN
+
+La cadena definitiva debe ser:
+
+USUARIO
+↓
+TERMINADOR IA
+↓
+INTENT / ACTION
+↓
+HBG CORE
+↓
+ACTION ROUTER
+↓
+APP CORRESPONDIENTE
+↓
+ENGINE/SERVICE REAL
+↓
+RESULTADO
+↓
+HBG CORE
+↓
+TERMINADOR IA
+↓
+RESPUESTA
+
+No permitir que TERMINADOR IA cree conexiones desordenadas directamente con todas las aplicaciones.
+
+---
+
+10. OFFLINE Y RESILIENCIA
+
+Cada aplicación debe poder funcionar aunque otra esté desconectada.
+
+VIBRA debe poder reproducir música local sin depender de TERMINADOR IA.
+
+INSTINTO debe continuar funcionando si VIBRA está cerrada.
+
+UNIVERSO HBG debe continuar funcionando si una aplicación no está disponible.
+
+Preparar PWA, almacenamiento local y funcionamiento offline donde corresponda.
+
+---
+
+11. RESPONSIVE Y DISEÑO
+
+Todo debe funcionar correctamente en:
+
+- móvil
+- tablet
+- laptop
+- desktop
+- pantallas grandes
+
+La interfaz debe ser profesional, moderna, tecnológica y coherente con HBG, sin sacrificar usabilidad.
+
+---
+
+12. ORDEN DE TRABAJO
+
+FASE 1
+
+Auditar todo el ecosistema existente.
+
+FASE 2
+
+Consolidar HBG CORE y sus contratos/connectors.
+
+FASE 3
+
+Terminar UNIVERSO HBG.
+
+FASE 4
+
+Verificar conexiones con VIBRA PRO, INSTINTO y TERMINADOR IA.
+
+FASE 5
+
+Implementar/consolidar ejecución real mediante Action Router.
+
+FASE 6
+
+Resolver completamente audio de VIBRA PRO.
+
+FASE 7
+
+Mejorar UI, responsive, PWA y offline.
+
+FASE 8
+
+Continuar con Mood, AutoDJ, ecualizador y funciones avanzadas.
+
+Después de cada fase ejecutar build, typecheck, pruebas disponibles y revisar errores runtime.
+
+---
+
+13. REGLAS ABSOLUTAS
+
+NO:
+
+- reconstruir todo
+- borrar código funcional
+- crear otro HBG CORE
+- duplicar MemoryEngine
+- duplicar FavoritesEngine
+- crear otro reproductor
+- crear estados globales duplicados
+- simular acciones
+- inventar APIs
+- romper conexiones existentes
+- convertir todo en un monolito
+
+SÍ:
+
+- reutilizar
+- conectar
+- corregir
+- consolidar
+- verificar
+- ejecutar realmente
+- mantener cada aplicación independiente
+- usar HBG CORE como núcleo común
+
+---
+
+RESULTADO FINAL
+
+Quiero que el resultado sea un ecosistema HBG real:
+
+HBG CORE = cerebro/núcleo
+
+UNIVERSO HBG = centro del ecosistema
+
+VIBRA PRO = música
+
+INSTINTO = aplicación independiente
+
+TERMINADOR IA = agente inteligente y EJECUTOR
+
+La meta no es solamente que las aplicaciones estén conectadas visualmente.
+
+La meta es que se comuniquen y ejecuten acciones reales entre ellas mediante HBG CORE.
+
+Especialmente:
+
+TERMINADOR IA debe pasar de "responder lo que haría" a "hacer realmente lo que el usuario ordena".
+
+Ejemplo definitivo:
+
+Usuario: "Pon play."
+
+Resultado obligatorio:
+
+VIBRA PRO realmente reproduce la música.
+
+Ese mismo principio debe aplicarse a todas las acciones que el ecosistema exponga.
+
+EL UNIVERSO HBG DEBE FUNCIONAR COMO UN SOLO ECOSISTEMA, SIN DEJAR DE SER UN CONJUNTO DE APLICACIONES INDEPENDIENTES.
