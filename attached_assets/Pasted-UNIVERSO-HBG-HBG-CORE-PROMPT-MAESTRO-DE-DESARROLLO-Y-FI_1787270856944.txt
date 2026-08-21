@@ -1,0 +1,1097 @@
+UNIVERSO HBG + HBG CORE
+
+PROMPT MAESTRO DE DESARROLLO Y FINALIZACIÓN DEL ECOSISTEMA
+
+---
+
+1. MISIÓN PRINCIPAL
+
+El objetivo es terminar y consolidar dos elementos fundamentales del ecosistema:
+
+UNIVERSO HBG
+
+y
+
+HBG CORE
+
+IMPORTANTE:
+
+UNIVERSO HBG y HBG CORE NO son exactamente lo mismo.
+
+UNIVERSO HBG es la aplicación, experiencia e interfaz central del ecosistema.
+
+HBG CORE es el núcleo tecnológico que permite conectar, coordinar y compartir información entre las aplicaciones HBG.
+
+La arquitectura final debe permitir que cada aplicación funcione de forma independiente, pero que todas puedan unirse dentro de un ecosistema común.
+
+---
+
+2. VISIÓN FINAL
+
+El ecosistema HBG debe evolucionar hacia:
+
+                UNIVERSO HBG
+                     │
+                  HBG CORE
+                     │
+    ┌────────────────┼────────────────┐
+    │                │                │
+ INSTINTO         VIBRA PRO      TERMINADOR IA
+    │                │                │
+    └────────────────┼────────────────┘
+                     │
+              FUTURAS APPS HBG
+
+HBG CORE es el núcleo.
+
+UNIVERSO HBG es la puerta principal y experiencia central.
+
+Las demás aplicaciones son módulos/productos independientes del ecosistema.
+
+---
+
+3. REGLA FUNDAMENTAL
+
+NO convertir todas las aplicaciones en una sola aplicación gigante.
+
+Cada producto debe mantener:
+
+- su propia interfaz
+- sus propios componentes
+- sus propias funciones
+- su propia lógica específica
+- su propia identidad
+
+Pero debe existir una capa común que permita:
+
+- identidad HBG
+- comunicación
+- navegación entre productos
+- intercambio de información permitida
+- preferencias compartidas
+- estado del ecosistema
+- servicios comunes
+- futura inteligencia centralizada
+
+Esa capa es:
+
+HBG CORE
+
+---
+
+4. OBJETIVO DE HBG CORE
+
+HBG CORE debe funcionar como el sistema operativo lógico del Universo HBG.
+
+Debe ser responsable de coordinar, cuando corresponda:
+
+- identidad del usuario
+- perfil HBG
+- ADN Digital
+- preferencias
+- memoria
+- comunicación entre aplicaciones
+- eventos del ecosistema
+- conexión entre productos
+- configuración global
+- estado de servicios
+- capacidades compartidas
+- futuras funciones de IA
+- descubrimiento de aplicaciones
+- actividad del ecosistema
+- integración con TERMINADOR IA
+
+HBG CORE NO debe convertirse en una interfaz gigante.
+
+Debe ser principalmente una capa central de servicios, estado, contratos y comunicación.
+
+---
+
+5. HBG CORE COMO FUENTE CENTRAL
+
+Cuando un dato sea realmente global para el ecosistema, HBG CORE debe ser la fuente de verdad.
+
+Ejemplos:
+
+- identidad HBG
+- perfil
+- configuración global
+- preferencias compartidas
+- aplicaciones conectadas
+- capacidades disponibles
+- eventos globales
+- memoria global permitida
+
+Pero NO mover automáticamente toda la información específica de cada aplicación a HBG CORE.
+
+Ejemplo:
+
+VIBRA PRO debe seguir siendo responsable de su biblioteca musical.
+
+INSTINTO debe seguir siendo responsable de sus propios datos.
+
+TERMINADOR IA debe seguir siendo responsable de sus funciones.
+
+HBG CORE solamente debe almacenar/coordinar aquello que realmente sea transversal.
+
+---
+
+6. UNIVERSO HBG — IDENTIDAD
+
+UNIVERSO HBG debe sentirse como el centro del ecosistema.
+
+No debe parecer simplemente otra landing page.
+
+Debe sentirse como:
+
+"Este es el lugar donde vive todo HBG."
+
+La experiencia debe combinar:
+
+- tecnología
+- música
+- inteligencia artificial
+- identidad digital
+- creatividad
+- proyectos
+- aplicaciones
+- evolución personal
+- universo visual HBG
+
+---
+
+7. PANTALLAS PRINCIPALES DE UNIVERSO HBG
+
+La aplicación debe contemplar como mínimo:
+
+1. SPLASH / INTRO
+
+Presentación de HBG.
+
+Debe mostrar:
+
+- logo HBG
+- identidad visual
+- animación elegante
+- transición hacia el universo
+
+No debe ser excesivamente lenta.
+
+---
+
+8. HOME — CENTRO DEL UNIVERSO
+
+Esta será la pantalla principal.
+
+Debe mostrar de manera clara:
+
+- bienvenida
+- identidad HBG
+- estado del ecosistema
+- aplicaciones disponibles
+- actividad reciente
+- accesos rápidos
+- HBG CORE
+- TERMINADOR IA
+- recomendaciones
+- novedades del universo
+
+Debe convertirse en el verdadero dashboard del ecosistema.
+
+---
+
+9. HBG CORE
+
+Debe existir una sección visible dedicada a HBG CORE.
+
+Debe explicar visualmente que es:
+
+el núcleo que conecta todo el ecosistema.
+
+La pantalla puede mostrar:
+
+- estado de conexión
+- aplicaciones conectadas
+- servicios activos
+- memoria
+- identidad
+- eventos
+- sincronización
+- capacidades
+- conexiones
+
+Debe existir una representación visual de las conexiones entre aplicaciones.
+
+---
+
+10. APLICACIONES HBG
+
+Crear una sección donde puedan verse las aplicaciones del ecosistema.
+
+Como mínimo:
+
+INSTINTO
+
+Aplicación independiente conectada a HBG CORE.
+
+VIBRA PRO
+
+Plataforma musical conectada a HBG CORE.
+
+TERMINADOR IA
+
+Sistema de inteligencia artificial del ecosistema.
+
+UNIVERSO HBG
+
+Centro del ecosistema.
+
+La interfaz debe permitir:
+
+- abrir aplicación
+- conocer su función
+- ver estado de conexión
+- ver si está activa
+- navegar entre aplicaciones
+
+NO duplicar las aplicaciones dentro de UNIVERSO HBG.
+
+UNIVERSO HBG solamente debe funcionar como centro y portal.
+
+---
+
+11. TERMINADOR IA
+
+TERMINADOR IA debe tratarse como una aplicación independiente pero profundamente integrada con HBG CORE.
+
+Debe poder funcionar como:
+
+- asistente
+- agente inteligente
+- interfaz de IA del ecosistema
+- sistema de automatización futuro
+- acceso inteligente a servicios HBG
+
+UNIVERSO HBG debe tener un acceso claro a TERMINADOR IA.
+
+HBG CORE debe ser capaz de servir como puente entre TERMINADOR IA y las demás aplicaciones cuando corresponda.
+
+NO crear una segunda IA dentro de HBG CORE.
+
+HBG CORE coordina.
+
+TERMINADOR IA ejecuta la experiencia inteligente.
+
+---
+
+12. ADN DIGITAL HBG
+
+Crear una sección conceptual llamada:
+
+ADN DIGITAL
+
+Debe representar la identidad digital del ecosistema.
+
+Puede contener:
+
+- perfil
+- preferencias
+- actividad
+- aplicaciones utilizadas
+- intereses
+- configuración
+- historial relevante
+- memoria autorizada
+- evolución dentro del ecosistema
+
+IMPORTANTE:
+
+Diseñarlo de forma modular.
+
+No asumir que todos los datos deben almacenarse desde el primer día.
+
+Construir la arquitectura para poder ampliar el sistema posteriormente.
+
+---
+
+13. PERFIL HBG
+
+Crear un perfil central.
+
+Debe permitir gestionar:
+
+- nombre
+- avatar
+- identidad HBG
+- preferencias
+- configuración
+- aplicaciones conectadas
+- privacidad
+- memoria
+- personalización
+
+El perfil debe poder utilizarse posteriormente por todas las aplicaciones mediante HBG CORE.
+
+---
+
+14. MEMORIA HBG
+
+Crear una arquitectura de memoria global.
+
+Debe diferenciar entre:
+
+Memoria global
+
+Información que puede ser utilizada por distintas aplicaciones.
+
+Memoria específica
+
+Información perteneciente únicamente a una aplicación.
+
+Ejemplo:
+
+Una preferencia general puede ser global.
+
+Una playlist de VIBRA PRO debe permanecer dentro de VIBRA PRO.
+
+NO mezclar ambos niveles.
+
+---
+
+15. EVENT BUS / COMUNICACIÓN
+
+HBG CORE debe tener una arquitectura preparada para eventos.
+
+Ejemplos:
+
+- APP_CONNECTED
+- APP_DISCONNECTED
+- USER_UPDATED
+- PROFILE_UPDATED
+- MUSIC_PLAYED
+- FAVORITE_ADDED
+- FAVORITE_REMOVED
+- AI_ACTION
+- MEMORY_UPDATED
+- SETTINGS_UPDATED
+
+Los nombres pueden adaptarse a la arquitectura existente.
+
+La finalidad es permitir que las aplicaciones reaccionen a acontecimientos del ecosistema sin crear dependencias directas innecesarias.
+
+---
+
+16. SISTEMA DE APLICACIONES CONECTADAS
+
+HBG CORE debe poder registrar aplicaciones.
+
+Cada aplicación debe tener información como:
+
+- id
+- nombre
+- versión
+- estado
+- capacidades
+- fecha de conexión
+- última actividad
+- permisos
+
+Ejemplo conceptual:
+
+INSTINTO
+status: connected
+
+VIBRA PRO
+status: connected
+
+TERMINADOR IA
+status: connected
+
+UNIVERSO HBG
+status: core-interface
+
+Esto debe basarse en el código existente, no crear una implementación paralela si ya existe.
+
+---
+
+17. CONTRATOS
+
+Todo intercambio entre aplicaciones debe realizarse mediante contratos claros.
+
+Evitar que:
+
+INSTINTO → dependa directamente de componentes internos de VIBRA
+
+o:
+
+VIBRA → dependa directamente de componentes internos de TERMINADOR
+
+La comunicación debe pasar por interfaces/contratos definidos por HBG CORE.
+
+Esto permitirá agregar futuras aplicaciones sin romper las existentes.
+
+---
+
+18. PLUGINS / CAPACIDADES
+
+Preparar HBG CORE para trabajar con capacidades.
+
+Ejemplo conceptual:
+
+VIBRA PRO:
+
+- music
+- playlists
+- audio
+- favorites
+
+INSTINTO:
+
+- identity
+- experiences
+- personal systems
+
+TERMINADOR IA:
+
+- ai
+- automation
+- assistant
+
+UNIVERSO HBG:
+
+- ecosystem
+- dashboard
+- navigation
+
+Esto permitirá que HBG CORE sepa qué puede hacer cada aplicación.
+
+---
+
+19. SEGURIDAD Y PERMISOS
+
+Preparar un sistema de permisos.
+
+No todas las aplicaciones deben tener acceso a toda la información.
+
+Ejemplos:
+
+- leer perfil
+- escribir perfil
+- leer preferencias
+- leer memoria
+- escribir memoria
+- acceder a eventos
+- ejecutar acciones
+- acceder a capacidades
+
+Los permisos deben ser explícitos.
+
+No implementar acceso global indiscriminado.
+
+---
+
+20. OFFLINE / RESILIENCIA
+
+HBG CORE debe diseñarse para que una aplicación pueda seguir funcionando aunque otra no esté disponible.
+
+Ejemplo:
+
+Si TERMINADOR IA no está disponible:
+
+VIBRA PRO debe seguir funcionando.
+
+Si VIBRA PRO está cerrada:
+
+INSTINTO debe seguir funcionando.
+
+Si internet desaparece:
+
+las funciones locales deben continuar cuando sea posible.
+
+La arquitectura debe evitar que una aplicación caída derribe todo el ecosistema.
+
+---
+
+21. NAVEGACIÓN ENTRE APLICACIONES
+
+UNIVERSO HBG debe funcionar como portal central.
+
+Debe poder navegar hacia:
+
+- INSTINTO
+- VIBRA PRO
+- TERMINADOR IA
+- futuras aplicaciones
+
+Cuando sea posible, utilizar navegación integrada.
+
+Si una aplicación está instalada como PWA, utilizar la experiencia correspondiente.
+
+No duplicar las aplicaciones dentro del Universo.
+
+---
+
+22. DASHBOARD DEL ECOSISTEMA
+
+El dashboard debe mostrar visualmente:
+
+HBG CORE
+
+Estado del núcleo.
+
+APLICACIONES
+
+Aplicaciones conectadas.
+
+ACTIVIDAD
+
+Actividad reciente del ecosistema.
+
+MEMORIA
+
+Estado de memoria.
+
+IA
+
+Estado de TERMINADOR IA.
+
+PERFIL
+
+Identidad actual.
+
+ACCIONES RÁPIDAS
+
+Acceso inmediato a funciones importantes.
+
+---
+
+23. VISUALIZACIÓN DEL UNIVERSO
+
+Crear una representación visual del ecosistema.
+
+Puede ser:
+
+- mapa
+- red
+- nodos
+- constelación
+- sistema orbital
+- interfaz tecnológica
+
+Debe mostrar:
+
+HBG CORE en el centro.
+
+Y alrededor:
+
+- UNIVERSO HBG
+- INSTINTO
+- VIBRA PRO
+- TERMINADOR IA
+
+Las futuras aplicaciones pueden aparecer como nodos disponibles.
+
+La visualización debe ser funcional y no solamente decorativa.
+
+---
+
+24. FUTURAS APLICACIONES
+
+La arquitectura debe permitir agregar aplicaciones futuras sin reconstruir HBG CORE.
+
+Ejemplos conceptuales:
+
+- nuevas aplicaciones musicales
+- herramientas creativas
+- productividad
+- IA
+- contenido
+- experiencias
+- proyectos HBG
+
+No implementar estas aplicaciones todavía.
+
+Solamente dejar preparada la arquitectura.
+
+---
+
+25. SISTEMA DE IDENTIDAD VISUAL
+
+Crear una identidad visual coherente para todo HBG.
+
+UNIVERSO HBG debe actuar como referencia visual.
+
+Las aplicaciones pueden tener personalidades diferentes, pero deben compartir:
+
+- lenguaje visual
+- identidad HBG
+- sensación tecnológica
+- sistema de navegación coherente
+- componentes comunes cuando sea apropiado
+
+NO forzar que todas las aplicaciones tengan exactamente la misma UI.
+
+---
+
+26. RESPONSIVE
+
+UNIVERSO HBG debe funcionar correctamente en:
+
+- teléfonos
+- tablets
+- laptops
+- desktops
+- monitores grandes
+
+Debe ser especialmente bueno en móvil.
+
+Evitar:
+
+- overflow
+- interfaces comprimidas
+- elementos cortados
+- tarjetas deformadas
+- navegación complicada
+- texto ilegible
+
+---
+
+27. PWA
+
+UNIVERSO HBG debe poder instalarse como aplicación.
+
+Preparar:
+
+- manifest
+- iconos
+- service worker
+- caching
+- offline shell
+- instalación
+- actualización controlada
+
+La aplicación debe cargar incluso cuando la conexión sea limitada.
+
+---
+
+28. HBG CORE — ARQUITECTURA INTERNA
+
+Revisar primero la implementación existente.
+
+Buscar y reutilizar sistemas como:
+
+- HBGCore
+- MemoryEngine
+- conectores
+- eventos
+- stores
+- servicios
+- adapters
+- contracts
+- integración existente
+
+NO crear clases duplicadas.
+
+NO crear otro HBGCore.
+
+NO crear un nuevo sistema de memoria si ya existe uno compatible.
+
+NO reemplazar sistemas funcionales sin una razón técnica.
+
+---
+
+29. CONTRATO ENTRE HBG CORE Y LAS APPS
+
+Definir o consolidar un contrato común.
+
+Conceptualmente:
+
+APP
+↓
+CONNECTOR / ADAPTER
+↓
+HBG CORE
+↓
+GLOBAL SERVICES
+
+Cada aplicación debe utilizar un connector/adaptador.
+
+Esto permite cambiar la implementación interna de HBG CORE sin romper las aplicaciones.
+
+---
+
+30. COMPATIBILIDAD CON LO QUE YA EXISTE
+
+IMPORTANTE:
+
+Replit ya ha conectado partes del ecosistema.
+
+Actualmente deben revisarse especialmente las conexiones entre:
+
+- INSTINTO
+- UNIVERSO HBG
+- VIBRA
+- TERMINADOR IA
+- HBG CORE
+
+NO asumir que están mal.
+
+Primero auditar qué está funcionando realmente.
+
+Después corregir únicamente las conexiones incompletas o inconsistentes.
+
+---
+
+31. AUDITORÍA OBLIGATORIA
+
+Antes de implementar cambios importantes:
+
+1.
+
+Analizar todos los proyectos disponibles.
+
+2.
+
+Localizar HBG CORE.
+
+3.
+
+Localizar UNIVERSO HBG.
+
+4.
+
+Localizar connectors/adapters.
+
+5.
+
+Localizar contratos.
+
+6.
+
+Localizar comunicación entre aplicaciones.
+
+7.
+
+Localizar sistemas de memoria.
+
+8.
+
+Localizar identidad/perfil.
+
+9.
+
+Localizar eventos.
+
+10.
+
+Localizar integración con TERMINADOR IA.
+
+11.
+
+Comprobar qué conexiones funcionan realmente.
+
+12.
+
+Comprobar qué conexiones solamente están simuladas.
+
+13.
+
+Comprobar errores runtime.
+
+14.
+
+Comprobar TypeScript/build.
+
+---
+
+32. NO HACER
+
+NO:
+
+- reconstruir todo desde cero
+- borrar sistemas existentes
+- duplicar HBGCore
+- duplicar MemoryEngine
+- crear otro sistema de identidad
+- crear conexiones directas innecesarias entre apps
+- convertir Universo HBG en un monolito
+- meter toda la lógica de las aplicaciones dentro de HBG CORE
+- crear funciones solamente para "verse completas"
+- inventar APIs inexistentes
+- romper conexiones funcionales
+
+---
+
+33. ORDEN DE DESARROLLO
+
+Trabajar en este orden:
+
+FASE 1 — AUDITORÍA
+
+Analizar todo el ecosistema.
+
+FASE 2 — HBG CORE
+
+Consolidar:
+
+- arquitectura
+- contratos
+- connectors
+- eventos
+- identidad
+- memoria
+- aplicaciones
+- permisos
+
+FASE 3 — UNIVERSO HBG
+
+Terminar:
+
+- Splash
+- Home
+- Dashboard
+- Aplicaciones
+- HBG CORE
+- Perfil
+- ADN Digital
+- Memoria
+- Terminal IA
+- Configuración
+
+FASE 4 — CONEXIONES
+
+Verificar:
+
+UNIVERSO HBG ↔ HBG CORE
+
+INSTINTO ↔ HBG CORE
+
+VIBRA PRO ↔ HBG CORE
+
+TERMINADOR IA ↔ HBG CORE
+
+FASE 5 — EXPERIENCIA
+
+Mejorar:
+
+- UI
+- UX
+- responsive
+- navegación
+- animaciones
+- rendimiento
+
+FASE 6 — PWA / OFFLINE
+
+Consolidar instalación y resiliencia.
+
+FASE 7 — PRUEBAS
+
+Probar el ecosistema completo.
+
+---
+
+34. PRUEBAS DE INTEGRACIÓN
+
+Crear pruebas que verifiquen escenarios como:
+
+Escenario 1
+
+Usuario abre UNIVERSO HBG.
+
+HBG CORE inicia.
+
+Las aplicaciones conectadas aparecen.
+
+Escenario 2
+
+Usuario abre VIBRA PRO.
+
+VIBRA se conecta a HBG CORE.
+
+El perfil HBG está disponible.
+
+Escenario 3
+
+Usuario cambia una preferencia global.
+
+La información se actualiza mediante HBG CORE.
+
+Escenario 4
+
+Usuario abre TERMINADOR IA.
+
+TERMINADOR IA reconoce el ecosistema.
+
+Escenario 5
+
+Una aplicación se desconecta.
+
+Las demás continúan funcionando.
+
+Escenario 6
+
+El usuario utiliza una aplicación sin internet.
+
+Las funciones locales continúan.
+
+---
+
+35. CALIDAD
+
+Después de cada fase importante ejecutar:
+
+- npm run build
+- typecheck
+- tests existentes
+- revisión de consola
+- revisión de errores runtime
+- comprobación responsive
+
+No considerar una fase terminada si el build está roto.
+
+---
+
+36. CRITERIO DE "TERMINADO"
+
+UNIVERSO HBG estará terminado cuando:
+
+- tenga Home funcional
+- tenga dashboard
+- tenga identidad HBG
+- tenga Perfil
+- tenga ADN Digital
+- tenga HBG CORE visible y funcional
+- muestre aplicaciones conectadas
+- tenga navegación entre aplicaciones
+- tenga acceso a TERMINADOR IA
+- tenga arquitectura de memoria
+- tenga sistema de eventos
+- tenga contratos
+- tenga permisos básicos
+- tenga PWA
+- sea responsive
+- tenga buena UX
+- no existan sistemas duplicados
+- las conexiones existentes estén verificadas
+- el build sea estable
+
+HBG CORE estará terminado cuando:
+
+- pueda identificar aplicaciones
+- pueda registrar conexiones
+- pueda exponer servicios globales
+- pueda manejar identidad
+- pueda manejar preferencias globales
+- pueda manejar memoria global
+- pueda manejar eventos
+- pueda manejar permisos
+- pueda funcionar mediante contratos
+- pueda sobrevivir a la desconexión de una aplicación
+- pueda incorporar futuras aplicaciones
+- esté conectado correctamente con INSTINTO
+- esté conectado correctamente con VIBRA PRO
+- esté conectado correctamente con TERMINADOR IA
+- esté conectado correctamente con UNIVERSO HBG
+
+---
+
+37. VISIÓN A LARGO PLAZO
+
+La arquitectura debe permitir que el ecosistema evolucione hacia:
+
+HBG DIGITAL ECOSYSTEM
+
+donde el usuario tenga una identidad central:
+
+HBG ID
+
+y un núcleo:
+
+HBG CORE
+
+y pueda utilizar diferentes productos:
+
+UNIVERSO HBG
+INSTINTO
+VIBRA PRO
+TERMINADOR IA
+FUTURAS APPS
+
+sin tener que reconstruir su identidad cada vez.
+
+---
+
+38. PRINCIPIO DE DISEÑO DEL ECOSISTEMA
+
+Pensar siempre en tres niveles:
+
+NIVEL 1 — APLICACIONES
+
+Productos independientes.
+
+NIVEL 2 — HBG CORE
+
+Servicios y comunicación compartidos.
+
+NIVEL 3 — UNIVERSO HBG
+
+La experiencia central que permite al usuario descubrir, controlar y navegar por el ecosistema.
+
+No confundir estos tres niveles.
+
+---
+
+39. INSTRUCCIÓN FINAL PARA REPLIT
+
+No quiero que construyas una simple página llamada "Universo HBG".
+
+Quiero que termines la arquitectura y experiencia del ecosistema HBG.
+
+Analiza primero todo lo que ya existe.
+
+Reutiliza lo que funciona.
+
+Corrige lo que esté incompleto.
+
+Consolida HBG CORE.
+
+Termina UNIVERSO HBG.
+
+Verifica las conexiones existentes con:
+
+- INSTINTO
+- VIBRA PRO
+- TERMINADOR IA
+
+No rompas las aplicaciones independientes.
+
+No las conviertas en un solo proyecto.
+
+El resultado final debe ser un ecosistema modular donde cada aplicación sea independiente, pero todas puedan conectarse mediante HBG CORE.
+
+La visión final es:
+
+HBG CORE = cerebro/núcleo
+
+UNIVERSO HBG = centro de experiencia
+
+INSTINTO = aplicación independiente
+
+VIBRA PRO = plataforma musical
+
+TERMINADOR IA = inteligencia/agente
+
+FUTURAS APPS = nuevos módulos
+
+Todo debe poder funcionar por separado.
+
+Pero al final:
+
+TODO FORMA PARTE DEL UNIVERSO HBG.
+
+Prioriza estabilidad, arquitectura limpia, integración real, experiencia profesional y evolución futura.
+
+No avances solamente por cantidad de pantallas.
+
+Avanza hasta que el ecosistema realmente funcione como un sistema conectado.
