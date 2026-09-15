@@ -1,6 +1,9 @@
-import { Shell } from "./ui/Shell";
-import "./styles/cyber.css";
+import React from 'react';
 
-export default function App() {
-  return <Shell />;
+function App() {
+  return (
+    <h1>Hello World!</h1>
+  );
 }
+
+export default App;

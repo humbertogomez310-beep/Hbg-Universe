@@ -1,0 +1,916 @@
+UNIVERSO HBG
+
+ORDEN FINAL DE EJECUCIÓN
+
+TERMINADOR IA + HBG-AUTH + ACCESO DE DESARROLLO + COMMIT + DEPLOYMENT
+
+---
+
+0. OBJETIVO DEFINITIVO
+
+A partir de este momento, deja de realizar únicamente auditorías y diagnósticos.
+
+El objetivo es:
+
+RESOLVER → IMPLEMENTAR → CORREGIR → PROBAR → COMMIT → ACTUALIZAR EL DEPLOYMENT EXISTENTE → VERIFICAR LA URL PÚBLICA → FINALIZAR.
+
+Universo HBG ya tiene un proyecto/deployment publicado.
+
+Debes trabajar sobre el proyecto real actualmente abierto y sobre su deployment existente.
+
+PROHIBIDO
+
+- crear un segundo Universo HBG;
+- crear un segundo proyecto innecesario;
+- crear un segundo deployment innecesario;
+- sustituir el proyecto por otro;
+- reiniciar la arquitectura sin motivo;
+- entrar en ciclos infinitos de auditoría;
+- detenerte para reportar problemas que puedas solucionar;
+- declarar terminado el proyecto sin verificar el deployment público.
+
+Si existe un problema solucionable desde esta sesión, soluciónalo.
+
+Solo reporta un bloqueo cuando realmente dependa de una infraestructura, credencial, permiso o servicio externo que no pueda resolverse desde el proyecto.
+
+---
+
+1. REGLA FUNDAMENTAL DE SEGURIDAD
+
+Terminador IA será el operador técnico del Universo HBG, pero:
+
+TERMINADOR IA NO ES LA AUTORIDAD.
+
+La autoridad es:
+
+HBG-AUTH.
+
+Terminador IA debe actuar únicamente mediante las autorizaciones, permisos y guards establecidos por HBG-AUTH.
+
+La capacidad de modificar código debe estar protegida por:
+
+"universe.code.modify"
+
+Este permiso es crítico.
+
+No debe existir ningún camino alternativo que permita modificar código saltándose HBG-AUTH.
+
+---
+
+2. SEPARACIÓN USO / DESARROLLO
+
+Implementar y mantener dos estados claramente separados.
+
+MODO USO
+
+Es el modo normal del Universo HBG.
+
+Permite utilizar las funciones públicas y las aplicaciones autorizadas.
+
+MODO DESARROLLO
+
+Es un modo administrativo protegido.
+
+Permite, cuando existe autorización:
+
+- leer archivos de desarrollo;
+- modificar código;
+- crear archivos;
+- eliminar archivos;
+- ejecutar herramientas;
+- ejecutar pruebas;
+- utilizar Git;
+- preparar commits;
+- ejecutar procesos de build;
+- actualizar el deployment.
+
+El MODO DESARROLLO jamás debe quedar accesible para un usuario público no autorizado.
+
+---
+
+3. TERMINADOR IA
+
+Terminador IA debe poder funcionar como operador técnico del Universo HBG.
+
+Sus capacidades futuras y autorizadas incluyen:
+
+- analizar código;
+- comprender arquitectura;
+- localizar archivos;
+- modificar código;
+- ejecutar pruebas;
+- detectar errores;
+- corregir errores;
+- trabajar con Git;
+- preparar commits;
+- ejecutar procesos de build;
+- administrar aplicaciones;
+- participar en el proceso de deployment.
+
+Pero cada capacidad sensible debe pasar por el sistema de autoridad.
+
+Terminador NO puede:
+
+- otorgarse permisos;
+- cambiar su propio rol;
+- desactivar HBG-AUTH;
+- eliminar sus propios guards;
+- eliminar la auditoría;
+- concederse "universe.code.modify";
+- convertir una sesión USO en DESARROLLO sin autorización.
+
+---
+
+4. ACCESO TEMPORAL DEL PROPIETARIO
+
+Durante la etapa actual de finalización se necesita un mecanismo temporal para que el propietario pueda entrar al MODO DESARROLLO de Terminador IA.
+
+El mecanismo será un secreto almacenado en el sistema de Secrets/Environment Variables de Replit.
+
+REGLA CRÍTICA
+
+El secreto NO debe aparecer en:
+
+- código fuente;
+- frontend;
+- HTML;
+- JavaScript del navegador;
+- Git;
+- commits;
+- documentación;
+- logs;
+- mensajes de error;
+- respuestas API;
+- archivos públicos;
+- archivos ".env" versionados;
+- prompts almacenados en el repositorio.
+
+Utiliza una variable de entorno/secreto del servidor con un nombre apropiado, por ejemplo:
+
+"TERMINADOR_DEV_SECRET"
+
+El nombre puede adaptarse si el proyecto ya tiene una convención equivalente.
+
+IMPORTANTE
+
+NO inventes el valor del secreto.
+
+NO lo hardcodees.
+
+NO lo escribas en el código.
+
+El propietario configurará el valor real directamente en el sistema de Secrets de Replit.
+
+El backend debe leerlo exclusivamente desde el entorno seguro.
+
+---
+
+5. FLUJO DE AUTORIZACIÓN
+
+Implementar el siguiente flujo:
+
+PROPIETARIO
+↓
+Acceso protegido de Terminador IA
+↓
+Autenticación
+↓
+Validación server-side del secreto temporal
+↓
+HBG-AUTH
+↓
+Verificación de identidad/rol
+↓
+Verificación de permiso
+↓
+"universe.code.modify"
+↓
+Creación de sesión de desarrollo
+↓
+Terminador IA obtiene las capacidades autorizadas
+↓
+Cada operación sensible vuelve a pasar por su guard
+
+Nunca confiar únicamente en información enviada por el frontend.
+
+Nunca implementar la autorización real únicamente con:
+
+- localStorage;
+- JavaScript cliente;
+- parámetros URL;
+- campos ocultos;
+- headers manipulables;
+- flags enviados por el navegador.
+
+La decisión de autorización debe realizarse en servidor.
+
+---
+
+6. SESIÓN DE DESARROLLO
+
+Crear una sesión de desarrollo explícita.
+
+La sesión debe:
+
+- pertenecer al propietario autorizado;
+- tener fecha/hora de creación;
+- tener expiración;
+- poder revocarse;
+- quedar registrada en auditoría;
+- tener un alcance definido;
+- impedir que una sesión USO sea interpretada como sesión DESARROLLO.
+
+La autorización para modificar código debe requerir como mínimo:
+
+- identidad válida;
+- rol autorizado;
+- sesión de desarrollo activa;
+- permiso "universe.code.modify";
+- guard correspondiente.
+
+---
+
+7. GUARDS INDEPENDIENTES
+
+Toda operación sensible debe tener protección propia.
+
+Proteger como mínimo:
+
+- escritura de archivos;
+- eliminación de archivos;
+- modificación de configuración;
+- ejecución de comandos;
+- migraciones;
+- operaciones Git;
+- commit;
+- push;
+- deployment;
+- modificación de HBG-AUTH;
+- modificación de roles;
+- modificación de permisos;
+- modificación de guards;
+- modificación del sistema de auditoría.
+
+No depender únicamente de un único guard global.
+
+---
+
+8. PROTECCIÓN DE HBG-AUTH
+
+HBG-AUTH debe tener protección especial.
+
+Terminador IA no puede modificar HBG-AUTH simplemente porque tenga permiso general de desarrollo.
+
+Las modificaciones de:
+
+- autenticación;
+- roles;
+- permisos;
+- sesiones;
+- guards;
+- "universe.code.modify";
+- auditoría;
+- mecanismos de autoridad;
+
+deben tener controles adicionales.
+
+Evitar una arquitectura en la que Terminador pueda simplemente editar o borrar el código de autoridad y quedar automáticamente autorizado.
+
+---
+
+9. AUDITORÍA
+
+Registrar las operaciones administrativas y sensibles.
+
+Como mínimo:
+
+- usuario;
+- acción;
+- fecha/hora;
+- herramienta;
+- recurso afectado;
+- sesión;
+- resultado;
+- error, si existe.
+
+NUNCA registrar:
+
+- contraseñas;
+- secretos;
+- tokens;
+- credenciales;
+- valores completos de variables privadas.
+
+El secreto temporal nunca debe aparecer en logs.
+
+---
+
+10. SEGURIDAD DEL UNIVERSO PUBLICADO
+
+La aplicación pública debe funcionar en MODO USO.
+
+No exponer públicamente:
+
+- editor de código;
+- terminal;
+- filesystem;
+- herramientas Git;
+- deployment;
+- secretos;
+- variables privadas;
+- herramientas internas;
+- endpoints administrativos sin autorización;
+- herramientas de Terminador;
+- endpoints de modificación de código.
+
+Si alguna de estas capacidades ya está expuesta, corrígelo antes del deployment final.
+
+---
+
+11. FUTURA AUTENTICACIÓN FUERTE
+
+El mecanismo temporal actual debe diseñarse para poder sustituirse posteriormente por autenticación más fuerte.
+
+La evolución futura puede utilizar mecanismos estándar como:
+
+- Passkeys;
+- WebAuthn;
+- Touch ID;
+- Face ID;
+- autenticación biométrica gestionada por el dispositivo.
+
+No construir ahora un sistema biométrico propietario si no es necesario.
+
+No almacenar directamente datos biométricos del propietario.
+
+La implementación actual debe dejar una arquitectura preparada para esa evolución.
+
+---
+
+12. HBG-AUTH — IMPLEMENTACIÓN
+
+Si todavía falta implementar alguna parte esencial de HBG-AUTH, complétala.
+
+Como mínimo deben quedar definidos:
+
+Roles iniciales
+
+- "owner"
+- "user"
+- "system"
+
+Permiso crítico
+
+"universe.code.modify"
+
+Componentes
+
+- identidad;
+- roles;
+- permisos;
+- sesiones de desarrollo;
+- guards;
+- separación USO/DESARROLLO;
+- auditoría;
+- protección contra escalamiento de privilegios;
+- protección contra prompt injection;
+- protección del propio sistema de autoridad.
+
+---
+
+13. ACTION ROUTER Y HERRAMIENTAS
+
+Terminador IA debe utilizar un mecanismo controlado de acciones.
+
+Implementar o completar:
+
+- Action Router;
+- Action Registry;
+- validación de intención;
+- validación de autorización;
+- ejecución;
+- resultado estructurado;
+- auditoría.
+
+Una solicitud de modificación debe seguir conceptualmente:
+
+INTENCIÓN
+→ CLASIFICACIÓN
+→ AUTORIZACIÓN
+→ GUARD
+→ EJECUCIÓN
+→ AUDITORÍA
+→ RESULTADO
+
+No:
+
+INTENCIÓN
+→ EJECUCIÓN DIRECTA
+
+---
+
+14. CAPACIDADES DE DESARROLLO
+
+Implementar de forma controlada las herramientas necesarias para que Terminador pueda:
+
+- inspeccionar archivos;
+- leer archivos;
+- modificar archivos;
+- crear archivos;
+- ejecutar pruebas;
+- ejecutar build;
+- detectar errores;
+- corregir errores;
+- utilizar Git;
+- preparar commits;
+- actualizar el deployment.
+
+Todas las herramientas de escritura/ejecución deben pasar por autorización.
+
+---
+
+15. CÓDIGO LEGACY
+
+No integrar automáticamente código antiguo de VIBRA, INSTINTO, TERMINADOR u otros prototipos.
+
+Si existen archivos legacy:
+
+1. analizarlos;
+2. identificar funcionalidades útiles;
+3. verificar compatibilidad;
+4. reutilizar únicamente lo necesario;
+5. adaptar a la arquitectura HBG actual.
+
+No copiar arquitectura antigua que contradiga HBG-AUTH.
+
+---
+
+16. NO ROMPER LO EXISTENTE
+
+Conservar el stack actual cuando sea técnicamente viable.
+
+No realizar migraciones innecesarias.
+
+No cambiar de framework solamente por preferencia.
+
+No eliminar funcionalidades existentes para ocultar errores.
+
+Antes de cualquier cambio potencialmente destructivo:
+
+- verificar Git;
+- crear checkpoint si corresponde;
+- revisar archivos afectados;
+- realizar cambios mínimos y controlados.
+
+---
+
+17. PRUEBAS
+
+Antes del commit final ejecutar todo lo disponible y relevante:
+
+- typecheck;
+- build;
+- tests;
+- pruebas de API;
+- pruebas frontend;
+- health check;
+- rutas principales;
+- autenticación;
+- autorización;
+- MODO USO;
+- MODO DESARROLLO;
+- "universe.code.modify";
+- guards;
+- auditoría;
+- regresión.
+
+Si una prueba falla:
+
+CORREGIR Y VOLVER A EJECUTAR.
+
+No limitarse a reportar el error.
+
+---
+
+18. PRUEBAS DE SEGURIDAD OBLIGATORIAS
+
+Verificar explícitamente:
+
+Usuario no autenticado
+
+NO puede modificar código.
+
+Usuario normal
+
+NO puede modificar código.
+
+Usuario autenticado sin permiso
+
+NO puede modificar código.
+
+Propietario sin sesión de desarrollo
+
+NO puede modificar código.
+
+Propietario autorizado con sesión de desarrollo y permiso
+
+SÍ puede realizar las operaciones permitidas.
+
+Usuario público
+
+NO puede acceder a herramientas administrativas.
+
+Terminador IA
+
+NO puede concederse privilegios a sí mismo.
+
+HBG-AUTH
+
+NO puede ser bypassed mediante una ruta alternativa.
+
+---
+
+19. PREPARACIÓN DEL COMMIT
+
+Cuando implementación, seguridad y pruebas estén correctas:
+
+Ejecutar:
+
+"git status"
+
+Revisar todos los cambios.
+
+No incluir:
+
+- secretos;
+- credenciales;
+- archivos temporales;
+- basura;
+- ".env" con información privada;
+- artefactos no relacionados.
+
+Verificar que los cambios pertenecen realmente a la finalización de Universo HBG.
+
+---
+
+20. COMMIT
+
+El usuario autoriza realizar el commit final.
+
+Utilizar un mensaje claro, por ejemplo:
+
+"feat: finalize and update Universo HBG"
+
+Registrar:
+
+- branch;
+- commit;
+- hash del commit.
+
+No realizar el commit hasta que las verificaciones previas estén razonablemente completas.
+
+---
+
+21. DEPLOYMENT EXISTENTE
+
+Universo HBG ya está publicado.
+
+Por lo tanto:
+
+ACTUALIZAR EL DEPLOYMENT EXISTENTE.
+
+No crear una aplicación paralela.
+
+No crear un deployment alternativo solamente para evitar solucionar el deployment actual.
+
+Primero identificar:
+
+- proyecto;
+- deployment;
+- branch asociado;
+- configuración de build;
+- configuración de ejecución;
+- variables necesarias;
+- URL pública.
+
+Después actualizar el deployment existente utilizando la configuración oficial actualmente asociada al proyecto.
+
+Si Replit utiliza Publish/Deploy, utilizar ese flujo.
+
+Si el deployment se actualiza automáticamente mediante Git/push, comprobar que el commit correcto sea el que llegue al deployment.
+
+---
+
+22. VERIFICACIÓN REAL DEL DEPLOYMENT
+
+No considerar suficiente:
+
+"build correcto".
+
+No considerar suficiente:
+
+"deployment iniciado".
+
+No considerar suficiente:
+
+"deployment completed".
+
+La condición real de éxito es:
+
+LA URL PÚBLICA DE UNIVERSO HBG DEBE ESTAR SIRVIENDO LA NUEVA VERSIÓN.
+
+Después del deployment:
+
+1. esperar a que termine;
+2. comprobar estado;
+3. comprobar build;
+4. comprobar arranque;
+5. comprobar health check;
+6. abrir la URL pública;
+7. comprobar frontend;
+8. comprobar rutas principales;
+9. verificar que las modificaciones nuevas están presentes.
+
+---
+
+23. IDENTIFICACIÓN DE VERSIÓN
+
+Cuando sea compatible con la arquitectura, incorporar una identificación segura de versión.
+
+Puede ser:
+
+- versión de aplicación;
+- build ID;
+- hash corto de commit;
+- identificador de release.
+
+Debe permitir comprobar:
+
+"CÓDIGO"
+
+"COMMIT"
+
+"BUILD"
+
+"DEPLOYMENT"
+
+"VERSIÓN PÚBLICA"
+
+No mostrar información sensible.
+
+---
+
+24. NO CREAR FALSOS POSITIVOS
+
+No declarar:
+
+FINALIZADO
+
+si:
+
+- hay errores conocidos solucionables;
+- hay pruebas fallando;
+- el build falla;
+- HBG-AUTH puede ser bypassed;
+- los secretos están expuestos;
+- Terminador puede modificar código sin autorización;
+- el deployment no se actualizó;
+- la URL pública muestra la versión antigua;
+- las rutas principales están rotas.
+
+Primero corregir.
+
+---
+
+25. BLOQUEOS EXTERNOS
+
+Si algo depende realmente de:
+
+- DNS;
+- credenciales externas;
+- permisos de cuenta;
+- servicios externos;
+- límites de infraestructura;
+- proveedor externo;
+- configuración que no pueda modificarse desde la sesión;
+
+resolver todo lo que sí pueda resolverse.
+
+Después informar exactamente:
+
+BLOQUEO EXTERNO
+
+Qué ocurrió.
+
+LO RESUELTO
+
+Qué quedó funcionando.
+
+LO PENDIENTE
+
+Qué acción externa específica falta.
+
+No inventar resultados.
+
+---
+
+26. CRITERIO FINAL DE TERMINADOR IA
+
+Terminador IA queda definido como:
+
+OPERADOR TÉCNICO AUTORIZADO DEL UNIVERSO HBG
+
+con capacidad de desarrollo y administración progresivamente amplia, pero subordinado a:
+
+HBG-AUTH → permisos → sesión → guards → auditoría.
+
+El secreto temporal solamente permite iniciar el mecanismo de acceso establecido para el propietario.
+
+No constituye por sí mismo una autoridad independiente.
+
+La arquitectura debe permitir sustituir posteriormente ese mecanismo por autenticación fuerte.
+
+---
+
+27. CRITERIO DEFINITIVO DE FINALIZACIÓN
+
+El trabajo se considera finalizado únicamente cuando se haya completado:
+
+1. HBG-AUTH.
+2. Separación USO/DESARROLLO.
+3. Terminador IA protegido.
+4. Acceso temporal de desarrollo mediante secreto seguro del entorno.
+5. "universe.code.modify".
+6. Guards.
+7. Auditoría.
+8. Herramientas de desarrollo controladas.
+9. Pruebas.
+10. Corrección de errores.
+11. Commit.
+12. Actualización del deployment EXISTENTE.
+13. Verificación de la URL pública.
+14. Confirmación de que la URL pública sirve la versión nueva.
+
+---
+
+28. ORDEN DE EJECUCIÓN FINAL
+
+Ejecuta exactamente en este orden:
+
+A.
+
+Inspeccionar el estado actual.
+
+B.
+
+Proteger/terminar HBG-AUTH.
+
+C.
+
+Terminar separación USO/DESARROLLO.
+
+D.
+
+Proteger Terminador IA.
+
+E.
+
+Configurar el mecanismo de secreto temporal mediante Secrets/Environment Variables de Replit.
+
+F.
+
+Completar Code Tools y guards.
+
+G.
+
+Completar auditoría.
+
+H.
+
+Corregir errores.
+
+I.
+
+Ejecutar pruebas.
+
+J.
+
+Ejecutar build.
+
+K.
+
+Verificar que no haya secretos ni archivos indebidos.
+
+L.
+
+Realizar commit.
+
+M.
+
+Actualizar el deployment EXISTENTE.
+
+N.
+
+Esperar finalización del deployment.
+
+O.
+
+Abrir y verificar la URL pública.
+
+P.
+
+Confirmar que la nueva versión está realmente publicada.
+
+Q.
+
+Entregar reporte final.
+
+---
+
+29. REGLA FINAL
+
+YA NO QUIERO MÁS VUELTAS.
+
+No quiero otra ronda de auditoría que simplemente enumere problemas solucionables.
+
+No quiero otro diagnóstico sin implementación.
+
+No quiero otro proyecto.
+
+No quiero otro deployment.
+
+Quiero que trabajes sobre el Universo HBG real, soluciones lo que corresponda, protejas Terminador IA, implementes el acceso de desarrollo de forma segura, pruebes todo, hagas el commit y actualices el deployment que ya existe.
+
+Después:
+
+ABRE LA URL PÚBLICA Y COMPRUEBA QUE LA ACTUALIZACIÓN REALMENTE ESTÁ AHÍ.
+
+Si algo puede ser solucionado por ti:
+
+SOLUCIÓNALO.
+
+Si algo falla:
+
+CORRÍGELO Y VUELVE A PROBAR.
+
+Si todo está correcto:
+
+HAZ COMMIT → ACTUALIZA DEPLOYMENT → VERIFICA URL → FINALIZA.
+
+No declares éxito sin evidencia.
+
+---
+
+30. REPORTE FINAL OBLIGATORIO
+
+Al terminar, entregar:
+
+IMPLEMENTACIÓN
+
+Qué se implementó.
+
+TERMINADOR IA
+
+Qué capacidades tiene y qué controles lo protegen.
+
+HBG-AUTH
+
+Estado de autenticación, roles, permisos, sesión y guards.
+
+SEGURIDAD
+
+Qué quedó protegido.
+
+PRUEBAS
+
+Resultados de typecheck, tests, build y regresión.
+
+GIT
+
+Branch y hash del commit final.
+
+DEPLOYMENT
+
+Estado del deployment existente.
+
+URL PÚBLICA
+
+URL pública verificada.
+
+VERSIÓN
+
+Build/commit/version identificada públicamente cuando sea posible.
+
+BLOQUEOS
+
+"Ninguno", si todo terminó correctamente.
+
+Si existe un bloqueo externo, explicarlo con precisión.
+
+ESTADO DE ÉXITO
+
+El resultado esperado es:
+
+UNIVERSO HBG FUNCIONANDO + TERMINADOR IA PROTEGIDO + DESARROLLO AUTORIZADO + COMMIT REALIZADO + DEPLOYMENT EXISTENTE ACTUALIZADO + URL PÚBLICA VERIFICADA.
+
+RESUELVE. IMPLEMENTA. CORRIGE. PRUEBA. HAZ COMMIT. ACTUALIZA. VERIFICA. FINALIZA.

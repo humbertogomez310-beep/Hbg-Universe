@@ -1,40 +1,33 @@
-export type ModuleId = "universo" | "instinto" | "vibra" | "terminador";
+import { HBGContextStore } from "./context";
+import { HBGError } from "./errors";
+import { getHBGCoreIdentity } from "./identity";
+import { HBGMemoryStore } from "./memory";
+import { HBGRequestProcessor } from "./requestProcessor";
+import type {
+  HBGActionHandler,
+  HBGActionName,
+  HBGActionResult,
+  HBGActionRouter,
+  HBGContextSubscriber,
+  HBGDispatchOptions,
+  HBGMemorySubscriber,
+  HBGPendingRequest,
+  HBGCoreIdentity,
+  ModuleConfig,
+  ModuleId,
+} from "./types";
 
-export type HBGActionName =
-  | "music.play"
-  | "music.pause"
-  | "music.next"
-  | "music.previous"
-  | "music.search"
-  | "music.playTrack"
-  | "music.volume"
-  | "music.favorite"
-  | "music.playlist"
-  | "universe.navigate";
-
-export interface HBGActionResult<T = unknown> {
-  success: boolean;
-  error?: string;
-  data?: T;
-}
-
-export type HBGActionHandler = (
-  payload?: Record<string, unknown>,
-) => HBGActionResult | Promise<HBGActionResult>;
-
-interface PendingAction {
-  name: HBGActionName;
-  payload?: Record<string, unknown>;
-  resolve: (result: HBGActionResult) => void;
-}
-
-export interface ModuleConfig {
-  id: ModuleId;
-  label: string;
-  icon: string;
-  description: string;
-  color: string;
-}
+export type {
+  HBGActionHandler,
+  HBGActionName,
+  HBGActionResult,
+  HBGActionRouter,
+  HBGDispatchOptions,
+  HBGPendingRequest,
+  HBGCoreIdentity,
+  ModuleConfig,
+  ModuleId,
+} from "./types";
 
 export const MODULES: ModuleConfig[] = [
   {
@@ -67,105 +60,162 @@ export const MODULES: ModuleConfig[] = [
   },
 ];
 
-type Subscriber = (module: ModuleId) => void;
-
+type ModuleSubscriber = (module: ModuleId) => void;
 const STORAGE_KEY = "hbg_active_module";
+const VALID_MODULES = new Set<ModuleId>([
+  "universo",
+  "instinto",
+  "vibra",
+  "terminador",
+]);
 
-class HBGCore {
-  private _activeModule: ModuleId = "universo";
-  private _subscribers: Subscriber[] = [];
-  private _initialized = false;
-  private _handlers = new Map<HBGActionName, HBGActionHandler>();
-  private _pending: PendingAction[] = [];
-  private _context = new Map<string, unknown>();
+function isModuleId(value: string): value is ModuleId {
+  return VALID_MODULES.has(value as ModuleId);
+}
+
+function readStoredModule(): ModuleId | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    return stored && isModuleId(stored) ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeModule(module: ModuleId): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, module);
+  } catch {
+    // Navigation remains functional when browser storage is unavailable.
+  }
+}
+
+export class HBGCore implements HBGActionRouter {
+  private activeModule: ModuleId = "universo";
+  private initialized = false;
+  private readonly moduleSubscribers = new Set<ModuleSubscriber>();
+  private readonly context = new HBGContextStore();
+  private readonly memory = new HBGMemoryStore();
+  private readonly requestProcessor = new HBGRequestProcessor();
 
   init(): void {
-    if (this._initialized) return;
-    const stored = localStorage.getItem(STORAGE_KEY) as ModuleId | null;
-    const valid: ModuleId[] = ["universo", "instinto", "vibra", "terminador"];
-    if (stored && valid.includes(stored)) {
-      this._activeModule = stored;
-    }
-    this._initialized = true;
+    if (this.initialized) return;
+    this.activeModule = readStoredModule() ?? "universo";
+    this.memory.init();
+    this.initialized = true;
+  }
+
+  getIdentity(): HBGCoreIdentity {
+    return getHBGCoreIdentity();
   }
 
   getModule(): ModuleId {
-    return this._activeModule;
+    return this.activeModule;
   }
 
   setModule(module: ModuleId): void {
-    if (this._activeModule === module) return;
-    this._activeModule = module;
-    localStorage.setItem(STORAGE_KEY, module);
-    this._notify();
+    if (!isModuleId(module)) {
+      throw new HBGError("INVALID_MODULE", `Módulo HBG no válido: ${module}`);
+    }
+    if (this.activeModule === module) return;
+    this.activeModule = module;
+    storeModule(module);
+    this.moduleSubscribers.forEach((subscriber) => subscriber(module));
   }
 
-  subscribe(callback: Subscriber): () => void {
-    this._subscribers.push(callback);
-    return () => {
-      this._subscribers = this._subscribers.filter((s) => s !== callback);
-    };
+  subscribe(subscriber: ModuleSubscriber): () => void {
+    this.moduleSubscribers.add(subscriber);
+    return () => this.moduleSubscribers.delete(subscriber);
   }
 
   getModuleConfig(id: ModuleId): ModuleConfig {
-    return MODULES.find((m) => m.id === id)!;
+    const config = MODULES.find((module) => module.id === id);
+    if (!config) {
+      throw new HBGError("INVALID_MODULE", `Módulo HBG no registrado: ${id}`);
+    }
+    return config;
   }
 
   registerAction(name: HBGActionName, handler: HBGActionHandler): () => void {
-    this._handlers.set(name, handler);
-    void this.flushPending();
-    return () => {
-      if (this._handlers.get(name) === handler) this._handlers.delete(name);
-    };
+    return this.requestProcessor.registerAction(name, handler);
   }
 
-  async dispatchAction(
+  dispatchAction(
     name: HBGActionName,
     payload?: Record<string, unknown>,
+    options?: HBGDispatchOptions,
   ): Promise<HBGActionResult> {
-    const handler = this._handlers.get(name);
-    if (!handler) {
-      return new Promise((resolve) => {
-        this._pending.push({ name, payload, resolve });
-      });
-    }
-    try {
-      return await handler(payload);
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Error de ejecución",
-      };
-    }
+    return this.requestProcessor.dispatchAction(name, payload, options);
   }
 
   getRegisteredActions(): HBGActionName[] {
-    return [...this._handlers.keys()];
+    return this.requestProcessor.getRegisteredActions();
+  }
+
+  getPendingRequests(): HBGPendingRequest[] {
+    return this.requestProcessor.getPendingRequests();
+  }
+
+  cancelPending(requestId?: string): number {
+    return this.requestProcessor.cancelPending(requestId);
+  }
+
+  getActionRouter(): HBGActionRouter {
+    return this.requestProcessor;
   }
 
   setContext(key: string, value: unknown): void {
-    this._context.set(key, value);
+    this.context.set(key, value);
   }
 
   getContext<T>(key: string): T | undefined {
-    return this._context.get(key) as T | undefined;
+    return this.context.get<T>(key);
   }
 
-  private async flushPending(): Promise<void> {
-    if (!this._pending.length) return;
-    const pending = [...this._pending];
-    this._pending = [];
-    for (const action of pending) {
-      if (this._handlers.has(action.name)) {
-        action.resolve(await this.dispatchAction(action.name, action.payload));
-      } else {
-        this._pending.push(action);
-      }
-    }
+  hasContext(key: string): boolean {
+    return this.context.has(key);
   }
 
-  private _notify(): void {
-    this._subscribers.forEach((cb) => cb(this._activeModule));
+  deleteContext(key: string): boolean {
+    return this.context.delete(key);
+  }
+
+  clearContext(): void {
+    this.context.clear();
+  }
+
+  getContextSnapshot(): Record<string, unknown> {
+    return this.context.snapshot();
+  }
+
+  subscribeContext(subscriber: HBGContextSubscriber): () => void {
+    return this.context.subscribe(subscriber);
+  }
+
+  remember(key: string, value: unknown): void {
+    this.memory.remember(key, value);
+  }
+
+  recall<T>(key: string): T | undefined {
+    return this.memory.recall<T>(key);
+  }
+
+  forgetMemory(key: string): boolean {
+    return this.memory.forget(key);
+  }
+
+  clearMemory(): void {
+    this.memory.clear();
+  }
+
+  getMemorySnapshot(): Record<string, unknown> {
+    return this.memory.snapshot();
+  }
+
+  subscribeMemory(subscriber: HBGMemorySubscriber): () => void {
+    return this.memory.subscribe(subscriber);
   }
 }
 
