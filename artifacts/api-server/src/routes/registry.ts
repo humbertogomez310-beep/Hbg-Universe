@@ -3,10 +3,32 @@ import { listApplications } from "../lib/registry";
 import { requirePermission } from "../lib/hbgAuth";
 
 const router: IRouter = Router();
+const RESTRICTED_CAPABILITIES = new Set([
+  "code-tools",
+  "development-sessions",
+]);
+
+async function getRegistryView() {
+  const applications = await listApplications();
+  return applications.map((application) => {
+    const capabilities = Array.isArray(application.capabilities)
+      ? application.capabilities
+      : [];
+    return {
+      ...application,
+      activeCapabilities: capabilities.filter(
+        (capability) => !RESTRICTED_CAPABILITIES.has(capability),
+      ),
+      restrictedCapabilities: capabilities.filter((capability) =>
+        RESTRICTED_CAPABILITIES.has(capability),
+      ),
+    };
+  });
+}
 
 router.get("/registry", async (req, res) => {
   try {
-    const applications = await listApplications();
+    const applications = await getRegistryView();
     res.json({ success: true, applications });
   } catch (error) {
     req.log.error({ err: error }, "Application registry read failed");
@@ -16,9 +38,9 @@ router.get("/registry", async (req, res) => {
 
 router.get(
   "/registry/private",
-  requirePermission("universe.registry.manage"),
+  requirePermission("universe.registry.read"),
   async (req, res) => {
-    const applications = await listApplications();
+    const applications = await getRegistryView();
     res.json({ success: true, applications });
   },
 );
