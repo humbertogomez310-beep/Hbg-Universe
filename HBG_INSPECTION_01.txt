@@ -1,0 +1,145 @@
+=== HBG FILE MAP ===
+./.agents/memory/hbg-core-execution.md
+./.agents/memory/MEMORY.md
+./artifacts/api-server/build.mjs
+./artifacts/api-server/package.json
+./artifacts/api-server/.tsbuildinfo
+./artifacts/api-server/tsconfig.json
+./artifacts/mockup-sandbox/components.json
+./artifacts/mockup-sandbox/index.html
+./artifacts/mockup-sandbox/mockupPreviewPlugin.ts
+./artifacts/mockup-sandbox/package.json
+./artifacts/mockup-sandbox/.tsbuildinfo
+./artifacts/mockup-sandbox/tsconfig.json
+./artifacts/mockup-sandbox/vite.config.ts
+./artifacts/universo-hbg/components.json
+./artifacts/universo-hbg/index.html
+./artifacts/universo-hbg/package.json
+./artifacts/universo-hbg/.tsbuildinfo
+./artifacts/universo-hbg/tsconfig.json
+./artifacts/universo-hbg/vite.config.ts
+./attached_assets/Pasted-Act-a-como-un-ingeniero-senior-experto-en-React-Vite-ar_1781986328181.txt
+./attached_assets/Pasted--A-partir-de-aqu-ya-NO-debemos-seguir-agregando-ideas-n_1782063937618.txt
+./attached_assets/Pasted-La-idea-correcta-del-Universo-HBG-no-es-crear-una-sola-_1782063183770.txt
+./attached_assets/Pasted-ORDEN-DIRECTA-DEL-OWNER-NO-quiero-m-s-ciclos-de-auditor_1789494868593.txt
+./attached_assets/Pasted--PROMPT-MAESTRO-DEFINITIVO-UNIVERSO-HBG-Eres-el-arquite_1782129954554.txt
+./attached_assets/Pasted-PROMPT-MAESTRO-ECOSISTEMA-HBG-Quiero-que-termines-y-con_1787271042570.txt
+./attached_assets/Pasted-PROMPT-PARA-REPLIT-ACTUALIZACI-N-FINAL-DEL-UNIVERSO-HBG_1782066394588.txt
+./attached_assets/Pasted-S-Te-conviene-darle-a-Replit-un-prompt-maestro-dejando-_1787269476026.txt
+./attached_assets/Pasted-UNIVERSO-HBG-HBG-CORE-PROMPT-MAESTRO-DE-DESARROLLO-Y-FI_1787270856944.txt
+./attached_assets/Pasted-UNIVERSO-HBG-ORDEN-FINAL-DE-EJECUCI-N-TERMINADOR-IA-HBG_1789398101603.txt
+./attached_assets/Pasted-UNIVERSO-HBG-PROMPT-MAESTRO-CTO-v2-0-ORDEN-DE-TRABAJO-A_1789394260523.txt
+./.cache/replit/modules.stamp
+./.cache/replit/toolchain.json
+./.git/COMMIT_EDITMSG
+./.git/config
+./.git/description
+./.git/HEAD
+./.git/hooks/applypatch-msg.sample
+./.git/hooks/commit-msg.sample
+./.git/hooks/fsmonitor-watchman.sample
+./.git/hooks/post-update.sample
+./.git/hooks/pre-applypatch.sample
+./.git/hooks/pre-commit.sample
+./.git/hooks/pre-merge-commit.sample
+./.git/hooks/prepare-commit-msg.sample
+./.git/hooks/pre-push.sample
+./.git/hooks/pre-rebase.sample
+./.git/hooks/pre-receive.sample
+./.git/hooks/push-to-checkout.sample
+./.git/hooks/sendemail-validate.sample
+./.git/hooks/update.sample
+./.gitignore
+./.git/index
+./.git/info/exclude
+./.git/logs/HEAD
+./hbg_core.py
+./HBG_FILE_MAP.txt
+./HBG_UNIVERSE_INSPECTION_20260916_052521.txt
+./instinto_bridge.py
+./lib/api-client-react/package.json
+./lib/api-client-react/tsconfig.json
+./lib/api-client-react/tsconfig.tsbuildinfo
+./lib/api-spec/openapi.yaml
+./lib/api-spec/orval.config.ts
+./lib/api-spec/package.json
+./lib/api-zod/package.json
+./lib/api-zod/tsconfig.json
+./lib/api-zod/tsconfig.tsbuildinfo
+./lib/db/drizzle.config.ts
+./lib/db/package.json
+./lib/db/tsconfig.json
+./lib/db/tsconfig.tsbuildinfo
+./.local/secondary_skills/LICENSE.txt
+./.local/skills/LICENSE.txt
+./node_modules/.bin/prettier
+./node_modules/.bin/tsc
+./node_modules/.bin/tsserver
+./node_modules/.modules.yaml
+./node_modules/.pnpm/lock.yaml
+./node_modules/.pnpm-workspace-state-v1.json
+./.npmrc
+./package.json
+./pnpm-lock.yaml
+./pnpm-workspace.yaml
+./.replit
+./.replitignore
+./replit.md
+./scripts/package.json
+./scripts/post-merge.sh
+./scripts/src/hello.ts
+./scripts/tsconfig.json
+./scripts/tsconfig.tsbuildinfo
+./terminador_ia.py
+./tsconfig.base.json
+./tsconfig.json
+./vibra_pro.py
+
+=== PACKAGE ===
+{
+  "name": "workspace",
+  "version": "0.0.0",
+  "license": "MIT",
+  "scripts": {
+    "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
+    "build": "pnpm run typecheck && pnpm -r --if-present run build",
+    "typecheck:libs": "tsc --build",
+    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
+  },
+  "private": true,
+  "devDependencies": {
+    "prettier": "^3.8.3",
+    "typescript": "~5.9.3"
+  }
+}
+
+=== ROOT FILES ===
+total 63168
+drwxr-xr-x 1 runner runner      654 Sep 16 18:57 .
+drwxr-xr-x 1 runner runner       60 Sep 17 12:38 ..
+drwxr-xr-x 1 runner runner       24 Aug 21 00:13 .agents
+drwxr-xr-x 1 runner runner       72 Jun 20 20:12 artifacts
+drwxr-xr-x 1 runner runner     1760 Sep 15 17:54 attached_assets
+drwxr-xr-x 1 runner runner       20 Jun 10 22:20 .cache
+drwxr-xr-x 1 runner runner      134 Sep 16 16:50 .git
+-rw-r--r-- 1 runner runner      668 Jun 10 22:20 .gitignore
+-rw-r--r-- 1 runner runner    22643 Jun 18 21:15 hbg_core.py
+-rw-r--r-- 1 runner runner     3534 Sep 16 18:44 HBG_FILE_MAP.txt
+-rw-r--r-- 1 runner runner     4177 Sep 17 12:39 HBG_INSPECTION_01.txt
+-rw-r--r-- 1 runner runner 64275493 Sep 16 05:25 HBG_UNIVERSE_INSPECTION_20260916_052521.txt
+-rw-r--r-- 1 runner runner    28495 Jun 18 21:19 instinto_bridge.py
+drwxr-xr-x 1 runner runner       66 Jun 10 22:20 lib
+drwxr-xr-x 1 runner runner      150 Aug 21 00:11 .local
+drwxr-xr-x 1 runner runner      138 Jun 20 20:12 node_modules
+-rw-r--r-- 1 runner runner       56 Jun 10 22:20 .npmrc
+-rw-r--r-- 1 runner runner      585 Jun 10 22:20 package.json
+-rw-r--r-- 1 runner runner   214158 Jun 20 20:12 pnpm-lock.yaml
+-rw-r--r-- 1 runner runner     6579 Jun 10 22:20 pnpm-workspace.yaml
+-rw-r--r-- 1 runner runner      563 Sep 14 15:03 .replit
+-rw-r--r-- 1 runner runner      201 Jun 10 22:20 .replitignore
+-rw-r--r-- 1 runner runner     1521 Jun 10 22:20 replit.md
+drwxr-xr-x 1 runner runner      146 Jun 10 22:20 scripts
+-rw-r--r-- 1 runner runner    43545 Jun 18 21:21 terminador_ia.py
+-rw-r--r-- 1 runner runner      692 Jun 10 22:20 tsconfig.base.json
+-rw-r--r-- 1 runner runner      236 Jun 10 22:20 tsconfig.json
+-rw-r--r-- 1 runner runner    33344 Jun 18 21:17 vibra_pro.py
