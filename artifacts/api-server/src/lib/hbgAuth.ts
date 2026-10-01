@@ -19,7 +19,7 @@ export type HBGPermission =
   | "universe.code.modify"
   | "universe.command.execute"
   | "universe.audit.read"
-  | "universe.registry.manage";
+  | "universe.registry.read";
 
 export interface HBGAuthContext {
   user: HBGUser;
@@ -47,12 +47,8 @@ const ROLE_PERMISSIONS: Record<HBGRole, ReadonlySet<HBGPermission>> = {
     "universe.read",
     "core.action.execute",
     "terminador.use",
-    "terminador.develop",
-    "universe.code.inspect",
-    "universe.code.modify",
-    "universe.command.execute",
     "universe.audit.read",
-    "universe.registry.manage",
+    "universe.registry.read",
   ]),
   user: new Set(["universe.read", "core.action.execute", "terminador.use"]),
   system: new Set(["universe.read", "core.action.execute"]),
@@ -296,7 +292,7 @@ export function requireDevelopmentPermission(
 }
 
 export function bootstrapCredential(): string | undefined {
-  return process.env.HBG_OWNER_TOKEN ?? process.env.SESSION_SECRET;
+  return process.env.HBG_OWNER_TOKEN;
 }
 
 export function isSafeUsername(value: string): boolean {
