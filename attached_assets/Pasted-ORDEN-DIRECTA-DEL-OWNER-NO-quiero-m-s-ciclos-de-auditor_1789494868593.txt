@@ -1,0 +1,442 @@
+ORDEN DIRECTA DEL OWNER.
+
+NO quiero más ciclos de auditoría, preguntas, pausas ni solicitudes de confirmación entre fases.
+
+El objetivo es TERMINAR EL UNIVERSO HBG de extremo a extremo.
+
+A partir de este momento:
+
+TERMINA → VERIFICA → CORRIGE → VUELVE A VERIFICAR → CONTINÚA.
+
+Si encuentras errores, inconsistencias, incompatibilidades o implementaciones incompletas, corrígelas directamente y continúa.
+
+NO me detengas para preguntarme si deseas corregirlas.
+
+NO declares una fase terminada solamente porque typecheck/build pasan.
+
+NO avances dejando piezas críticas incompletas.
+
+==================================================
+
+1. HBG CORE
+   ==================================================
+
+HBG Core ya fue implementado.
+
+Ahora intégralo correctamente con el resto de la arquitectura y verifica su funcionamiento real.
+
+Si encuentras errores en HBG Core:
+
+- corrígelos;
+- ejecuta nuevamente las pruebas;
+- vuelve a verificar;
+- continúa.
+
+==================================================
+2. HBG-AUTH — PRIORIDAD CRÍTICA
+
+Implementa HBG-AUTH antes de conceder capacidades de desarrollo a Terminador IA.
+
+Debe existir separación estricta entre:
+
+MODO USO
+y
+MODO DESARROLLO.
+
+Implementa como mínimo:
+
+- identidad/autenticación;
+- roles owner, user y system;
+- permisos explícitos;
+- permiso crítico "universe.code.modify";
+- sesiones de desarrollo;
+- guards independientes;
+- autorización server-side;
+- protección contra escalamiento de privilegios;
+- protección contra prompt injection;
+- auditoría de acciones sensibles;
+- protección especial del propio HBG-AUTH.
+
+La autoridad NO debe depender del frontend.
+
+Nunca confíes en un flag enviado desde el navegador para conceder privilegios.
+
+==================================================
+3. TERMINADOR IA
+
+Terminador IA es el OPERADOR TÉCNICO del Universo HBG.
+
+NO es la autoridad.
+
+HBG-AUTH decide qué puede hacer.
+
+Terminador debe poder operar sobre el ecosistema con capacidad amplia de administración y desarrollo, PERO TODA acción sensible debe pasar por HBG-AUTH.
+
+Debe existir:
+
+- MODO USO;
+- MODO DESARROLLO;
+- sesión de desarrollo;
+- autorización;
+- guards;
+- auditoría;
+- Action Router;
+- registro de acciones;
+- resultados estructurados;
+- manejo de errores;
+- confirmaciones cuando una acción requiera autorización.
+
+La credencial temporal de desarrollo ya definida por el owner debe permanecer exclusivamente como SECRET/Environment Variable del servidor.
+
+NO la escribas en código.
+NO la escribas en frontend.
+NO la escribas en logs.
+NO la escribas en documentación.
+NO la expongas en respuestas de API.
+NO la reproduzcas en archivos públicos.
+
+No cambies el secreto existente.
+
+==================================================
+4. CODE TOOLS
+
+Implementa las herramientas necesarias para que Terminador pueda:
+
+- inspeccionar archivos;
+- leer código;
+- analizar estructura;
+- crear archivos;
+- modificar archivos;
+- eliminar archivos cuando esté autorizado;
+- ejecutar comandos cuando esté autorizado;
+- ejecutar tests;
+- ejecutar typecheck;
+- ejecutar build;
+- verificar resultados;
+- detectar errores;
+- corregirlos;
+- volver a probar.
+
+TODAS las herramientas de escritura/ejecución deben tener guards independientes.
+
+Nunca permitas que una herramienta pueda saltarse HBG-AUTH simplemente porque otra capa la autorizó.
+
+==================================================
+5. APPLICATION REGISTRY
+
+Implementa un registro central de aplicaciones/componentes del Universo HBG.
+
+Debe permitir identificar y mantener separadas:
+
+- HBG Core
+- HBG-AUTH
+- Terminador IA
+- VIBRA
+- INSTINTO
+- futuras aplicaciones
+
+La arquitectura debe permitir incorporar nuevas aplicaciones sin rehacer el núcleo.
+
+==================================================
+6. VIBRA E INSTINTO
+
+No destruyas ni reemplaces implementaciones existentes.
+
+Integra únicamente cuando corresponda y respetando sus límites.
+
+Si actualmente no existen implementaciones funcionales completas, crea la estructura modular necesaria para que puedan integrarse posteriormente sin romper HBG Core.
+
+No inventes funcionalidades externas que no puedan ejecutarse realmente.
+
+==================================================
+7. FRONTEND UNIVERSO HBG
+
+Termina la interfaz pública real del Universo HBG.
+
+Debe dejar de ser solamente un sandbox/mockup.
+
+Debe reflejar el estado real del ecosistema.
+
+La interfaz debe poder comunicarse con el backend real.
+
+Implementa la navegación y las superficies necesarias para:
+
+- Universo HBG;
+- HBG Core;
+- aplicaciones;
+- Terminador IA;
+- estado del sistema;
+- modo USO/DESARROLLO cuando corresponda.
+
+La seguridad debe permanecer server-side.
+
+==================================================
+8. PERSISTENCIA
+
+Implementa la persistencia necesaria para que el estado real del Universo HBG no dependa exclusivamente del estado temporal del navegador.
+
+Utiliza la infraestructura PostgreSQL/Drizzle existente cuando corresponda.
+
+Crea migraciones/schema necesarios.
+
+No destruyas datos existentes.
+
+==================================================
+9. AUDITORÍA
+
+Implementa un sistema de auditoría real.
+
+Registra como mínimo:
+
+- autenticación;
+- inicio/fin de sesión de desarrollo;
+- acciones sensibles;
+- modificaciones de código;
+- ejecución de herramientas;
+- resultado;
+- errores;
+- actor;
+- timestamp.
+
+Nunca registres secretos.
+
+La auditoría debe estar protegida contra manipulación no autorizada.
+
+==================================================
+10. SEGURIDAD
+
+Corrige las debilidades detectadas durante las auditorías anteriores.
+
+Especialmente:
+
+- autenticación;
+- autorización;
+- CORS;
+- exposición de secretos;
+- ejecución de comandos;
+- acceso a filesystem;
+- path traversal;
+- privilege escalation;
+- prompt injection;
+- validación de inputs;
+- errores expuestos al cliente;
+- protección de endpoints sensibles.
+
+No introduzcas una vulnerabilidad para resolver otra.
+
+==================================================
+11. VOZ Y CAPACIDADES EXTERNAS
+
+Implementa únicamente lo que pueda funcionar realmente dentro del entorno actual.
+
+Si alguna capacidad requiere infraestructura externa que Replit no proporciona directamente:
+
+- deja la interfaz/arquitectura preparada;
+- documenta la dependencia;
+- no simules que está funcionando.
+
+==================================================
+12. TESTING
+
+No te limites a typecheck.
+
+Implementa y ejecuta pruebas reales para las partes críticas.
+
+Como mínimo verifica:
+
+- HBG Core;
+- HBG-AUTH;
+- permisos;
+- sesión de desarrollo;
+- guards;
+- Action Router;
+- Code Tools;
+- auditoría;
+- endpoints críticos;
+- persistencia;
+- frontend;
+- regresión.
+
+Después de cualquier corrección:
+
+TEST → VERIFY → CORRECT → TEST AGAIN.
+
+Repite hasta obtener un estado estable.
+
+==================================================
+13. GIT
+
+Cuando toda la implementación esté terminada y verificada:
+
+- revisar git status;
+- revisar diff;
+- eliminar archivos temporales innecesarios;
+- asegurar que no haya secretos;
+- ejecutar typecheck;
+- ejecutar build;
+- ejecutar tests;
+- hacer el commit final.
+
+NO hagas commits intermedios innecesarios.
+
+El commit final debe representar un estado funcional y verificable.
+
+==================================================
+14. DEPLOYMENT
+
+Después de que el código esté realmente terminado y verificado:
+
+ACTUALIZA EL DEPLOYMENT EXISTENTE DEL UNIVERSO HBG.
+
+NO CREES UN DEPLOYMENT NUEVO si existe uno publicado.
+
+El objetivo es que la URL pública actual del Universo HBG muestre la nueva versión.
+
+Después del deploy:
+
+1. comprueba que el deployment terminó correctamente;
+2. comprueba que la URL pública responde;
+3. comprueba que corresponde a la nueva versión;
+4. comprueba endpoints críticos;
+5. comprueba frontend;
+6. comprueba que no existen errores críticos;
+7. si falla algo, corrígelo;
+8. vuelve a desplegar;
+9. vuelve a verificar.
+
+NO afirmes "deployment actualizado" solamente porque el proceso de deploy terminó.
+
+Debes verificar el resultado real publicado.
+
+==================================================
+15. REGLAS ABSOLUTAS
+
+Esta es una orden directa del OWNER.
+
+NO quiero:
+
+- más vueltas;
+- más auditorías sin implementación;
+- más preguntas innecesarias;
+- más "¿quieres que continúe?";
+- más reportes que solamente describan problemas;
+- más pausas entre fases.
+
+Si tienes suficiente información para resolver algo, RESUÉLVELO.
+
+Si detectas un problema:
+CORRÍGELO.
+
+Si una corrección rompe otra cosa:
+CORRÍGELO TAMBIÉN.
+
+Si una prueba falla:
+INVESTIGA → CORRIGE → REPITE.
+
+Si una implementación está incompleta:
+TERMÍNALA.
+
+Si una pieza depende de otra:
+implementa primero la dependencia y continúa.
+
+Conserva la arquitectura existente cuando sea correcta.
+
+No borres funcionalidad existente sin justificación técnica.
+
+No inventes resultados.
+
+No declares PASS sin haberlo comprobado.
+
+No expongas secretos.
+
+==================================================
+16. CONDICIÓN FINAL
+
+NO TERMINES EL TRABAJO HASTA ALCANZAR ESTE ESTADO:
+
+HBG CORE
+→ implementado y verificado.
+
+HBG-AUTH
+→ implementado y protegido.
+
+TERMINADOR IA
+→ operativo como operador técnico subordinado a HBG-AUTH.
+
+USO/DESARROLLO
+→ separados y protegidos.
+
+CODE TOOLS
+→ funcionales y protegidos.
+
+APPLICATION REGISTRY
+→ funcional.
+
+AUDITORÍA
+→ funcional.
+
+PERSISTENCIA
+→ funcional.
+
+FRONTEND UNIVERSO HBG
+→ funcional.
+
+VIBRA
+→ integrada/preparada sin romper arquitectura.
+
+INSTINTO
+→ integrado/preparado sin romper arquitectura.
+
+SEGURIDAD
+→ verificada.
+
+TESTS
+→ ejecutados y corregidos.
+
+BUILD
+→ PASS.
+
+DEPLOYMENT
+→ actualizado.
+
+URL PÚBLICA
+→ verificada con la nueva versión.
+
+GIT
+→ commit final realizado.
+
+==================================================
+17. REPORTE FINAL
+
+Al terminar TODO, entrega UN SOLO reporte final con:
+
+- estado final del sistema;
+- arquitectura implementada;
+- módulos terminados;
+- archivos principales modificados;
+- tests ejecutados;
+- resultados;
+- errores encontrados;
+- correcciones realizadas;
+- commit final;
+- deployment actualizado;
+- URL pública verificada;
+- cualquier limitación REAL que dependa de infraestructura externa.
+
+No detengas la ejecución para pedir autorización entre estos pasos.
+
+EJECUTA.
+
+TERMINA.
+
+VERIFICA.
+
+CORRIGE.
+
+VUELVE A VERIFICAR.
+
+DESPLIEGA.
+
+VERIFICA LA URL PÚBLICA.
+
+FINALIZA.

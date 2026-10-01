@@ -2,21 +2,23 @@ openapi: 3.1.0
 info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
-  version: 0.1.0
-  description: API specification
+  version: 1.0.0
+  description: HBG ecosystem API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
-    description: Health operations
+  - name: auth
+  - name: registry
+  - name: audit
+  - name: tools
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +26,235 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /auth/me:
+    get:
+      operationId: getAuthState
+      tags: [auth]
+      summary: Get current HBG identity
+      responses:
+        "200":
+          description: Authentication state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthState"
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Establish a server-side HBG session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/responses/SuccessResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Revoke the current session
+      responses:
+        "200":
+          $ref: "#/components/responses/SuccessResponse"
+  /auth/development/start:
+    post:
+      operationId: startDevelopmentSession
+      tags: [auth]
+      summary: Start a guarded development session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purpose]
+              properties:
+                purpose:
+                  type: string
+                  minLength: 1
+                  maxLength: 160
+      responses:
+        "200":
+          $ref: "#/components/responses/SuccessResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+  /auth/development/end:
+    post:
+      operationId: endDevelopmentSession
+      tags: [auth]
+      summary: End a guarded development session
+      responses:
+        "200":
+          $ref: "#/components/responses/SuccessResponse"
+  /auth/users:
+    post:
+      operationId: createUser
+      tags: [auth]
+      summary: Create a user identity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, role, credential]
+              properties:
+                username:
+                  type: string
+                role:
+                  type: string
+                  enum: [user]
+                credential:
+                  type: string
+                  minLength: 16
+      responses:
+        "201":
+          $ref: "#/components/responses/SuccessResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+  /registry:
+    get:
+      operationId: listApplications
+      tags: [registry]
+      summary: List registered HBG applications
+      responses:
+        "200":
+          $ref: "#/components/responses/SuccessResponse"
+  /audit:
+    get:
+      operationId: listAuditEvents
+      tags: [audit]
+      summary: Read protected audit events
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 250
+      responses:
+        "200":
+          $ref: "#/components/responses/SuccessResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+  /tools/fs/list:
+    post:
+      operationId: listWorkspaceFiles
+      tags: [tools]
+      summary: List safe workspace entries
+      responses:
+        "200":
+          $ref: "#/components/responses/SuccessResponse"
+  /tools/fs/read:
+    post:
+      operationId: readWorkspaceFile
+      tags: [tools]
+      summary: Read a safe workspace file
+      responses:
+        "200":
+          $ref: "#/components/responses/SuccessResponse"
+  /tools/fs/write:
+    post:
+      operationId: writeWorkspaceFile
+      tags: [tools]
+      summary: Write an authorized workspace file
+      responses:
+        "200":
+          $ref: "#/components/responses/SuccessResponse"
+  /tools/fs/delete:
+    post:
+      operationId: deleteWorkspaceFile
+      tags: [tools]
+      summary: Delete an authorized workspace file
+      responses:
+        "200":
+          $ref: "#/components/responses/SuccessResponse"
+  /tools/run:
+    post:
+      operationId: runWorkspaceCheck
+      tags: [tools]
+      summary: Run one allowlisted workspace check
+      responses:
+        "200":
+          $ref: "#/components/responses/SuccessResponse"
+        "422":
+          $ref: "#/components/responses/ErrorResponse"
 components:
+  responses:
+    SuccessResponse:
+      description: Successful operation
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+            properties:
+              success:
+                type: boolean
+                const: true
+    ErrorResponse:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
-      required:
-        - status
-
+    Error:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          type: boolean
+          const: false
+        error:
+          type: string
+        code:
+          type: string
+    LoginRequest:
+      type: object
+      required: [username, credential]
+      properties:
+        username:
+          type: string
+        credential:
+          type: string
+    AuthState:
+      type: object
+      required: [authenticated, isDevelopment]
+      properties:
+        authenticated:
+          type: boolean
+        isDevelopment:
+          type: boolean
+        user:
+          nullable: true
+          type: object
+          additionalProperties: true
+        permissions:
+          type: array
+          items:
+            type: string
