@@ -1,124 +1,311 @@
-import { hbgCore, MODULES, type ModuleId } from "../core/hbgCore";
-import { ShareEngine } from "./ShareEngine";
+import { useState, type CSSProperties } from "react";
 
-interface UniversoScreenProps {
-  currentApp: ModuleId;
+interface ShareEngineProps {
+  appName: string;
   appColor: string;
   mood?: string;
   projectData?: Record<string, unknown>;
 }
 
-const APP_STATUS = {
-  universo: { installed: true, status: "🟢 CONECTADO", statusColor: "var(--neon-green)" },
-  instinto: { installed: true, status: "🟢 CONECTADO", statusColor: "var(--neon-green)" },
-  vibra: { installed: true, status: "🟢 CONECTADO", statusColor: "var(--neon-green)" },
-  terminador: { installed: true, status: "🟢 CONECTADO", statusColor: "var(--neon-green)" },
-};
+function getInviteCode(): string {
+  try {
+    const saved = localStorage.getItem("hbg_invite_code");
+    if (saved) return saved;
+    const fresh =
+      "HBG-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+    localStorage.setItem("hbg_invite_code", fresh);
+    return fresh;
+  } catch {
+    return "HBG-UNIVERSO";
+  }
+}
 
-const AVAILABLE_APPS = [
-  { name: "UNIVERSO HBG Mobile", desc: "Versión para iOS y Android", icon: "📱" },
-  { name: "VIBRA Pro Desktop", desc: "Aplicación de escritorio nativa", icon: "🖥" },
-  { name: "INSTINTO Web Clip", desc: "Widget de notas rápidas", icon: "📎" },
-];
+function downloadJson(data: unknown, filename: string) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
-export function UniversoScreen({ currentApp, appColor, mood, projectData }: UniversoScreenProps) {
+export function ShareEngine({
+  appName,
+  appColor,
+  mood,
+  projectData,
+}: ShareEngineProps) {
+  const [copied, setCopied] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [showQR, setShowQR] = useState(false);
+  const [qrFailed, setQrFailed] = useState(false);
+  const [inviteCode] = useState(getInviteCode);
+
+  const shareLink = window.location.href.split("#")[0];
+  const message =
+    "Te invito a probar UNIVERSO HBG (" +
+    appName +
+    ").\nEntra aquí: " +
+    shareLink +
+    "\nCódigo de invitación: " +
+    inviteCode;
+  const qrSrc =
+    "https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=10&data=" +
+    encodeURIComponent(shareLink);
+
+  const copy = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(label);
+    } catch {
+      setCopied("fail");
+    }
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  const nativeShare = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: "UNIVERSO HBG",
+          text:
+            "Te invito a probar UNIVERSO HBG. Código de invitación: " +
+            inviteCode,
+          url: shareLink,
+        });
+      } catch {
+        // la persona canceló el menú de compartir
+      }
+    } else {
+      copy(message, "msg");
+    }
+  };
+
+  const shareWhatsApp = () => {
+    window.open(
+      "https://wa.me/?text=" + encodeURIComponent(message),
+      "_blank",
+      "noopener,noreferrer"
+    );
+  };
+
+  const exportMoodState = () => {
+    if (!mood) return;
+    downloadJson(
+      { app: appName, mood, timestamp: new Date().toISOString() },
+      appName.toLowerCase() + "_mood.json"
+    );
+  };
+
+  const shareProject = async () => {
+    const text = JSON.stringify(projectData, null, 2);
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "Proyecto " + appName, text });
+      } catch {
+        // la persona canceló el menú de compartir
+      }
+    } else {
+      copy(text, "project");
+    }
+  };
+
+  const exportProject = () => {
+    downloadJson(
+      projectData,
+      appName.toLowerCase().replace(/ /g, "-") + "_proyecto.json"
+    );
+  };
+
+  const exportUniverse = async () => {
+    setExporting(true);
+    await new Promise((r) => setTimeout(r, 600));
+    downloadJson(
+      {
+        version: "1.0.0",
+        exported_from: appName,
+        timestamp: new Date().toISOString(),
+        preferences: { mood: mood ?? "neutral", tema: "cyberpunk" },
+        modulos_instalados: ["universo", "instinto", "vibra", "terminador"],
+        ...projectData,
+      },
+      "universo_hbg_backup.json"
+    );
+    setExporting(false);
+  };
+
+  const mono: CSSProperties = { fontFamily: "var(--font-mono)" };
+
   return (
-    <div>
-      <div style={{ marginBottom: 20, padding: "12px 16px", background: "rgba(0,229,255,0.04)", border: "1px solid rgba(0,229,255,0.15)", borderRadius: 4 }}>
-        <div style={{ fontFamily: "var(--font-display)", fontSize: 9, letterSpacing: "0.16em", color: "var(--text-muted)", marginBottom: 4 }}>PANTALLA OFICIAL</div>
-        <div style={{ fontFamily: "var(--font-display)", fontSize: 16, fontWeight: 700, letterSpacing: "0.1em", color: "var(--neon-cyan)" }}>UNIVERSO HBG</div>
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>Ecosistema modular · cada app conectada</div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Compartir la app */}
+      <div className="hbg-card">
+        <div className="section-title">// compartir app</div>
+
+        <div style={{ ...mono, fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>
+          ENLACE
+        </div>
+        <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+          <div
+            style={{
+              ...mono,
+              flex: 1,
+              minWidth: 0,
+              padding: "7px 10px",
+              background: "var(--bg-deep)",
+              border: "1px solid var(--border-dim)",
+              borderRadius: 3,
+              fontSize: 10,
+              color: "var(--text-secondary)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {shareLink}
+          </div>
+          <button
+            className="hbg-btn hbg-btn-ghost"
+            style={{
+              padding: "7px 12px",
+              fontSize: 12,
+              color:
+                copied === "link"
+                  ? "var(--neon-green)"
+                  : copied === "fail"
+                  ? "var(--neon-pink)"
+                  : undefined,
+            }}
+            onClick={() => copy(shareLink, "link")}
+          >
+            {copied === "link" ? "✓" : copied === "fail" ? "✕" : "⧉"}
+          </button>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <button className="hbg-btn hbg-btn-primary w-full" onClick={nativeShare}>
+            ↗ COMPARTIR (WHATSAPP, BLUETOOTH Y MÁS)
+          </button>
+          <button className="hbg-btn hbg-btn-success w-full" onClick={shareWhatsApp}>
+            ✆ ENVIAR POR WHATSAPP
+          </button>
+          <button
+            className="hbg-btn hbg-btn-ghost w-full"
+            onClick={() => {
+              setQrFailed(false);
+              setShowQR((v) => !v);
+            }}
+          >
+            ▦ {showQR ? "OCULTAR QR" : "MOSTRAR QR"}
+          </button>
+        </div>
+
+        {showQR && (
+          <div style={{ display: "flex", justifyContent: "center", padding: "14px 0 4px" }}>
+            {qrFailed ? (
+              <div style={{ ...mono, fontSize: 10, color: "var(--neon-pink)" }}>
+                No se pudo cargar el QR. Revisa tu conexión a internet.
+              </div>
+            ) : (
+              <img
+                src={qrSrc}
+                width={180}
+                height={180}
+                onError={() => setQrFailed(true)}
+                style={{
+                  background: "#fff",
+                  border: "2px solid " + appColor,
+                  borderRadius: 6,
+                  boxShadow: "0 0 16px " + appColor + "40",
+                }}
+                alt="Código QR para abrir la app"
+              />
+            )}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>
+          <span style={{ ...mono, fontSize: 10, color: "var(--text-muted)" }}>
+            CÓDIGO DE INVITACIÓN:
+          </span>
+          <span
+            style={{
+              ...mono,
+              fontSize: 10,
+              color: appColor,
+              cursor: "pointer",
+              borderBottom: "1px dashed " + appColor,
+            }}
+            onClick={() => copy(inviteCode, "code")}
+          >
+            {copied === "code" ? "✓ COPIADO" : inviteCode}
+          </span>
+        </div>
       </div>
 
-      <div className="hbg-grid hbg-grid-2" style={{ gap: 16 }}>
-        {/* Left column */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {/* Section 1: Installed */}
-          <div className="hbg-card">
-            <div className="section-title">// aplicaciones instaladas</div>
-            <div className="hbg-list" style={{ gap: 6 }}>
-              {MODULES.map((mod) => {
-                const status = APP_STATUS[mod.id];
-                const isCurrent = mod.id === currentApp;
-                return (
-                  <div
-                    key={mod.id}
-                    className="hbg-list-item"
-                    style={{
-                      cursor: !isCurrent ? "pointer" : "default",
-                      borderColor: isCurrent ? appColor : undefined,
-                      background: isCurrent ? `${appColor}06` : undefined,
-                    }}
-                    onClick={() => !isCurrent && hbgCore.setModule(mod.id)}
-                  >
-                    <span style={{ fontSize: 16, color: mod.color, filter: `drop-shadow(0 0 5px ${mod.color})` }}>{mod.icon}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontFamily: "var(--font-display)", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", color: isCurrent ? appColor : mod.color }}>
-                        {mod.label}
-                        {isCurrent && <span style={{ fontFamily: "var(--font-mono)", fontSize: 8, color: "var(--text-muted)", marginLeft: 8 }}>AQUÍ</span>}
-                      </div>
-                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginTop: 2 }}>{mod.description}</div>
-                    </div>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: status.statusColor }}>{status.status}</span>
-                  </div>
-                );
-              })}
-            </div>
+      {/* Compartir estado emocional */}
+      {mood && (
+        <div className="hbg-card">
+          <div className="section-title">// compartir estado emocional</div>
+          <div
+            style={{
+              ...mono,
+              padding: "8px 12px",
+              background: "var(--bg-deep)",
+              border: "1px solid var(--border-dim)",
+              borderRadius: 3,
+              fontSize: 11,
+              color: "var(--neon-cyan)",
+              marginBottom: 10,
+            }}
+          >
+            <div style={{ color: "var(--text-muted)" }}>{"{"}</div>
+            <div style={{ paddingLeft: 16 }}>{'"app": "' + appName + '",'}</div>
+            <div style={{ paddingLeft: 16 }}>{'"mood": "' + mood + '"'}</div>
+            <div style={{ color: "var(--text-muted)" }}>{"}"}</div>
           </div>
+          <button className="hbg-btn hbg-btn-ghost w-full" onClick={exportMoodState}>
+            ↗ TRANSMITIR ESTADO EMOCIONAL
+          </button>
+        </div>
+      )}
 
-          {/* Section 2: Available */}
-          <div className="hbg-card">
-            <div className="section-title">// aplicaciones disponibles</div>
-            <div className="hbg-list" style={{ gap: 6 }}>
-              {AVAILABLE_APPS.map((app) => (
-                <div key={app.name} className="hbg-list-item">
-                  <span style={{ fontSize: 18 }}>{app.icon}</span>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontFamily: "var(--font-ui)", fontSize: 12, color: "var(--text-secondary)" }}>{app.name}</div>
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginTop: 2 }}>{app.desc}</div>
-                  </div>
-                  <button className="hbg-btn hbg-btn-ghost" style={{ padding: "4px 10px", fontSize: 9 }}>INSTALAR</button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Section 3: Connection status */}
-          <div className="hbg-card">
-            <div className="section-title">// estado de conexión</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)" }}>Red Share Engine</span>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--neon-green)" }}>🟢 ONLINE</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)" }}>HBG Core</span>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--neon-green)" }}>🟢 CONECTADO</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)" }}>Nube HBG</span>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)" }}>⚫ LOCAL</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Section 4: Connect Core */}
-          <div className="hbg-card hbg-card-accent" style={{ "--card-color": "var(--neon-purple)" } as React.CSSProperties}>
-            <div className="section-title">// conectar con hbg core</div>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginBottom: 10 }}>
-              HBG Core es la IA central del ecosistema. Gestiona tu memoria, mood y recomendaciones.
-            </div>
-            <button className="hbg-btn hbg-btn-primary w-full" onClick={() => hbgCore.setModule("universo")}>
-              ◈ ABRIR HBG CORE
+      {/* Compartir proyecto */}
+      {projectData && (
+        <div className="hbg-card">
+          <div className="section-title">// compartir proyecto</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <button className="hbg-btn hbg-btn-ghost w-full" onClick={shareProject}>
+              ↗ COMPARTIR PROYECTO ACTIVO
+            </button>
+            <button className="hbg-btn hbg-btn-ghost w-full" onClick={exportProject}>
+              ↓ EXPORTAR COMO JSON
             </button>
           </div>
         </div>
+      )}
 
-        {/* Right column: Share Engine */}
-        <div>
-          <div className="section-title">// share engine</div>
-          <ShareEngine appName={MODULES.find(m => m.id === currentApp)?.label ?? currentApp} appColor={appColor} mood={mood} projectData={projectData} />
+      {/* Exportar universo */}
+      <div
+        className="hbg-card hbg-card-accent"
+        style={{ "--card-color": appColor } as CSSProperties}
+      >
+        <div className="section-title">// compartir universo completo</div>
+        <div style={{ ...mono, fontSize: 10, color: "var(--text-muted)", marginBottom: 10 }}>
+          Exporta preferencias, temas y configuraciones del ecosistema en un
+          archivo universo_hbg_backup.json
         </div>
+        <button
+          className="hbg-btn hbg-btn-primary w-full"
+          onClick={exportUniverse}
+          disabled={exporting}
+          style={{ opacity: exporting ? 0.6 : 1 }}
+        >
+          {exporting ? "◈ EMPAQUETANDO..." : "↓ EXPORTAR UNIVERSO COMPLETO"}
+        </button>
       </div>
     </div>
   );
