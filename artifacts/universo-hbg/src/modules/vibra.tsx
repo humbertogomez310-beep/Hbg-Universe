@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { UniversoScreen } from "../components/UniversoScreen";
+import { VoiceCommandBar } from "../voice/VoiceCommandBar";
 import { hbgCore, type HBGActionResult } from "../core/hbgCore";
 import {
   saveAudioBlob,
@@ -115,6 +116,7 @@ export function VibraModule() {
   useEffect(() => { localStorage.setItem(STORAGE_KEYS.favorites, JSON.stringify([...favorites])); }, [favorites]);
   useEffect(() => { localStorage.setItem(STORAGE_KEYS.playlists, JSON.stringify(playlists)); }, [playlists]);
   useEffect(() => { if (currentId) localStorage.setItem(STORAGE_KEYS.trackId, currentId); }, [currentId]);
+  useEffect(() => { hbgCore.setContext("music.isPlaying", isPlaying); }, [isPlaying]);
 
   // Load audio from IndexedDB and play
   const loadTrack = useCallback(async (id: string, autoPlay = false, startTime = 0) => {
@@ -360,6 +362,13 @@ export function VibraModule() {
         if (nextFavorite !== currentlyFavorite) toggleFav(id);
         return result(true, { id, favorite: nextFavorite });
       }),
+      hbgCore.registerAction("music.mood", (payload) => {
+        const mode = String(payload?.mode ?? "");
+        const selectedMood = MOODS.find((candidate) => candidate.mode === mode);
+        if (!selectedMood) return result(false, undefined, "Modo de ánimo no válido");
+        setActiveMode(selectedMood.mode);
+        return result(true, { mode: selectedMood.mode });
+      }),
       hbgCore.registerAction("music.playlist", async (payload) => {
         const mode = String(payload?.mode ?? "play");
         const requestedName = String(payload?.name ?? "").trim();
@@ -529,6 +538,8 @@ export function VibraModule() {
           </button>
         ))}
       </div>
+
+      <VoiceCommandBar accentColor={mood.color} />
 
       {/* Hidden file input */}
       <input

@@ -12,6 +12,48 @@ const MOOD_LABELS: Record<string, string> = {
   normal: "normal",
 };
 
+interface VoiceTrackMatch {
+  id: string;
+  title: string;
+  artist?: string;
+  album?: string;
+}
+
+function isVoiceTrack(value: unknown): value is VoiceTrackMatch {
+  if (typeof value !== "object" || value === null) return false;
+  const track = value as Record<string, unknown>;
+  return typeof track.id === "string" && typeof track.title === "string";
+}
+
+function normalizeTrackText(value: string): string {
+  return value
+    .toLocaleLowerCase("es")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+}
+
+function selectTrack(results: unknown[], query: string): VoiceTrackMatch | undefined {
+  const candidates = results.filter(isVoiceTrack);
+  const normalizedQuery = normalizeTrackText(query);
+  const exactTitle = candidates.filter(
+    (track) => normalizeTrackText(track.title) === normalizedQuery,
+  );
+  if (exactTitle.length === 1) return exactTitle[0];
+
+  const titleMatches = candidates.filter((track) =>
+    normalizeTrackText(track.title).includes(normalizedQuery),
+  );
+  if (titleMatches.length === 1) return titleMatches[0];
+
+  const metadataMatches = candidates.filter((track) =>
+    normalizeTrackText(`${track.title} ${track.artist ?? ""} ${track.album ?? ""}`)
+      .includes(normalizedQuery),
+  );
+  if (metadataMatches.length === 1) return metadataMatches[0];
+  return candidates.length === 1 ? candidates[0] : undefined;
+}
+
 export async function executeVoiceAction(action: VoiceAction): Promise<string> {
   switch (action.type) {
     case "UNKNOWN":
@@ -64,7 +106,11 @@ export async function executeVoiceAction(action: VoiceAction): Promise<string> {
       if (!searchRes.success || results.length === 0) {
         return `No encontré ninguna canción que coincida con ${action.query}.`;
       }
-      const playRes = await hbgCore.dispatchAction("music.playTrack", { index: 1 });
+      const track = selectTrack(results, action.query);
+      if (!track) {
+        return `Encontré varias coincidencias para ${action.query}. Di el título exacto.`;
+      }
+      const playRes = await hbgCore.dispatchAction("music.playTrack", { id: track.id });
       if (playRes.success) {
         const track = (playRes.data as { track?: { title?: string } } | undefined)?.track;
         return `Reproduciendo ${track?.title ?? action.query}.`;

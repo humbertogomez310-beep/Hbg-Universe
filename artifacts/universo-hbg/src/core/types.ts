@@ -10,6 +10,7 @@ export type HBGActionName =
   | "music.volume"
   | "music.favorite"
   | "music.playlist"
+  | "music.mood"
   | "universe.navigate";
 
 export interface HBGActionResult<T = unknown> {
