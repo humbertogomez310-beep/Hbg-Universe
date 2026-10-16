@@ -1,5 +1,8 @@
 import { useState, type CSSProperties } from "react";
 
+const CANONICAL_DISTRIBUTION_URL =
+  "https://hbg-universe--humbertogomez31.replit.app/";
+
 interface ShareEngineProps {
   appName: string;
   appColor: string;
@@ -44,14 +47,11 @@ export function ShareEngine({
   const [qrFailed, setQrFailed] = useState(false);
   const [inviteCode] = useState(getInviteCode);
 
-  const shareLink = window.location.href.split("#")[0];
-  const message =
-    "Te invito a probar UNIVERSO HBG (" +
-    appName +
-    ").\nEntra aquí: " +
-    shareLink +
-    "\nCódigo de invitación: " +
-    inviteCode;
+  const shareLink = CANONICAL_DISTRIBUTION_URL;
+  const invitationMessage =
+    `Te invito a probar UNIVERSO HBG (${appName}).\n` +
+    `Aplicación publicada: ${shareLink}\n` +
+    `Identificador local (sin validación; no concede acceso, registro ni canje): ${inviteCode}`;
   const qrSrc =
     "https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=10&data=" +
     encodeURIComponent(shareLink);
@@ -71,22 +71,19 @@ export function ShareEngine({
       try {
         await navigator.share({
           title: "UNIVERSO HBG",
-          text:
-            "Te invito a probar UNIVERSO HBG. Código de invitación: " +
-            inviteCode,
-          url: shareLink,
+          text: invitationMessage,
         });
       } catch {
         // la persona canceló el menú de compartir
       }
     } else {
-      copy(message, "msg");
+      copy(invitationMessage, "msg");
     }
   };
 
   const shareWhatsApp = () => {
     window.open(
-      "https://wa.me/?text=" + encodeURIComponent(message),
+      "https://wa.me/?text=" + encodeURIComponent(invitationMessage),
       "_blank",
       "noopener,noreferrer"
     );
@@ -187,7 +184,7 @@ export function ShareEngine({
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <button className="hbg-btn hbg-btn-primary w-full" onClick={nativeShare}>
-            ↗ COMPARTIR (WHATSAPP, BLUETOOTH Y MÁS)
+            ↗ COMPARTIR (OPCIONES DISPONIBLES DEL SISTEMA)
           </button>
           <button className="hbg-btn hbg-btn-success w-full" onClick={shareWhatsApp}>
             ✆ ENVIAR POR WHATSAPP
@@ -229,7 +226,7 @@ export function ShareEngine({
 
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>
           <span style={{ ...mono, fontSize: 10, color: "var(--text-muted)" }}>
-            CÓDIGO DE INVITACIÓN:
+            IDENTIFICADOR LOCAL:
           </span>
           <span
             style={{
@@ -243,6 +240,9 @@ export function ShareEngine({
           >
             {copied === "code" ? "✓ COPIADO" : inviteCode}
           </span>
+        </div>
+        <div style={{ ...mono, fontSize: 9, color: "var(--text-muted)", marginTop: 6 }}>
+          No se valida en servidor ni habilita acceso, registro o canje.
         </div>
       </div>
 
