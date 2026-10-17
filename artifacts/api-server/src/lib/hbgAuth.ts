@@ -292,7 +292,9 @@ export function requireDevelopmentPermission(
 }
 
 export function bootstrapCredential(): string | undefined {
-  return process.env.HBG_OWNER_TOKEN;
+  const credential =
+    process.env.HBG_OWNER_SECRET ?? process.env.HBG_OWNER_TOKEN;
+  return credential && credential.length >= 16 ? credential : undefined;
 }
 
 export function isSafeUsername(value: string): boolean {
