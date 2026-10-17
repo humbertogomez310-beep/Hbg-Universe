@@ -1,7 +1,7 @@
 import { useState, type CSSProperties } from "react";
 
 const CANONICAL_DISTRIBUTION_URL =
-  "https://hbg-universe--humbertogomez31.replit.app/";
+  "https://hbg-universe--humbertogomez31.replit.app";
 
 interface ShareEngineProps {
   appName: string;
