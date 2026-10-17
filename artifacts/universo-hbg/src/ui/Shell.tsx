@@ -1,13 +1,19 @@
-import { useState, useEffect, type ReactNode, type CSSProperties } from "react";
+import {
+  useState,
+  useEffect,
+  useRef,
+  type ReactNode,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { hbgCore, MODULES, type ModuleId } from "../core/hbgCore";
+import { ownerSession, type OwnerSessionSnapshot } from "../core/ownerSession";
 import { Sidebar } from "./Sidebar";
+import { OwnerGate } from "./OwnerGate";
 import { UniversoModule } from "../modules/universo";
 import { InstintoModule } from "../modules/instinto";
 import { VibraModule } from "../modules/vibra";
 import { TerminadorModule } from "../modules/terminador";
-
-// Terminador es solo de administrador: se oculta hasta tocar 5 veces el pie del menú
-const PUBLIC_MODULES: ModuleId[] = ["universo", "instinto", "vibra"];
 
 function Clock() {
   const [time, setTime] = useState(new Date());
@@ -22,7 +28,15 @@ function Clock() {
   );
 }
 
-function ModulePanel({ module }: { module: ModuleId }) {
+function ModulePanel({
+  module,
+  isOwner,
+  checking,
+}: {
+  module: ModuleId;
+  isOwner: boolean;
+  checking: boolean;
+}) {
   const [key, setKey] = useState(0);
   const [displayModule, setDisplayModule] = useState(module);
 
@@ -30,6 +44,13 @@ function ModulePanel({ module }: { module: ModuleId }) {
     setKey((k) => k + 1);
     setDisplayModule(module);
   }, [module]);
+
+  if (
+    (module === "terminador" || displayModule === "terminador") &&
+    (!isOwner || checking)
+  ) {
+    return null;
+  }
 
   const panels: Record<ModuleId, ReactNode> = {
     universo: <UniversoModule />,
@@ -51,33 +72,144 @@ export function Shell() {
     return hbgCore.getModule();
   });
   const [showMenu, setShowMenu] = useState(true);
-  const [footerClicks, setFooterClicks] = useState(0);
-  const [adminUnlocked, setAdminUnlocked] = useState(false);
+  const [ownerState, setOwnerState] = useState<OwnerSessionSnapshot>(() =>
+    ownerSession.getSnapshot(),
+  );
+  const [ownerGateOpen, setOwnerGateOpen] = useState(false);
+  const tapCountRef = useRef(0);
+  const lastTapAtRef = useRef(0);
+  const armedUntilRef = useRef(0);
+  const armTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pressedPointerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const unsub = hbgCore.subscribe((mod) => setActiveModule(mod));
     return unsub;
   }, []);
 
-  const config = hbgCore.getModuleConfig(activeModule);
+  useEffect(() => {
+    const syncOwnerState = () => setOwnerState(ownerSession.getSnapshot());
+    const unsubscribe = ownerSession.subscribe(syncOwnerState);
+    syncOwnerState();
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    if (
+      !ownerState.checking &&
+      !ownerState.isOwner &&
+      activeModule === "terminador"
+    ) {
+      hbgCore.setModule("universo");
+    }
+  }, [activeModule, ownerState.checking, ownerState.isOwner]);
+
+  const safeActiveModule =
+    activeModule === "terminador" &&
+    (!ownerState.isOwner || ownerState.checking)
+      ? "universo"
+      : activeModule;
+  const config = hbgCore.getModuleConfig(safeActiveModule);
 
   const handleSelect = (id: ModuleId) => {
+    if (id === "terminador" && (!ownerState.isOwner || ownerState.checking)) {
+      return;
+    }
     hbgCore.setModule(id);
     setShowMenu(false);
   };
 
-  const handleFooterClick = () => {
-    const next = footerClicks + 1;
-    setFooterClicks(next);
-    if (next >= 5) {
-      setAdminUnlocked(true);
-      setFooterClicks(0);
+  const clearGestureTimers = () => {
+    if (armTimeoutRef.current) clearTimeout(armTimeoutRef.current);
+    if (holdTimeoutRef.current) clearTimeout(holdTimeoutRef.current);
+    armTimeoutRef.current = null;
+    holdTimeoutRef.current = null;
+  };
+
+  const resetLogoGesture = () => {
+    clearGestureTimers();
+    tapCountRef.current = 0;
+    lastTapAtRef.current = 0;
+    armedUntilRef.current = 0;
+    pressedPointerRef.current = null;
+  };
+
+  const activateTerminator = () => {
+    resetLogoGesture();
+    if (ownerSession.isOwner) {
+      hbgCore.setModule("terminador");
+      setShowMenu(false);
+      return;
+    }
+    setOwnerGateOpen(true);
+  };
+
+  const handleLogoPointerDown = (event: ReactPointerEvent<HTMLSpanElement>) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    if (pressedPointerRef.current !== null) return;
+    pressedPointerRef.current = event.pointerId;
+
+    const armedUntil = armedUntilRef.current;
+    if (armedUntil > Date.now()) {
+      holdTimeoutRef.current = setTimeout(() => {
+        holdTimeoutRef.current = null;
+        if (
+          pressedPointerRef.current === event.pointerId &&
+          armedUntilRef.current === armedUntil &&
+          Date.now() <= armedUntil
+        ) {
+          activateTerminator();
+        }
+      }, 2000);
     }
   };
 
-  const menuModules = adminUnlocked
-    ? MODULES
-    : MODULES.filter((m) => PUBLIC_MODULES.includes(m.id));
+  const handleLogoPointerUp = (event: ReactPointerEvent<HTMLSpanElement>) => {
+    if (pressedPointerRef.current !== event.pointerId) return;
+    pressedPointerRef.current = null;
+    if (holdTimeoutRef.current) clearTimeout(holdTimeoutRef.current);
+    holdTimeoutRef.current = null;
+    if (armedUntilRef.current > Date.now()) return;
+
+    const now = Date.now();
+    tapCountRef.current =
+      lastTapAtRef.current > 0 && now - lastTapAtRef.current < 1500
+        ? tapCountRef.current + 1
+        : 1;
+    lastTapAtRef.current = now;
+
+    if (tapCountRef.current === 5) {
+      armedUntilRef.current = now + 6000;
+      armTimeoutRef.current = setTimeout(() => {
+        resetLogoGesture();
+      }, 6000);
+    }
+  };
+
+  const cancelLogoPress = (event: ReactPointerEvent<HTMLSpanElement>) => {
+    if (pressedPointerRef.current !== event.pointerId) return;
+    pressedPointerRef.current = null;
+    if (holdTimeoutRef.current) clearTimeout(holdTimeoutRef.current);
+    holdTimeoutRef.current = null;
+  };
+
+  useEffect(
+    () => () => {
+      clearGestureTimers();
+    },
+    [],
+  );
+
+  const handleLock = () => {
+    void ownerSession.logout();
+    hbgCore.setModule("universo");
+    setShowMenu(true);
+  };
+
+  const menuModules = MODULES.filter(
+    (module) => module.id !== "terminador" || ownerState.isOwner,
+  );
 
   return (
     <>
@@ -85,7 +217,24 @@ export function Shell() {
       <div className="hbg-shell">
         {/* Top bar */}
         <header className="hbg-topbar">
-          <span className="hbg-logo">UNIVERSO HBG</span>
+          <span
+            className="hbg-logo"
+            onPointerDown={handleLogoPointerDown}
+            onPointerUp={handleLogoPointerUp}
+            onPointerCancel={cancelLogoPress}
+            onPointerLeave={cancelLogoPress}
+            onContextMenu={(event) => event.preventDefault()}
+            style={
+              {
+                userSelect: "none",
+                WebkitUserSelect: "none",
+                WebkitTouchCallout: "none",
+                touchAction: "manipulation",
+              } as CSSProperties
+            }
+          >
+            UNIVERSO HBG
+          </span>
           {!showMenu && (
             <button
               className="hbg-mobile-back"
@@ -99,13 +248,26 @@ export function Shell() {
             {config.icon} {config.label}
           </span>
           <div className="hbg-topbar-status">
+            {ownerState.isOwner && (
+              <button
+                className="hbg-btn hbg-btn-ghost"
+                onClick={handleLock}
+                style={{ minHeight: 30, padding: "4px 9px", fontSize: 9 }}
+              >
+                BLOQUEAR
+              </button>
+            )}
             <div className="hbg-status-dot" />
             <Clock />
           </div>
         </header>
 
         {/* Sidebar (solo computadora) */}
-        <Sidebar active={activeModule} onSelect={handleSelect} />
+        <Sidebar
+          active={safeActiveModule}
+          isOwner={ownerState.isOwner}
+          onSelect={handleSelect}
+        />
 
         {/* Menú de botones (solo teléfono) */}
         {showMenu && (
@@ -132,12 +294,8 @@ export function Shell() {
                 </div>
               </button>
             ))}
-            <div
-              className="hbg-version"
-              onClick={handleFooterClick}
-              style={{ textAlign: "center", padding: "12px 0", userSelect: "none" }}
-            >
-              {adminUnlocked ? "⚙ MODO ADMIN" : "HBG CORE v1.0.0"}
+            <div className="hbg-version" style={{ textAlign: "center", padding: "12px 0" }}>
+              HBG CORE v1.0.0
             </div>
           </div>
         )}
@@ -145,10 +303,24 @@ export function Shell() {
         {/* Módulo abierto */}
         <main className={`hbg-main ${showMenu ? "mobile-hidden" : ""}`}>
           <div className="hbg-panel">
-            <ModulePanel module={activeModule} />
+            <ModulePanel
+              module={activeModule}
+              isOwner={ownerState.isOwner}
+              checking={ownerState.checking}
+            />
           </div>
         </main>
       </div>
+      {ownerGateOpen && (
+        <OwnerGate
+          onCancel={() => setOwnerGateOpen(false)}
+          onSuccess={() => {
+            setOwnerGateOpen(false);
+            hbgCore.setModule("terminador");
+            setShowMenu(false);
+          }}
+        />
+      )}
     </>
   );
 }
