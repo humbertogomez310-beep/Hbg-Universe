@@ -30,7 +30,8 @@ app.use(
 );
 const allowedOrigins = new Set(
   [process.env.REPLIT_DEV_DOMAIN, ...(process.env.REPLIT_DOMAINS ?? "").split(",")]
-    .filter(Boolean),
+      .filter((d): d is string => Boolean(d))
+    .flatMap((d) => [d, "https://" + d]),
 );
 
 app.use(
