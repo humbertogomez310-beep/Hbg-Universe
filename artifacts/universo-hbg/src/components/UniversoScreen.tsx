@@ -37,7 +37,7 @@ export function UniversoScreen({ currentApp, appColor, mood, projectData }: Univ
           <div className="hbg-card">
             <div className="section-title">// aplicaciones instaladas</div>
             <div className="hbg-list" style={{ gap: 6 }}>
-              {MODULES.map((mod) => {
+              {MODULES.filter((mod) => mod.id !== "terminador").map((mod) => {
                 const status = APP_STATUS[mod.id];
                 const isCurrent = mod.id === currentApp;
                 return (
