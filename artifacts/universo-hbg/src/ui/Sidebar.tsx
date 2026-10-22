@@ -1,15 +1,30 @@
+import { useState } from "react";
 import { MODULES, type ModuleId } from "../core/hbgCore";
 
 interface SidebarProps {
   active: ModuleId;
-  isOwner: boolean;
   onSelect: (id: ModuleId) => void;
 }
 
-export function Sidebar({ active, isOwner, onSelect }: SidebarProps) {
-  const visibleModules = MODULES.filter(
-    (module) => module.id !== "terminador" || isOwner,
-  );
+// Public modules — Terminador is admin-only, hidden from users
+const PUBLIC_MODULES: ModuleId[] = ["universo", "instinto", "vibra"];
+
+export function Sidebar({ active, onSelect }: SidebarProps) {
+  const [footerClicks, setFooterClicks] = useState(0);
+  const [adminUnlocked, setAdminUnlocked] = useState(false);
+
+  const handleFooterClick = () => {
+    const next = footerClicks + 1;
+    setFooterClicks(next);
+    if (next >= 5) {
+      setAdminUnlocked(true);
+      setFooterClicks(0);
+    }
+  };
+
+  const visibleModules = adminUnlocked
+    ? MODULES
+    : MODULES.filter((m) => PUBLIC_MODULES.includes(m.id));
 
   return (
     <nav className="hbg-sidebar">
@@ -34,10 +49,10 @@ export function Sidebar({ active, isOwner, onSelect }: SidebarProps) {
         ))}
       </div>
 
-      <div className="hbg-sidebar-footer">
+      <div className="hbg-sidebar-footer" onClick={handleFooterClick} style={{ cursor: "default", userSelect: "none" }}>
         <div className="hbg-version">HBG CORE v1.0.0</div>
         <div className="hbg-version" style={{ marginTop: 2 }}>
-          SISTEMA ACTIVO
+          {adminUnlocked ? "⚙ MODO ADMIN" : "SISTEMA ACTIVO"}
         </div>
       </div>
     </nav>

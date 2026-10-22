@@ -1,2 +1,1 @@
 - [Ejecución HBG Core](hbg-core-execution.md) — las órdenes entre módulos deben pasar por un registro único y poder esperar a que la app destino se monte.
-- [Entorno de build Vite](vite-build-environment.md) — los builds estáticos del monorepo no reciben necesariamente `PORT` ni `BASE_PATH` de los workflows.

@@ -339,7 +339,7 @@ export function UniversoModule() {
         <div>
           <div className="section-title">// node manager — red en tiempo real</div>
           <div className="hbg-grid hbg-grid-4" style={{ gap: 10, marginBottom: 20 }}>
-            {MODULES.filter((mod) => mod.id !== "terminador").map((mod) => {
+            {MODULES.map((mod) => {
               const node = nodes[mod.id];
               return (
                 <div key={mod.id} className="hbg-card hbg-card-accent" style={{ "--card-color": node.connected ? mod.color : "var(--text-muted)", cursor: mod.id !== "universo" ? "pointer" : "default" } as React.CSSProperties} onClick={() => mod.id !== "universo" && hbgCore.setModule(mod.id)}>

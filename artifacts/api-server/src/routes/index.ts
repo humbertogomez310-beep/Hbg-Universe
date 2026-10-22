@@ -3,7 +3,6 @@ import healthRouter from "./health";
 import authRouter from "./auth";
 import auditRouter from "./audit";
 import registryRouter from "./registry";
-import terminadorRouter from "./terminador";
 
 const router: IRouter = Router();
 
@@ -11,7 +10,6 @@ router.use(healthRouter);
 router.use(authRouter);
 router.use(auditRouter);
 router.use(registryRouter);
-router.use(terminadorRouter);
 // Code Tools remain deliberately unmounted until HBG Authority is operationally
 // verified. Do not mount the tools router as part of routine integration work.
 

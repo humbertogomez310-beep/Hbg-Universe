@@ -1,4 +1,4 @@
-import { Router, type IRouter, type Request, type Response } from "express";
+import { Router, type IRouter } from "express";
 import { and, eq } from "drizzle-orm";
 import { db, hbgUsers } from "@workspace/db";
 import {
@@ -17,81 +17,6 @@ import {
 import { recordAudit } from "../lib/audit";
 
 const router: IRouter = Router();
-const LOGIN_FAILURE_WINDOW_MS = 15 * 60 * 1000;
-const MAX_LOGIN_FAILURES = 5;
-
-interface LoginFailureState {
-  failures: number;
-  inFlight: number;
-  windowStartedAt: number;
-}
-
-const loginFailuresByIp = new Map<string, LoginFailureState>();
-
-function clearExpiredLoginFailures(now: number): void {
-  for (const [ip, state] of loginFailuresByIp) {
-    if (now - state.windowStartedAt >= LOGIN_FAILURE_WINDOW_MS) {
-      if (state.inFlight === 0) {
-        loginFailuresByIp.delete(ip);
-      } else {
-        state.failures = 0;
-        state.windowStartedAt = now;
-      }
-    }
-  }
-}
-
-function reserveLoginAttempt(
-  ip: string,
-  now: number,
-): LoginFailureState | undefined {
-  clearExpiredLoginFailures(now);
-  const existing = loginFailuresByIp.get(ip);
-  const state =
-    existing && now - existing.windowStartedAt < LOGIN_FAILURE_WINDOW_MS
-      ? existing
-      : { failures: 0, inFlight: 0, windowStartedAt: now };
-  if (state.failures + state.inFlight >= MAX_LOGIN_FAILURES) return undefined;
-  state.inFlight += 1;
-  loginFailuresByIp.set(ip, state);
-  return state;
-}
-
-function completeLoginAttempt(
-  ip: string,
-  state: LoginFailureState,
-  outcome: "failure" | "success" | "aborted",
-): void {
-  state.inFlight = Math.max(0, state.inFlight - 1);
-  if (outcome === "failure") state.failures += 1;
-  if (outcome === "success") state.failures = 0;
-  if (state.inFlight === 0 && state.failures === 0) {
-    loginFailuresByIp.delete(ip);
-  } else {
-    loginFailuresByIp.set(ip, state);
-  }
-}
-
-async function respondLoginRateLimited(
-  req: Request,
-  res: Response,
-): Promise<void> {
-  try {
-    await recordAudit({
-      action: "auth.login",
-      resource: "hbg-auth",
-      result: "failure",
-      errorCode: "TOO_MANY_ATTEMPTS",
-    });
-  } catch (error) {
-    req.log.error({ err: error }, "Unable to audit blocked HBG login attempt");
-  }
-  res.status(429).json({
-    success: false,
-    error: "Demasiados intentos. Espera unos minutos.",
-    code: "TOO_MANY_ATTEMPTS",
-  });
-}
 
 router.get("/auth/me", (req, res) => {
   if (!req.hbgAuth) {
@@ -113,18 +38,6 @@ router.get("/auth/me", (req, res) => {
 });
 
 router.post("/auth/login", async (req, res) => {
-  const loginIp = req.ip || "unknown";
-  const now = Date.now();
-  clearExpiredLoginFailures(now);
-  const currentAttempts = loginFailuresByIp.get(loginIp);
-  if (
-    currentAttempts &&
-    currentAttempts.failures + currentAttempts.inFlight >= MAX_LOGIN_FAILURES
-  ) {
-    await respondLoginRateLimited(req, res);
-    return;
-  }
-
   const body = (req.body ?? {}) as Record<string, unknown>;
   const invalidAuthorityField = rejectClientAuthorityFields(body);
   if (invalidAuthorityField) {
@@ -142,13 +55,6 @@ router.post("/auth/login", async (req, res) => {
     return;
   }
 
-  const reservedAttempt = reserveLoginAttempt(loginIp, Date.now());
-  if (!reservedAttempt) {
-    await respondLoginRateLimited(req, res);
-    return;
-  }
-  let attemptReserved = true;
-
   try {
     const users = await db
       .select()
@@ -163,8 +69,6 @@ router.post("/auth/login", async (req, res) => {
       Boolean(user?.credentialHash) &&
       secretsEqual(hashSecret(credential), user?.credentialHash ?? "");
     if ((!validBootstrap && !validStored) || (user && user.role === "system")) {
-      completeLoginAttempt(loginIp, reservedAttempt, "failure");
-      attemptReserved = false;
       await recordAudit({
         actorUserId: user?.id,
         action: "auth.login",
@@ -199,16 +103,11 @@ router.post("/auth/login", async (req, res) => {
       result: "success",
       metadata: { username: owner.username },
     });
-    completeLoginAttempt(loginIp, reservedAttempt, "success");
-    attemptReserved = false;
     res.json({
       success: true,
       user: { id: owner.id, username: owner.username, role: owner.role },
     });
   } catch (error) {
-    if (attemptReserved) {
-      completeLoginAttempt(loginIp, reservedAttempt, "aborted");
-    }
     req.log.error({ err: error }, "HBG auth login failed");
     res.status(503).json({
       success: false,

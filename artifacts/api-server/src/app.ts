@@ -7,7 +7,6 @@ import { logger } from "./lib/logger";
 import { authMiddleware } from "./middlewares/authMiddleware";
 
 const app: Express = express();
-app.set("trust proxy", 1);
 
 app.use(
   pinoHttp({
@@ -30,8 +29,7 @@ app.use(
 );
 const allowedOrigins = new Set(
   [process.env.REPLIT_DEV_DOMAIN, ...(process.env.REPLIT_DOMAINS ?? "").split(",")]
-      .filter((d): d is string => Boolean(d))
-    .flatMap((d) => [d, "https://" + d]),
+    .filter(Boolean),
 );
 
 app.use(
