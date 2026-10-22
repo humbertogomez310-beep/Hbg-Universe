@@ -126,7 +126,7 @@ export function ShareEngine({
         exported_from: appName,
         timestamp: new Date().toISOString(),
         preferences: { mood: mood ?? "neutral", tema: "cyberpunk" },
-        modulos_instalados: ["universo", "instinto", "vibra", "terminador"],
+        modulos_instalados: ["universo", "instinto", "vibra"],
         ...projectData,
       },
       "universo_hbg_backup.json"
