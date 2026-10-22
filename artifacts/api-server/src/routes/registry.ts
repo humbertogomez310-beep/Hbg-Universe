@@ -28,7 +28,9 @@ async function getRegistryView() {
 
 router.get("/registry", async (req, res) => {
   try {
-    const applications = await getRegistryView();
+        const applications = (await getRegistryView()).filter(
+      (application) => application.restrictedCapabilities.length === 0,
+    );
     res.json({ success: true, applications });
   } catch (error) {
     req.log.error({ err: error }, "Application registry read failed");

@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { UniversoScreen } from "../components/UniversoScreen";
 import { hbgCore, type HBGActionName, type HBGActionResult } from "../core/hbgCore";
+import { TerminadorApps } from "./terminador-apps";
+type ViewMode = "dashboard" | "apps" | "recursos" | "automatizaciones" | "cronjobs" | "logs" | "salud" | "universo";
 
-type ViewMode = "dashboard" | "recursos" | "automatizaciones" | "cronjobs" | "logs" | "salud" | "universo";
 type HealthLevel = "excellent" | "warning" | "critical";
 type Priority = "alta" | "media" | "baja";
 
@@ -351,7 +352,7 @@ export function TerminadorModule() {
   const filteredCrons = crons.filter((c) => cronFilter === "todas" || c.frequency === cronFilter);
 
   const NAV_ITEMS: { id: ViewMode; label: string }[] = [
-    { id: "dashboard", label: "DASHBOARD" }, { id: "recursos", label: "RECURSOS" },
+    { id: "dashboard", label: "DASHBOARD" }, { id: "apps", label: "APPS" }, { id: "recursos", label: "RECURSOS" },
     { id: "automatizaciones", label: "AUTOMATIZACIONES" }, { id: "cronjobs", label: "CRON JOBS" },
     { id: "logs", label: "LOGS" }, { id: "salud", label: "SALUD" }, { id: "universo", label: "UNIVERSO HBG" },
   ];
@@ -698,7 +699,7 @@ export function TerminadorModule() {
           </div>
         </div>
       )}
-
+{view === "apps" && <TerminadorApps />}
       {/* UNIVERSO HBG */}
       {view === "universo" && (
         <UniversoScreen currentApp="terminador" appColor="var(--neon-green)" />

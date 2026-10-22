@@ -14,6 +14,7 @@ export type HBGPermission =
   | "universe.read"
   | "core.action.execute"
   | "terminador.use"
+  | "terminador.manage"
   | "terminador.develop"
   | "universe.code.inspect"
   | "universe.code.modify"
@@ -47,10 +48,11 @@ const ROLE_PERMISSIONS: Record<HBGRole, ReadonlySet<HBGPermission>> = {
     "universe.read",
     "core.action.execute",
     "terminador.use",
+      "terminador.manage",
     "universe.audit.read",
     "universe.registry.read",
   ]),
-  user: new Set(["universe.read", "core.action.execute", "terminador.use"]),
+    user: new Set(["universe.read", "core.action.execute"]),
   system: new Set(["universe.read", "core.action.execute"]),
 };
 
