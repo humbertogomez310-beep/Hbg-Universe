@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request } from "express";
 import { and, eq } from "drizzle-orm";
 import { db, hbgUsers } from "@workspace/db";
 import {
@@ -17,6 +17,36 @@ import {
 import { recordAudit } from "../lib/audit";
 
 const router: IRouter = Router();
+
+// Límite de intentos fallidos de login: 5 por visitante (IP) cada 15 minutos.
+// Vive en memoria: se reinicia si el servidor se reinicia.
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_FAILURES = 5;
+const loginFailures = new Map<string, { count: number; resetAt: number }>();
+
+function loginKey(req: Request): string {
+  return req.ip ?? "desconocido";
+}
+
+function pruneLoginFailures(now: number): void {
+  for (const [key, entry] of loginFailures) {
+    if (entry.resetAt <= now) loginFailures.delete(key);
+  }
+}
+
+function isLoginBlocked(key: string, now: number): boolean {
+  const entry = loginFailures.get(key);
+  return Boolean(entry && entry.resetAt > now && entry.count >= LOGIN_MAX_FAILURES);
+}
+
+function registerLoginFailure(key: string, now: number): void {
+  const entry = loginFailures.get(key);
+  if (!entry || entry.resetAt <= now) {
+    loginFailures.set(key, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
+    return;
+  }
+  entry.count += 1;
+}
 
 router.get("/auth/me", (req, res) => {
   if (!req.hbgAuth) {
@@ -55,6 +85,32 @@ router.post("/auth/login", async (req, res) => {
     return;
   }
 
+  const attemptKey = loginKey(req);
+  const now = Date.now();
+  pruneLoginFailures(now);
+  if (isLoginBlocked(attemptKey, now)) {
+    try {
+      await recordAudit({
+        action: "auth.login",
+        resource: "hbg-auth",
+        result: "failure",
+        errorCode: "TOO_MANY_ATTEMPTS",
+        metadata: { username },
+      });
+    } catch (error) {
+      req.log.error({ err: error }, "Audit write failed for blocked login");
+    }
+    const blockedEntry = loginFailures.get(attemptKey);
+    const retryAfter = Math.max(1, Math.ceil(((blockedEntry?.resetAt ?? now) - now) / 1000));
+    res.setHeader("Retry-After", String(retryAfter));
+    res.status(429).json({
+      success: false,
+      error: "Demasiados intentos. Espera unos minutos.",
+      code: "TOO_MANY_ATTEMPTS",
+    });
+    return;
+  }
+
   try {
     const users = await db
       .select()
@@ -68,13 +124,21 @@ router.post("/auth/login", async (req, res) => {
     const validStored =
       Boolean(user?.credentialHash) &&
       secretsEqual(hashSecret(credential), user?.credentialHash ?? "");
-    if ((!validBootstrap && !validStored) || (user && user.role === "system")) {
+    // La clave de dueño nunca asciende ni reutiliza una identidad "owner" con otro rol.
+    const ownerRoleMismatch =
+      validBootstrap && Boolean(user) && user!.role !== "owner";
+    if (
+      (!validBootstrap && !validStored) ||
+      ownerRoleMismatch ||
+      (user && user.role === "system")
+    ) {
+      registerLoginFailure(attemptKey, now);
       await recordAudit({
         actorUserId: user?.id,
         action: "auth.login",
         resource: "hbg-auth",
         result: "failure",
-        errorCode: "INVALID_CREDENTIALS",
+        errorCode: ownerRoleMismatch ? "OWNER_ROLE_MISMATCH" : "INVALID_CREDENTIALS",
         metadata: { username },
       });
       res.status(401).json({
@@ -94,8 +158,7 @@ router.post("/auth/login", async (req, res) => {
           .returning()
       )[0];
     if (!owner) throw new Error("No se pudo crear la identidad owner.");
-    const token = await createSession(owner.id);
-    setSessionCookie(res, token);
+    // Si la auditoría no se puede escribir, no se abre sesión (falla cerrado).
     await recordAudit({
       actorUserId: owner.id,
       action: "auth.login",
@@ -103,6 +166,9 @@ router.post("/auth/login", async (req, res) => {
       result: "success",
       metadata: { username: owner.username },
     });
+    const token = await createSession(owner.id);
+    setSessionCookie(res, token);
+    loginFailures.delete(attemptKey);
     res.json({
       success: true,
       user: { id: owner.id, username: owner.username, role: owner.role },
