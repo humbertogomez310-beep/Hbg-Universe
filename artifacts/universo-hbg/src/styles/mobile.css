@@ -1,0 +1,83 @@
+/* ─── Teléfono: menú de tarjetas y barra superior compacta ─── */
+.hbg-topbar-btn {
+  padding: 4px 8px;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.hbg-menu-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.hbg-menu-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  padding: 18px 16px;
+  font-family: inherit;
+  color: inherit;
+  background: var(--bg-card);
+  border: 1px solid var(--border-dim);
+  border-radius: 6px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.hbg-menu-card:hover,
+.hbg-menu-card.active {
+  background: var(--bg-active);
+  border-color: var(--border-active);
+}
+
+.hbg-menu-card .hbg-nav-icon {
+  font-size: 24px;
+}
+
+.hbg-menu-card .hbg-nav-name {
+  font-size: 14px;
+}
+
+.hbg-menu-card .hbg-nav-desc {
+  font-size: 11px;
+  white-space: normal;
+}
+
+.hbg-menu-footer {
+  text-align: center;
+  margin-top: 12px;
+}
+
+@media (max-width: 800px) {
+  .hbg-shell {
+    grid-template-columns: 1fr;
+    height: 100dvh;
+  }
+
+  .hbg-topbar {
+    gap: 8px;
+    padding: 0 12px;
+  }
+
+  .hbg-topbar-divider,
+  .hbg-clock {
+    display: none;
+  }
+
+  .hbg-topbar-module {
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
+  .hbg-main {
+    grid-column: 1;
+  }
+
+  .hbg-panel {
+    padding: 16px 14px;
+  }
+}

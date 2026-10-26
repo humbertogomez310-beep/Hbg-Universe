@@ -1,28 +1,16 @@
-import { useState } from "react";
 import { MODULES, type ModuleId } from "../core/hbgCore";
 
 interface SidebarProps {
   active: ModuleId;
   onSelect: (id: ModuleId) => void;
+  isOwner: boolean;
 }
 
-// Public modules — Terminador is admin-only, hidden from users
+// Módulos públicos. Terminador solo aparece con una sesión de dueño confirmada por el servidor.
 const PUBLIC_MODULES: ModuleId[] = ["universo", "instinto", "vibra"];
 
-export function Sidebar({ active, onSelect }: SidebarProps) {
-  const [footerClicks, setFooterClicks] = useState(0);
-  const [adminUnlocked, setAdminUnlocked] = useState(false);
-
-  const handleFooterClick = () => {
-    const next = footerClicks + 1;
-    setFooterClicks(next);
-    if (next >= 5) {
-      setAdminUnlocked(true);
-      setFooterClicks(0);
-    }
-  };
-
-  const visibleModules = adminUnlocked
+export function Sidebar({ active, onSelect, isOwner }: SidebarProps) {
+  const visibleModules = isOwner
     ? MODULES
     : MODULES.filter((m) => PUBLIC_MODULES.includes(m.id));
 
@@ -49,12 +37,12 @@ export function Sidebar({ active, onSelect }: SidebarProps) {
         ))}
       </div>
 
-      <div className="hbg-sidebar-footer" onClick={handleFooterClick} style={{ cursor: "default", userSelect: "none" }}>
+      <div className="hbg-sidebar-footer" style={{ cursor: "default", userSelect: "none" }}>
         <div className="hbg-version">HBG CORE v1.0.0</div>
         <div className="hbg-version" style={{ marginTop: 2 }}>
-          {adminUnlocked ? "⚙ MODO ADMIN" : "SISTEMA ACTIVO"}
+          {isOwner ? "⚙ MODO ADMIN" : "SISTEMA ACTIVO"}
         </div>
       </div>
     </nav>
   );
-}
+}kll
