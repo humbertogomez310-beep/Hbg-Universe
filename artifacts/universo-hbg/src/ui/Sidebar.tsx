@@ -45,4 +45,4 @@ export function Sidebar({ active, onSelect, isOwner }: SidebarProps) {
       </div>
     </nav>
   );
-}kll
+}

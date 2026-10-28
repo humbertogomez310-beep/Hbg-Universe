@@ -7,41 +7,42 @@ interface ShareEngineProps {
   projectData?: Record<string, unknown>;
 }
 
-function fakeQR(text: string): string {
-  // Returns a simple SVG QR-like visual (decorative)
-  const hash = text.split("").reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 0);
-  const cells: boolean[] = [];
-  for (let i = 0; i < 49; i++) {
-    cells.push(((hash >> (i % 32)) & 1) === 1);
-  }
-  // Always show corner markers
-  const corners = [0, 1, 2, 3, 4, 5, 6, 7, 14, 42, 43, 44, 45, 46, 47, 48];
-  corners.forEach((i) => { cells[i] = true; });
-  const size = 7;
-  const cell = 4;
-  const rects = cells
-    .map((on, i) => {
-      const x = (i % size) * cell;
-      const y = Math.floor(i / size) * cell;
-      return on ? `<rect x="${x}" y="${y}" width="${cell - 0.5}" height="${cell - 0.5}" rx="0.5"/>` : "";
-    })
-    .join("");
-  return `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${size * cell} ${size * cell}'><rect width='100%' height='100%' fill='%230a0f1a'/><g fill='%2300e5ff'>${rects}</g></svg>`;
+// Dirección pública de la app. Los enlaces que se comparten siempre apuntan aquí
+// (la dirección de vista previa de Replit pide iniciar sesión y no sirve para otras personas).
+export const PUBLIC_APP_URL = "https://hbg-universe--humbertogomez31.replit.app";
+
+function qrImageUrl(text: string): string {
+  return `https://api.qrserver.com/v1/create-qr-code/?size=196x196&margin=8&data=${encodeURIComponent(text)}`;
 }
 
 export function ShareEngine({ appName, appColor, mood, projectData }: ShareEngineProps) {
   const [copied, setCopied] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [showQR, setShowQR] = useState(false);
+  const [qrFailed, setQrFailed] = useState(false);
+  // Identificador local de esta sesión. No se valida en el servidor.
+  const [inviteCode] = useState(() => "HBG-" + Math.random().toString(36).substring(2, 8).toUpperCase());
 
-  const shareLink = `https://universohbg.app/${appName.toLowerCase().replace(/ /g, "-")}`;
-  const inviteCode = "HBG-" + Math.random().toString(36).substring(2, 8).toUpperCase();
-  const qrSrc = fakeQR(shareLink + inviteCode);
+  const shareLink = PUBLIC_APP_URL;
+  const shareText = `Mira UNIVERSO HBG: ${shareLink}`;
+  const whatsappHref = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
 
   const copy = (text: string, label: string) => {
     navigator.clipboard.writeText(text).catch(() => {});
     setCopied(label);
     setTimeout(() => setCopied(null), 2000);
+  };
+
+  const nativeShare = async () => {
+    if (typeof navigator.share === "function") {
+      try {
+        await navigator.share({ title: "UNIVERSO HBG", text: "Mira UNIVERSO HBG", url: shareLink });
+        return;
+      } catch {
+        // Si la persona cancela o falla, se copia el enlace como alternativa.
+      }
+    }
+    copy(shareLink, "link");
   };
 
   const exportMoodState = () => {
@@ -62,7 +63,7 @@ export function ShareEngine({ appName, appColor, mood, projectData }: ShareEngin
       exported_from: appName,
       timestamp: new Date().toISOString(),
       preferences: { mood: mood ?? "neutral", tema: "cyberpunk" },
-      modulos_instalados: ["universo", "instinto", "vibra", "terminador"],
+      modulos_instalados: ["universo", "instinto", "vibra"],
       ...projectData,
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -77,37 +78,63 @@ export function ShareEngine({ appName, appColor, mood, projectData }: ShareEngin
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {/* Section 1: Share App */}
       <div className="hbg-card">
-        <div className="section-title">// compartir app</div>
+        <div className="section-title">// compartir aplicación</div>
         <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>ENLACE</div>
             <div style={{ display: "flex", gap: 6 }}>
-              <div style={{ flex: 1, padding: "7px 10px", background: "var(--bg-deep)", border: "1px solid var(--border-dim)", borderRadius: 3, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <div style={{ flex: 1, minWidth: 0, padding: "7px 10px", background: "var(--bg-deep)", border: "1px solid var(--border-dim)", borderRadius: 3, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {shareLink}
               </div>
-              <button className="hbg-btn hbg-btn-ghost" style={{ padding: "7px 10px", fontSize: 10, color: copied === "link" ? "var(--neon-green)" : undefined }} onClick={() => copy(shareLink, "link")}>
+              <button className="hbg-btn hbg-btn-ghost" style={{ padding: "7px 10px", fontSize: 10, color: copied === "link" ? "var(--neon-green)" : undefined }} onClick={() => copy(shareLink, "link")} aria-label="Copiar enlace">
                 {copied === "link" ? "✓" : "⧉"}
               </button>
             </div>
           </div>
-          <button className="hbg-btn hbg-btn-ghost" style={{ flexDirection: "column", gap: 3, padding: "8px 14px" }} onClick={() => setShowQR((v) => !v)}>
-            <span style={{ fontSize: 18 }}>▦</span>
-            <span style={{ fontFamily: "var(--font-mono)", fontSize: 8 }}>QR</span>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+          <button className="hbg-btn hbg-btn-primary w-full" onClick={() => void nativeShare()}>
+            ↗ COMPARTIR (OPCIONES DISPONIBLES DEL SISTEMA)
+          </button>
+          <a className="hbg-btn hbg-btn-ghost w-full" href={whatsappHref} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", textAlign: "center" }}>
+            ✆ ENVIAR POR WHATSAPP
+          </a>
+          <button className="hbg-btn hbg-btn-ghost w-full" onClick={() => { setShowQR((v) => !v); setQrFailed(false); }}>
+            ▦ {showQR ? "OCULTAR QR" : "MOSTRAR QR"}
           </button>
         </div>
+
         {showQR && (
           <div style={{ display: "flex", justifyContent: "center", padding: "12px 0" }}>
-            <img src={qrSrc} width={98} height={98} style={{ imageRendering: "pixelated", border: `2px solid ${appColor}`, borderRadius: 4, boxShadow: `0 0 16px ${appColor}40` }} alt="QR code" />
+            {qrFailed ? (
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", textAlign: "center" }}>
+                No se pudo cargar el QR (requiere internet). Comparte el enlace de arriba.
+              </div>
+            ) : (
+              <img
+                src={qrImageUrl(shareLink)}
+                width={196}
+                height={196}
+                style={{ border: `2px solid ${appColor}`, borderRadius: 4, boxShadow: `0 0 16px ${appColor}40`, background: "#fff" }}
+                alt="Código QR del enlace de UNIVERSO HBG"
+                onError={() => setQrFailed(true)}
+              />
+            )}
           </div>
         )}
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>CÓDIGO DE INVITACIÓN:</span>
+
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "baseline" }}>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>IDENTIFICADOR LOCAL:</span>
           <span
             style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: appColor, cursor: "pointer", borderBottom: `1px dashed ${appColor}` }}
             onClick={() => copy(inviteCode, "code")}
           >
             {copied === "code" ? "✓ COPIADO" : inviteCode}
           </span>
+        </div>
+        <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginTop: 6 }}>
+          No se valida en servidor ni habilita acceso, registro o canje.
         </div>
       </div>
 
@@ -142,7 +169,7 @@ export function ShareEngine({ appName, appColor, mood, projectData }: ShareEngin
       <div className="hbg-card hbg-card-accent" style={{ "--card-color": appColor } as React.CSSProperties}>
         <div className="section-title">// compartir universo completo</div>
         <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginBottom: 10 }}>
-          Exporta todas las preferencias, temas, historial y configuraciones del ecosistema en un archivo universo_hbg_backup.json
+          Exporta preferencias, temas y configuraciones del ecosistema en un archivo universo_hbg_backup.json
         </div>
         <button
           className="hbg-btn hbg-btn-primary w-full"
