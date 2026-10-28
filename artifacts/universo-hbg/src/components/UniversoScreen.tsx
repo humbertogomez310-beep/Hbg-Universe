@@ -8,17 +8,17 @@ interface UniversoScreenProps {
   projectData?: Record<string, unknown>;
 }
 
-const APP_STATUS = {
-  universo: { installed: true, status: "🟢 CONECTADO", statusColor: "var(--neon-green)" },
-  instinto: { installed: true, status: "🟢 CONECTADO", statusColor: "var(--neon-green)" },
-  vibra: { installed: true, status: "🟢 CONECTADO", statusColor: "var(--neon-green)" },
-  terminador: { installed: true, status: "🟢 CONECTADO", statusColor: "var(--neon-green)" },
+const APP_STATUS: Record<ModuleId, { status: string; statusColor: string }> = {
+  universo: { status: "🟢 CONECTADO", statusColor: "var(--neon-green)" },
+  instinto: { status: "🟢 CONECTADO", statusColor: "var(--neon-green)" },
+  vibra: { status: "🟢 CONECTADO", statusColor: "var(--neon-green)" },
+  terminador: { status: "🟢 CONECTADO", statusColor: "var(--neon-green)" },
 };
 
 const AVAILABLE_APPS = [
-  { name: "UNIVERSO HBG Mobile", desc: "Versión para iOS y Android", icon: "📱" },
-  { name: "VIBRA Pro Desktop", desc: "Aplicación de escritorio nativa", icon: "🖥" },
-  { name: "INSTINTO Web Clip", desc: "Widget de notas rápidas", icon: "📎" },
+  { name: "UNIVERSO HBG Móvil", desc: "Versión para iOS y Android", icon: "📱" },
+  { name: "VIBRA Pro Desktop", desc: "Aplicación de escritorio nativo", icon: "🖥" },
+  { name: "Clip web INSTINTO", desc: "Widget de notas rápidas", icon: "📎" },
 ];
 
 export function UniversoScreen({ currentApp, appColor, mood, projectData }: UniversoScreenProps) {
@@ -37,7 +37,7 @@ export function UniversoScreen({ currentApp, appColor, mood, projectData }: Univ
           <div className="hbg-card">
             <div className="section-title">// aplicaciones instaladas</div>
             <div className="hbg-list" style={{ gap: 6 }}>
-              {MODULES.map((mod) => {
+              {MODULES.filter((mod) => mod.id !== "terminador").map((mod) => {
                 const status = APP_STATUS[mod.id];
                 const isCurrent = mod.id === currentApp;
                 return (
