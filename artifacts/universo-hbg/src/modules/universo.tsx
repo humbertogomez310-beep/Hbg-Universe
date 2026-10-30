@@ -33,7 +33,7 @@ const CORE_RESPONSES: Record<string, string[]> = {
   hola: ["Hola. Estoy aquí, siempre activo.", "Bienvenido de nuevo al universo HBG.", "Sistema en línea. ¿Cómo estás hoy?"],
   música: ["Puedo pedirle a Vibra Pro que cambie el modo de reproducción. ¿Qué ánimo tienes?", "¿Quieres que active el Mood Engine de Vibra Pro?", "Recuerdo que la última vez preferiste tracks de 85-90 BPM para este momento del día."],
   nota: ["Instinto está listo para recibir tus ideas. ¿Abrimos el bloc?", "Recuerdo 2 proyectos activos en Instinto. ¿Continuamos con La Voz del Lobo?", "¿Quieres que active el modo inspiración?"],
-  sistema: ["El sistema está operando al 87% de salud. Terminador IA reporta todo estable.", "No hay errores críticos registrados en las últimas 24h.", "Todos los módulos están conectados y respondiendo."],
+  sistema: ["El sistema está operando al 87% de salud. El sistema reporta todo estable.", "No hay errores críticos registrados en las últimas 24h.", "Todos los módulos están conectados y respondiendo."],
   modo: ["¿Qué modo prefieres? Puedo coordinar Vibra y cambiar el ambiente visual de Instinto.", "Activo modo enfoque: Vibra cambiará a 60–90 BPM y Instinto a tema azul.", "¿Modo fiesta o modo trabajo profundo?"],
   default: [
     "Entiendo. Procesa eso y dime qué necesitas.",
@@ -146,7 +146,7 @@ export function UniversoModule() {
   };
 
   const exportUniverse = () => {
-    const data = { version: "1.0.0", timestamp: new Date().toISOString(), preferences: { estado_emocional: mood, tema: "cyberpunk" }, modulos_instalados: ["universo", "instinto", "vibra", "terminador"], historial: { notas: 3, canciones: 6, proyectos: 2 } };
+    const data = { version: "1.0.0", timestamp: new Date().toISOString(), preferences: { estado_emocional: mood, tema: "cyberpunk" }, modulos_instalados: ["universo", "instinto", "vibra"], historial: { notas: 3, canciones: 6, proyectos: 2 } };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -339,7 +339,7 @@ export function UniversoModule() {
         <div>
           <div className="section-title">// node manager — red en tiempo real</div>
           <div className="hbg-grid hbg-grid-4" style={{ gap: 10, marginBottom: 20 }}>
-            {MODULES.map((mod) => {
+            {MODULES.filter((mod) => mod.id !== "terminador").map((mod) => {
               const node = nodes[mod.id];
               return (
                 <div key={mod.id} className="hbg-card hbg-card-accent" style={{ "--card-color": node.connected ? mod.color : "var(--text-muted)", cursor: mod.id !== "universo" ? "pointer" : "default" } as React.CSSProperties} onClick={() => mod.id !== "universo" && hbgCore.setModule(mod.id)}>
@@ -361,7 +361,7 @@ export function UniversoModule() {
             <div style={{ display: "flex", gap: 12 }}><span style={{ color: "var(--text-muted)", minWidth: 44 }}>[NET]</span><span style={{ color: "var(--neon-green)" }}>Share Engine: bus de mensajes activo</span></div>
             <div style={{ display: "flex", gap: 12 }}><span style={{ color: "var(--text-muted)", minWidth: 44 }}>[NODE]</span><span style={{ color: "var(--neon-pink)" }}>VIBRA PRO → {nodes.vibra.latency}ms → ONLINE</span></div>
             <div style={{ display: "flex", gap: 12 }}><span style={{ color: "var(--text-muted)", minWidth: 44 }}>[NODE]</span><span style={{ color: "var(--neon-cyan)" }}>INSTINTO → {nodes.instinto.latency}ms → ONLINE</span></div>
-            <div style={{ display: "flex", gap: 12 }}><span style={{ color: "var(--text-muted)", minWidth: 44 }}>[NODE]</span><span style={{ color: "var(--neon-green)" }}>TERMINADOR IA → {nodes.terminador.latency}ms → ONLINE</span></div>
+            <div style={{ display: "flex", gap: 12 }}><span style={{ color: "var(--text-muted)", minWidth: 44 }}>[NODE]</span><span style={{ color: "var(--neon-green)" }}>HBG CORE → LOCAL → ONLINE</span></div>
           </div>
         </div>
       )}
