@@ -1,4 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import type { Logger } from "pino";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import {
@@ -34,6 +35,7 @@ declare global {
   namespace Express {
     interface Request {
       hbgAuth?: HBGAuthContext;
+      log: Logger;
     }
   }
 }
@@ -187,9 +189,7 @@ async function loadContext(req: Request): Promise<HBGAuthContext | undefined> {
   const role = roleOf(row.user);
   if (!role) return undefined;
 
-  const developmentToken = req.cookies?.[
-    DEVELOPMENT_COOKIE
-  ] as string | undefined;
+  const developmentToken = req.cookies?.[DEVELOPMENT_COOKIE] as string | undefined;
   let developmentSessionExpiresAt: Date | undefined;
   let isDevelopment = false;
   if (developmentToken) {
@@ -294,8 +294,7 @@ export function requireDevelopmentPermission(
 }
 
 export function bootstrapCredential(): string | undefined {
-  const credential =
-    process.env.HBG_OWNER_SECRET ?? process.env.HBG_OWNER_TOKEN;
+  const credential = process.env.HBG_OWNER_SECRET ?? process.env.HBG_OWNER_TOKEN;
   return credential && credential.length >= 16 ? credential : undefined;
 }
 
