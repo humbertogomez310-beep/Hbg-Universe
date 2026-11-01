@@ -325,6 +325,12 @@ export function VibraModule() {
         await playTrack(tracks[idx - 1].id);
         return result(audioRef.current?.paused === false, { track: tracks[idx - 1] }, "No se pudo iniciar la canción anterior");
       }),
+      hbgCore.registerAction("music.mood", (payload) => {
+        const mood = MOODS.find(({ mode }) => mode === payload?.mode);
+        if (!mood) return result(false, undefined, "El modo de ánimo no es válido");
+        setActiveMode(mood.mode);
+        return result(true, { mode: mood.mode });
+      }),
       hbgCore.registerAction("music.search", (payload) => {
         const query = String(payload?.query ?? "").trim().toLowerCase();
         const matches = tracks.filter((t) => `${t.title} ${t.artist} ${t.album}`.toLowerCase().includes(query));

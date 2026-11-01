@@ -7,6 +7,7 @@ export type HBGActionName =
   | "music.previous"
   | "music.search"
   | "music.playTrack"
+  | "music.mood"
   | "music.volume"
   | "music.favorite"
   | "music.playlist"
