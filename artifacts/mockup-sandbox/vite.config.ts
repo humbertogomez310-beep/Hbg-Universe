@@ -1,4 +1,3 @@
-
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -6,14 +5,15 @@ import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 import { mockupPreviewPlugin } from "./mockupPreviewPlugin";
 
-const rawPort = process.env.PORT || "5173";
+const rawPort = process.env.PORT ?? "5173";
 const port = Number(rawPort);
 
 if (!Number.isInteger(port) || port <= 0 || port > 65535) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-const basePath = process.env.BASE_PATH || "/";
+const rawBasePath = process.env.BASE_PATH ?? "/";
+const basePath = rawBasePath === "" ? "/" : rawBasePath.startsWith("/") ? rawBasePath : `/${rawBasePath}`;
 
 export default defineConfig({
   base: basePath,
