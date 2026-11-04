@@ -8,7 +8,6 @@ export type HBGActionName =
   | "music.search"
   | "music.mood"
   | "music.playTrack"
-  | "music.mood"
   | "music.volume"
   | "music.voiceCapture"
   | "music.direct"
