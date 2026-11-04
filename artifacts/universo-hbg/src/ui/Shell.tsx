@@ -5,6 +5,7 @@ import { UniversoModule } from "../modules/universo";
 import { InstintoModule } from "../modules/instinto";
 import { VibraModule } from "../modules/vibra";
 import { TerminadorModule } from "../modules/terminador";
+import { VoiceCommandBar } from "../voice/VoiceCommandBar";
 
 function Clock() {
   const [time, setTime] = useState(new Date());
@@ -78,10 +79,14 @@ export function Shell() {
         {/* Main */}
         <main className="hbg-main">
           <div className="hbg-panel">
-            <ModulePanel module={activeModule} />
+            <div style={{ display: activeModule === "vibra" ? "block" : "none" }}>
+              <VibraModule />
+            </div>
+            {activeModule !== "vibra" && <ModulePanel module={activeModule} />}
           </div>
         </main>
       </div>
+      <VoiceCommandBar accentColor={config.color} />
     </>
   );
 }

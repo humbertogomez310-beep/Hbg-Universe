@@ -9,6 +9,10 @@ export type HBGActionName =
   | "music.playTrack"
   | "music.mood"
   | "music.volume"
+  | "music.voiceCapture"
+  | "music.direct"
+  | "music.autoDj"
+  | "music.party"
   | "music.favorite"
   | "music.playlist"
   | "universe.navigate";

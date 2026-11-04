@@ -23,9 +23,11 @@ interface SpeechRecognitionLike {
   interimResults: boolean;
   start: () => void;
   stop: () => void;
+  abort: () => void;
   onresult: ((event: SpeechRecognitionEventLike) => void) | null;
   onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
   onend: (() => void) | null;
+  onstart: (() => void) | null;
 }
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
@@ -42,6 +44,7 @@ export interface UseVoiceCaptureResult {
   error: string | null;
   start: () => void;
   stop: () => void;
+  cancel: () => void;
 }
 
 function getSpeechRecognitionCtor(): SpeechRecognitionConstructor | null {
@@ -61,6 +64,8 @@ export function useVoiceCapture(onResult: (text: string) => void, lang = "es-ES"
   const [error, setError] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const onResultRef = useRef(onResult);
+  const captureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const discardResultRef = useRef(false);
   onResultRef.current = onResult;
 
   const Ctor = getSpeechRecognitionCtor();
@@ -76,14 +81,28 @@ export function useVoiceCapture(onResult: (text: string) => void, lang = "es-ES"
       recognition.onresult = (event) => {
         const transcript = event.results[0]?.[0]?.transcript ?? "";
         setListening(false);
-        if (transcript) onResultRef.current(transcript);
+        if (captureTimeoutRef.current) clearTimeout(captureTimeoutRef.current);
+        if (transcript && !discardResultRef.current) onResultRef.current(transcript);
       };
       recognition.onerror = (event) => {
         setListening(false);
-        setError(mapError(event.error));
+        if (captureTimeoutRef.current) clearTimeout(captureTimeoutRef.current);
+        if (!discardResultRef.current) setError(mapError(event.error));
       };
       recognition.onend = () => {
         setListening(false);
+        if (captureTimeoutRef.current) clearTimeout(captureTimeoutRef.current);
+      };
+      recognition.onstart = () => {
+        captureTimeoutRef.current = setTimeout(() => {
+          discardResultRef.current = true;
+          setError("Se agotó el tiempo de captura de voz.");
+          try {
+            recognition.abort();
+          } catch {
+            setListening(false);
+          }
+        }, 15000);
       };
       recognitionRef.current = recognition;
     }
@@ -97,11 +116,13 @@ export function useVoiceCapture(onResult: (text: string) => void, lang = "es-ES"
     }
     const recognition = getRecognition();
     if (!recognition) return;
+    discardResultRef.current = false;
     setError(null);
     try {
       recognition.start();
       setListening(true);
     } catch {
+      if (captureTimeoutRef.current) clearTimeout(captureTimeoutRef.current);
       setListening(false);
       setError("No se pudo iniciar el reconocimiento de voz.");
     }
@@ -117,12 +138,29 @@ export function useVoiceCapture(onResult: (text: string) => void, lang = "es-ES"
     }
   }, []);
 
+  const cancel = useCallback(() => {
+    if (captureTimeoutRef.current) clearTimeout(captureTimeoutRef.current);
+    discardResultRef.current = true;
+    const recognition = recognitionRef.current;
+    if (!recognition) {
+      setListening(false);
+      return;
+    }
+    try {
+      recognition.abort();
+      setListening(false);
+    } catch {
+      setListening(false);
+    }
+  }, []);
+
   useEffect(() => {
     return () => {
+      if (captureTimeoutRef.current) clearTimeout(captureTimeoutRef.current);
       const recognition = recognitionRef.current;
       if (recognition) {
         try {
-          recognition.stop();
+          recognition.abort();
         } catch {
           /* already stopped */
         }
@@ -133,5 +171,5 @@ export function useVoiceCapture(onResult: (text: string) => void, lang = "es-ES"
     };
   }, []);
 
-  return { supported, listening, error, start, stop };
+  return { supported, listening, error, start, stop, cancel };
 }
