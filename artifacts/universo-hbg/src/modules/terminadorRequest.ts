@@ -19,6 +19,33 @@ export type TerminadorApiRequest = <T>(
   init?: RequestInit,
 ) => Promise<TerminadorApiResult<T>>;
 
+export type TerminadorAuthorizationState =
+  | "pending"
+  | "approved"
+  | "denied"
+  | "revoked"
+  | "expired"
+  | "consumed";
+
+export interface TerminadorAuthorization {
+  id: string;
+  operation: string;
+  resource: string;
+  applicationId: string;
+  workspace: string;
+  parameters: Record<string, unknown>;
+  requestedPermissions: string[];
+  contentHash: string | null;
+  proposalHash: string;
+  reason: string;
+  state: TerminadorAuthorizationState;
+  createdAt: string;
+  expiresAt: string;
+  approvedAt: string | null;
+  revokedAt: string | null;
+  consumedAt: string | null;
+}
+
 export async function requestTerminadorApi<T>(
   path: string,
   init?: RequestInit,
@@ -51,6 +78,136 @@ export async function requestTerminadorApi<T>(
   } catch {
     return { ok: false, status: 0 };
   }
+}
+
+function authorizationFrom(value: unknown): TerminadorAuthorization | null {
+  if (typeof value !== "object" || value === null || !("authorization" in value)) {
+    return null;
+  }
+  const authorization = (value as { authorization?: unknown }).authorization;
+  if (
+    typeof authorization !== "object" ||
+    authorization === null ||
+    !("id" in authorization) ||
+    typeof authorization.id !== "string" ||
+    !("state" in authorization) ||
+    !["pending", "approved", "denied", "revoked", "expired", "consumed"].includes(
+      String(authorization.state),
+    )
+  ) {
+    return null;
+  }
+  return authorization as TerminadorAuthorization;
+}
+
+function authorizationsFrom(value: unknown): TerminadorAuthorization[] | null {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("authorizations" in value) ||
+    !Array.isArray(value.authorizations)
+  ) {
+    return null;
+  }
+  const authorizations: TerminadorAuthorization[] = [];
+  for (const item of value.authorizations) {
+    const authorization = authorizationFrom({ authorization: item });
+    if (!authorization) return null;
+    authorizations.push(authorization);
+  }
+  return authorizations;
+}
+
+export async function listTerminadorAuthorizations(
+  request: TerminadorApiRequest = requestTerminadorApi,
+): Promise<TerminadorApiResult<TerminadorAuthorization[]>> {
+  try {
+    const result = await request<unknown>("/terminador/authorizations");
+    if (!result.ok) return result;
+    const authorizations = authorizationsFrom(result.data);
+    return authorizations
+      ? { ok: true, data: authorizations }
+      : { ok: false, status: 502, code: "INVALID_RESPONSE" };
+  } catch {
+    return { ok: false, status: 0, code: "NETWORK_ERROR" };
+  }
+}
+
+async function authorizationRequest(
+  path: string,
+  init: RequestInit,
+  request: TerminadorApiRequest,
+): Promise<TerminadorApiResult<TerminadorAuthorization>> {
+  try {
+    const result = await request<unknown>(path, init);
+    if (!result.ok) return result;
+    const authorization = authorizationFrom(result.data);
+    return authorization
+      ? { ok: true, data: authorization }
+      : { ok: false, status: 502, code: "INVALID_RESPONSE" };
+  } catch {
+    return { ok: false, status: 0, code: "NETWORK_ERROR" };
+  }
+}
+
+export function proposeTerminadorAuthorization(
+  applicationId: string,
+  status: "active" | "disabled",
+  reason: string,
+  request: TerminadorApiRequest = requestTerminadorApi,
+): Promise<TerminadorApiResult<TerminadorAuthorization>> {
+  return authorizationRequest(
+    "/terminador/authorizations",
+    {
+      method: "POST",
+      body: JSON.stringify({ applicationId, status, reason }),
+    },
+    request,
+  );
+}
+
+export function approveTerminadorAuthorization(
+  id: string,
+  request: TerminadorApiRequest = requestTerminadorApi,
+): Promise<TerminadorApiResult<TerminadorAuthorization>> {
+  return authorizationRequest(
+    `/terminador/authorizations/${encodeURIComponent(id)}/approve`,
+    { method: "POST" },
+    request,
+  );
+}
+
+export function revokeTerminadorAuthorization(
+  id: string,
+  request: TerminadorApiRequest = requestTerminadorApi,
+): Promise<TerminadorApiResult<TerminadorAuthorization>> {
+  return authorizationRequest(
+    `/terminador/authorizations/${encodeURIComponent(id)}/revoke`,
+    { method: "POST" },
+    request,
+  );
+}
+
+export function denyTerminadorAuthorization(
+  id: string,
+  request: TerminadorApiRequest = requestTerminadorApi,
+): Promise<TerminadorApiResult<TerminadorAuthorization>> {
+  return authorizationRequest(
+    `/terminador/authorizations/${encodeURIComponent(id)}/deny`,
+    { method: "POST" },
+    request,
+  );
+}
+
+export function refreshTerminadorAuthorization(
+  id: string,
+  request: TerminadorApiRequest = requestTerminadorApi,
+): Promise<TerminadorApiResult<TerminadorAuthorization>> {
+  return authorizationRequest(
+    `/terminador/authorizations/${encodeURIComponent(id)}`,
+    { method: "GET" },
+    request,
+  );
 }
 
 export type TerminadorRequestResult = {
@@ -144,6 +301,14 @@ export async function executeTerminadorRequest(
 ): Promise<TerminadorRequestResult> {
   const action = intent.type === "list_apps" ? "terminador.apps.list" : "terminador.app.status";
 
+  if (intent.type === "set_app_status") {
+    return {
+      status: "blocked",
+      action,
+      message: "Cambio bloqueado: falta una autorización individual server-side de HBG Authority.",
+    };
+  }
+
   let appsResult: TerminadorApiResult<{ applications: TerminadorApplication[] }>;
   try {
     appsResult = await request<{ applications: TerminadorApplication[] }>("/terminador/apps");
@@ -157,64 +322,8 @@ export async function executeTerminadorRequest(
     return { status: "failed", action, message: "El servidor devolvió un registro de apps no válido." };
   }
 
-  if (intent.type === "list_apps") {
-    const summary = applications.length
-      ? applications.map((app) => `${app.name}: ${app.status}`).join(" · ")
-      : "No hay aplicaciones registradas.";
-    return { status: "read", action, message: `Registro real del servidor: ${summary}` };
-  }
-
-  const target = normalize(intent.target);
-  const matches = applications.filter(
-    (app) => normalize(app.id) === target || normalize(app.name) === target,
-  );
-  if (matches.length === 0) {
-    return {
-      status: "needs_context",
-      action,
-      message: `No encontré una app con el nombre o ID exacto "${intent.target}" en el registro.`,
-    };
-  }
-  if (matches.length > 1) {
-    return {
-      status: "needs_context",
-      action,
-      message: `Hay varias apps que coinciden con "${intent.target}"; indica el ID exacto.`,
-    };
-  }
-
-  const application = matches[0];
-  let statusResult: TerminadorApiResult<{
-    success: boolean;
-    changed: boolean;
-    application?: TerminadorApplication;
-  }>;
-  try {
-    statusResult = await request(
-      `/terminador/apps/${encodeURIComponent(application.id)}/status`,
-      {
-        method: "POST",
-        body: JSON.stringify({ status: intent.status }),
-      },
-    );
-  } catch {
-    return { status: "failed", action, message: "No se pudo conectar con el servidor." };
-  }
-  if (!statusResult.ok) return apiFailure(action, statusResult);
-  if (statusResult.data.success !== true || typeof statusResult.data.changed !== "boolean") {
-    return { status: "failed", action, message: "El servidor no confirmó el cambio de estado." };
-  }
-  if (!statusResult.data.changed) {
-    return {
-      status: "read",
-      action,
-      message: `${application.name} ya figura como ${intent.status} en el registro.`,
-    };
-  }
-
-  return {
-    status: "executed",
-    action,
-    message: `El registro del servidor ahora marca ${application.name} como ${intent.status}. Esto no inicia ni detiene el proceso de la app.`,
-  };
+  const summary = applications.length
+    ? applications.map((app) => `${app.name}: ${app.status}`).join(" · ")
+    : "No hay aplicaciones registradas.";
+  return { status: "read", action, message: `Registro real del servidor: ${summary}` };
 }

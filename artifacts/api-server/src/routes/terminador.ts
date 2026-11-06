@@ -1,33 +1,30 @@
 import { Router, type IRouter, type RequestHandler } from "express";
-import { eq } from "drizzle-orm";
-import { db, hbgApplications } from "@workspace/db";
-import { listApplications, getApplication } from "../lib/registry";
+import { randomUUID } from "node:crypto";
+import {
+  isProtectedApplication,
+  listApplications,
+  getApplication,
+} from "../lib/registry";
 import { recordAudit, type AuditInput } from "../lib/audit";
 import {
   hasPermission,
   rejectClientAuthorityFields,
   type HBGPermission,
 } from "../lib/hbgAuth";
+import {
+  approveAuthorization,
+  AuthorizationError,
+  createAuthorizationProposal,
+  denyAuthorization,
+  getAuthorization,
+  listAuthorizations,
+  revokeAuthorization,
+} from "../lib/terminadorAuthorization";
 
 const router: IRouter = Router();
 
 const ALLOWED_STATUSES = ["active", "disabled"] as const;
 type AllowedStatus = (typeof ALLOWED_STATUSES)[number];
-
-const PROTECTED_CAPABILITY = "operator";
-
-const PROTECTED_APP_IDS = new Set(["hbg-auth", "hbg-core"]);
-const PROTECTED_APP_NAMES = new Set(["HBG-AUTH", "HBG CORE"]);
-
-function isProtected(
-  application: { id: string; name: string; capabilities: unknown },
-): boolean {
-  return (
-    PROTECTED_APP_IDS.has(application.id) ||
-    PROTECTED_APP_NAMES.has(application.name.trim().toUpperCase()) ||
-    capabilitiesOf(application.capabilities).includes(PROTECTED_CAPABILITY)
-  );
-}
 
 const SAFE_APP_ID = /^[a-zA-Z0-9_.-]{1,64}$/;
 
@@ -46,6 +43,13 @@ function requireTerminadorPermission(permission: HBGPermission): RequestHandler 
   return async (req, res, next) => {
     const auth = req.hbgAuth;
     if (!auth) {
+      await recordTerminadorAudit(req, {
+        action: "terminador.authorization.denied",
+        resource: req.path,
+        result: "denied",
+        errorCode: "AUTH_REQUIRED",
+        metadata: { method: req.method },
+      });
       res.status(401).json({ success: false, error: "Autenticación requerida.", code: "AUTH_REQUIRED" });
       return;
     }
@@ -53,16 +57,71 @@ function requireTerminadorPermission(permission: HBGPermission): RequestHandler 
       await recordTerminadorAudit(req, {
         actorUserId: auth.user.id,
         action: "terminador.authorization.denied",
-        resource: "terminador",
+        resource: req.path,
         result: "denied",
         errorCode: "FORBIDDEN",
-        metadata: { permission },
+        metadata: { permission, method: req.method },
       });
       res.status(403).json({ success: false, error: "Permiso insuficiente.", code: "FORBIDDEN" });
       return;
     }
     next();
   };
+}
+
+async function runAuthorizationRoute(
+  req: Parameters<RequestHandler>[0],
+  res: Parameters<RequestHandler>[1],
+  action: string,
+  resource: string,
+  operation: () => Promise<unknown>,
+  successStatus = 200,
+): Promise<void> {
+  try {
+    const result = await operation();
+    const response = Array.isArray(result)
+      ? { authorizations: result }
+      : { authorization: result };
+    res.status(successStatus).json({ success: true, ...response });
+  } catch (error) {
+    const auth = req.hbgAuth;
+    const expected = error instanceof AuthorizationError;
+    const errorCode = expected ? error.code : "AUTHORIZATION_SERVICE_UNAVAILABLE";
+    try {
+      await recordAudit({
+        actorUserId: auth?.user.id,
+        action,
+        resource,
+        result: expected ? "denied" : "failure",
+        errorCode,
+        metadata: {
+          sessionId: auth?.sessionTokenHash,
+          developmentSessionId: auth?.developmentSessionTokenHash,
+          proposalId: String(req.params.id ?? ""),
+          operation: "apps.set_status",
+          applicationId:
+            typeof req.body?.applicationId === "string"
+              ? req.body.applicationId
+              : undefined,
+          workspace: "hbg-app-registry",
+        },
+      });
+    } catch (auditError) {
+      req.log.error({ err: auditError, errorCode }, "Authorization denial could not be audited");
+      res.status(503).json({
+        success: false,
+        error: "Auditoría no disponible; la operación permanece bloqueada.",
+        code: "AUDIT_UNAVAILABLE",
+      });
+      return;
+    }
+    if (!expected) req.log.error({ err: error }, "Terminador authorization request failed");
+    res.status(expected ? error.status : 503).json({
+      success: false,
+      error: expected ? error.message : "HBG Authority no está disponible.",
+      code: errorCode,
+    });
+  }
 }
 
 function capabilitiesOf(value: unknown): string[] {
@@ -85,11 +144,132 @@ function view(application: {
     status: application.status,
     capabilities,
     updatedAt: application.updatedAt,
-    protected: isProtected(application),
+    protected: isProtectedApplication(application),
   };
 }
 
 router.use("/terminador", requireTerminadorPermission("terminador.use"));
+
+router.post("/terminador/authorizations", async (req, res) => {
+  const body = req.body;
+  const forbiddenField =
+    typeof body === "object" && body !== null && !Array.isArray(body)
+      ? rejectClientAuthorityFields(body as Record<string, unknown>)
+      : undefined;
+  const allowedFields = new Set(["applicationId", "status", "reason"]);
+  const validShape =
+    typeof body === "object" &&
+    body !== null &&
+    !Array.isArray(body) &&
+    Object.keys(body).every((key) => allowedFields.has(key));
+
+  await runAuthorizationRoute(
+    req,
+    res,
+    "terminador.authorization.proposal.denied",
+    "terminador.authorizations",
+    async () => {
+      if (forbiddenField || !validShape) {
+        throw new AuthorizationError(
+          forbiddenField ?? "La solicitud contiene campos no permitidos.",
+          400,
+          "INVALID_PROPOSAL",
+        );
+      }
+      const input = body as Record<string, unknown>;
+      if (
+        typeof input.applicationId !== "string" ||
+        typeof input.status !== "string" ||
+        typeof input.reason !== "string"
+      ) {
+        throw new AuthorizationError("La propuesta no es válida.", 400, "INVALID_PROPOSAL");
+      }
+      if (input.status !== "active" && input.status !== "disabled") {
+        throw new AuthorizationError("El estado solicitado no es válido.", 400, "INVALID_PROPOSAL");
+      }
+      return createAuthorizationProposal(req.hbgAuth!, {
+        applicationId: input.applicationId,
+        status: input.status,
+        reason: input.reason,
+      });
+    },
+    201,
+  );
+});
+
+router.get("/terminador/authorizations", async (req, res) => {
+  await runAuthorizationRoute(
+    req,
+    res,
+    "terminador.authorization.list.denied",
+    "terminador.authorizations",
+    () => listAuthorizations(req.hbgAuth!),
+  );
+});
+
+router.get("/terminador/authorizations/:id", async (req, res) => {
+  await runAuthorizationRoute(
+    req,
+    res,
+    "terminador.authorization.read.denied",
+    String(req.params.id ?? "terminador.authorizations"),
+    () => {
+      const id = String(req.params.id ?? "");
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+        throw new AuthorizationError("Identificador de propuesta no válido.", 400, "INVALID_PROPOSAL_ID");
+      }
+      return getAuthorization(req.hbgAuth!, id);
+    },
+  );
+});
+
+router.post("/terminador/authorizations/:id/approve", async (req, res) => {
+  await runAuthorizationRoute(
+    req,
+    res,
+    "terminador.authorization.approval.denied",
+    String(req.params.id ?? "terminador.authorizations"),
+    () => {
+      const id = String(req.params.id ?? "");
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+        throw new AuthorizationError("Identificador de propuesta no válido.", 400, "INVALID_PROPOSAL_ID");
+      }
+      return approveAuthorization(req.hbgAuth!, id);
+    },
+  );
+});
+
+router.post("/terminador/authorizations/:id/deny", async (req, res) => {
+  await runAuthorizationRoute(
+    req,
+    res,
+    "terminador.authorization.denial.request.denied",
+    String(req.params.id ?? "terminador.authorizations"),
+    () => {
+      const id = String(req.params.id ?? "");
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+        throw new AuthorizationError("Identificador de propuesta no válido.", 400, "INVALID_PROPOSAL_ID");
+      }
+      return denyAuthorization(req.hbgAuth!, id);
+    },
+  );
+});
+
+router.post("/terminador/authorizations/:id/revoke", async (req, res) => {
+  await runAuthorizationRoute(
+    req,
+    res,
+    "terminador.authorization.revocation.denied",
+    String(req.params.id ?? "terminador.authorizations"),
+    () => {
+      const id = String(req.params.id ?? "");
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+        throw new AuthorizationError("Identificador de propuesta no válido.", 400, "INVALID_PROPOSAL_ID");
+      }
+      return revokeAuthorization(req.hbgAuth!, id);
+    },
+  );
+});
 
 router.get("/terminador/apps", async (req, res) => {
   try {
@@ -140,7 +320,7 @@ router.post(
         return;
       }
 
-      if (isProtected(application)) {
+      if (isProtectedApplication(application)) {
         await recordTerminadorAudit(req, {
           actorUserId,
           action: "terminador.app.status",
@@ -157,37 +337,39 @@ router.post(
         return;
       }
 
-      if (application.status === status) {
-        await recordTerminadorAudit(req, {
+      const operationId = randomUUID();
+      try {
+        await recordAudit({
           actorUserId,
-          action: "terminador.app.status",
+          action: "terminador.app.status.authorization",
           resource: id,
-          result: "success",
-          metadata: { from: application.status, to: status, changed: false },
+          result: "denied",
+          errorCode: "OPERATION_APPROVAL_REQUIRED",
+          metadata: {
+            operationId,
+            requestedStatus: status,
+            currentStatus: application.status,
+          },
         });
-        res.json({ success: true, changed: false, application: view(application) });
+      } catch (error) {
+        req.log.error(
+          { err: error, operationId },
+          "Terminador state change blocked because its denial could not be audited",
+        );
+        res.status(503).json({
+          success: false,
+          error: "Auditoría no disponible; la operación permanece bloqueada.",
+          code: "AUDIT_UNAVAILABLE",
+          operationId,
+        });
         return;
       }
-
-      const updated = await db
-        .update(hbgApplications)
-        .set({ status, updatedAt: new Date() })
-        .where(eq(hbgApplications.id, id))
-        .returning();
-      const next = updated[0];
-      if (!next) {
-        res.status(404).json({ success: false, error: "App no encontrada.", code: "APP_NOT_FOUND" });
-        return;
-      }
-
-      await recordTerminadorAudit(req, {
-        actorUserId,
-        action: "terminador.app.status",
-        resource: id,
-        result: "success",
-        metadata: { from: application.status, to: status },
+      res.status(403).json({
+        success: false,
+        error: "La operación requiere una autorización individual de HBG Authority.",
+        code: "OPERATION_APPROVAL_REQUIRED",
+        operationId,
       });
-      res.json({ success: true, changed: true, application: view(next) });
     } catch (error) {
       req.log.error({ err: error }, "Terminador status change failed");
       await recordTerminadorAudit(req, {

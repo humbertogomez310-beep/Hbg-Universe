@@ -28,6 +28,9 @@ export interface HBGAuthContext {
   role: HBGRole;
   permissions: ReadonlySet<HBGPermission>;
   isDevelopment: boolean;
+  sessionTokenHash: string;
+  sessionExpiresAt: Date;
+  developmentSessionTokenHash?: string;
   developmentSessionExpiresAt?: Date;
 }
 
@@ -198,6 +201,7 @@ async function loadContext(req: Request): Promise<HBGAuthContext | undefined> {
   if (!role) return undefined;
 
   const developmentToken = req.cookies?.[DEVELOPMENT_COOKIE] as string | undefined;
+  let developmentSessionTokenHash: string | undefined;
   let developmentSessionExpiresAt: Date | undefined;
   let isDevelopment = false;
   if (developmentToken) {
@@ -216,6 +220,7 @@ async function loadContext(req: Request): Promise<HBGAuthContext | undefined> {
     const developmentSession = developmentRows[0]?.session;
     if (developmentSession) {
       isDevelopment = true;
+      developmentSessionTokenHash = hashSecret(developmentToken!);
       developmentSessionExpiresAt = developmentSession.expiresAt;
     }
   }
@@ -225,6 +230,9 @@ async function loadContext(req: Request): Promise<HBGAuthContext | undefined> {
     role,
     permissions: permissionsFor(row.user),
     isDevelopment,
+    sessionTokenHash: hashSecret(sessionToken),
+    sessionExpiresAt: row.session.expiresAt,
+    developmentSessionTokenHash,
     developmentSessionExpiresAt,
   };
 }

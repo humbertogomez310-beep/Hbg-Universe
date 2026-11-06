@@ -3,7 +3,9 @@ import { and, eq } from "drizzle-orm";
 import { db, hbgUsers } from "@workspace/db";
 import {
   bootstrapCredential,
+  canStartDevelopmentSession,
   clearAuthCookies,
+  createDevelopmentSession,
   createSession,
   hashSecret,
   isSafeUsername,
@@ -12,6 +14,7 @@ import {
   revokeDevelopmentSession,
   revokeSession,
   secretsEqual,
+  setDevelopmentCookie,
   setSessionCookie,
 } from "../lib/hbgAuth";
 import { recordAudit } from "../lib/audit";
@@ -200,6 +203,70 @@ router.post("/auth/logout", async (req, res) => {
   } catch (error) {
     req.log.error({ err: error }, "HBG auth logout failed");
     res.status(503).json({ success: false, error: "No se pudo cerrar la sesión." });
+  }
+});
+
+router.post("/auth/development/start", requireAuth, async (req, res) => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const forbiddenField = rejectClientAuthorityFields(body);
+  if (forbiddenField) {
+    res.status(400).json({ success: false, error: forbiddenField, code: "FORBIDDEN_FIELD" });
+    return;
+  }
+  const purpose = typeof body.purpose === "string" ? body.purpose.trim() : "";
+  if (!purpose || purpose.length > 160) {
+    res.status(400).json({
+      success: false,
+      error: "El propósito debe tener entre 1 y 160 caracteres.",
+      code: "INVALID_PURPOSE",
+    });
+    return;
+  }
+  if (!canStartDevelopmentSession(req.hbgAuth!.user)) {
+    res.status(403).json({
+      success: false,
+      error: "Solo el OWNER puede iniciar una sesión de desarrollo.",
+      code: "FORBIDDEN",
+    });
+    return;
+  }
+
+  let token: string | undefined;
+  try {
+    const developmentSession = await createDevelopmentSession(
+      req.hbgAuth!.user.id,
+      purpose,
+    );
+    token = developmentSession.token;
+    await recordAudit({
+      actorUserId: req.hbgAuth!.user.id,
+      action: "development.start",
+      resource: "hbg-auth",
+      result: "success",
+      metadata: {
+        purpose,
+        expiresAt: developmentSession.expiresAt.toISOString(),
+      },
+    });
+    setDevelopmentCookie(res, developmentSession.token);
+    res.json({
+      success: true,
+      expiresAt: developmentSession.expiresAt.toISOString(),
+    });
+  } catch (error) {
+    if (token) {
+      try {
+        await revokeDevelopmentSession(token);
+      } catch (revokeError) {
+        req.log.error({ err: revokeError }, "Unable to revoke unaudited development session");
+      }
+    }
+    req.log.error({ err: error }, "Development session start failed");
+    res.status(503).json({
+      success: false,
+      error: "No se pudo iniciar una sesión de desarrollo segura.",
+      code: "DEVELOPMENT_SESSION_UNAVAILABLE",
+    });
   }
 });
 

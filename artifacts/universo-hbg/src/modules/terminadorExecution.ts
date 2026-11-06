@@ -8,7 +8,6 @@ import {
 import {
   executeTerminadorPlan,
   musicActionNameForPlan,
-  TerminadorExecutionLedger,
   TerminadorTaskBlockedError,
   type TerminadorPlan,
   type TerminadorTask,
@@ -19,8 +18,6 @@ type TerminadorCore = Pick<
   typeof hbgCore,
   "dispatchAction" | "getRegisteredActions" | "setModule" | "getContext"
 >;
-
-const EXECUTION_LEDGER = new TerminadorExecutionLedger();
 
 function requestForVoiceAction(action: VoiceAction): {
   name: HBGActionName;
@@ -95,10 +92,8 @@ export async function executeTerminadorPlanWithHBG(
   plan: TerminadorPlan,
   options: {
     request: TerminadorApiRequest;
-    authorized?: boolean;
     signal?: AbortSignal;
     core?: TerminadorCore;
-    ledger?: TerminadorExecutionLedger;
     memory?: TerminadorMemory;
   },
 ): Promise<TerminadorPlan> {
@@ -181,9 +176,7 @@ export async function executeTerminadorPlanWithHBG(
       throw new TerminadorTaskBlockedError("No existe un ejecutor para esta operación.");
     },
     {
-      authorized: options.authorized,
       signal: options.signal,
-      ledger: options.ledger ?? EXECUTION_LEDGER,
     },
   );
 }

@@ -2,7 +2,16 @@ import { useState, useEffect, useRef } from "react";
 import { UniversoScreen } from "../components/UniversoScreen";
 import { hbgCore } from "../core/hbgCore";
 import { TerminadorAppsSection } from "./terminador-apps";
-import { requestTerminadorApi } from "./terminadorRequest";
+import {
+  approveTerminadorAuthorization,
+  denyTerminadorAuthorization,
+  listTerminadorAuthorizations,
+  proposeTerminadorAuthorization,
+  refreshTerminadorAuthorization,
+  requestTerminadorApi,
+  revokeTerminadorAuthorization,
+  type TerminadorAuthorization,
+} from "./terminadorRequest";
 import { TerminadorEngine, createDefaultTerminadorProviders } from "./terminadorEngine";
 import { createTerminadorPlan, type TerminadorPlan, type TerminadorTask } from "./terminadorPlanner";
 import { executeTerminadorPlanWithHBG } from "./terminadorExecution";
@@ -164,6 +173,9 @@ export function TerminadorModule() {
   const [coreInput, setCoreInput] = useState("");
   const [coreBusy, setCoreBusy] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<TerminadorPlan | null>(null);
+  const [serverAuthorizations, setServerAuthorizations] = useState<TerminadorAuthorization[]>([]);
+  const [authorizationBusy, setAuthorizationBusy] = useState<string | null>(null);
+  const [authorizationNotice, setAuthorizationNotice] = useState("");
   const [memoryStatus, setMemoryStatus] = useState("");
   const [terminadorMemory] = useState(() => new TerminadorMemory());
   const memoryFileRef = useRef<HTMLInputElement>(null);
@@ -193,6 +205,23 @@ export function TerminadorModule() {
     }
   }, [terminadorMemory]);
 
+  useEffect(() => {
+    let active = true;
+    void listTerminadorAuthorizations().then((result) => {
+      if (!active) return;
+      if (result.ok) {
+        setServerAuthorizations(result.data);
+      } else if (result.status !== 401 && result.status !== 403) {
+        setAuthorizationNotice(
+          "No se pudo consultar el estado de las autorizaciones en HBG Authority.",
+        );
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [logs]);
 
   useEffect(() => { localStorage.setItem(TASKS_KEY, JSON.stringify(tasks)); }, [tasks]);
@@ -216,10 +245,9 @@ export function TerminadorModule() {
     ]);
   };
 
-  const executePlan = async (plan: TerminadorPlan, authorized = false) => {
+  const executePlan = async (plan: TerminadorPlan) => {
     const result = await executeTerminadorPlanWithHBG(plan, {
       request: requestTerminadorApi,
-      authorized,
       memory: terminadorMemory,
     });
     hbgCore.setContext("terminador.lastPlanResult", {
@@ -238,6 +266,105 @@ export function TerminadorModule() {
       );
     });
     setPendingPlan(null);
+  };
+
+  const proposePlanOperations = async (plan: TerminadorPlan) => {
+    const tasks = plan.tasks.filter(
+      (task) =>
+        task.scope === "authority" &&
+        task.requiredPermission === "terminador.manage",
+    );
+    const applicationsResult =
+      await requestTerminadorApi<{ applications: Array<{ id: string; name: string }> }>(
+        "/terminador/apps",
+      );
+    if (!applicationsResult.ok || !Array.isArray(applicationsResult.data.applications)) {
+      appendCoreMessage(
+        applicationsResult.ok
+          ? "No se pudo determinar de forma segura la aplicación afectada."
+          : applicationsResult.error ?? "HBG Authority no está disponible.",
+        "error",
+      );
+      return;
+    }
+
+    for (const task of tasks) {
+      if (task.operation.type !== "apps.set_status") {
+        appendCoreMessage(
+          "Esta operación todavía no tiene un tipo de propuesta soportado por HBG Authority.",
+          "error",
+        );
+        continue;
+      }
+      const target = task.operation.target.trim().toLocaleLowerCase();
+      const matches = applicationsResult.data.applications.filter(
+        (application) =>
+          application.id.toLocaleLowerCase() === target ||
+          application.name.trim().toLocaleLowerCase() === target,
+      );
+      if (matches.length !== 1) {
+        appendCoreMessage(
+          matches.length
+            ? `La aplicación "${task.operation.target}" no es inequívoca; no se creó propuesta.`
+            : `No se encontró la aplicación exacta "${task.operation.target}"; no se creó propuesta.`,
+          "error",
+        );
+        continue;
+      }
+      const result = await proposeTerminadorAuthorization(
+        matches[0].id,
+        task.operation.status,
+        plan.interpretation.explanation,
+      );
+      if (!result.ok) {
+        appendCoreMessage(
+          result.error ?? `HBG Authority rechazó la propuesta (${result.code ?? result.status}).`,
+          "error",
+        );
+        continue;
+      }
+      setServerAuthorizations((previous) => [
+        ...previous.filter((authorization) => authorization.id !== result.data.id),
+        result.data,
+      ]);
+      appendCoreMessage(
+        `HBG Authority registró la propuesta ${result.data.id} como ${result.data.state}. No se ejecutó ningún cambio.`,
+        "authorization",
+      );
+    }
+  };
+
+  const updateAuthorizationFromServer = async (
+    authorization: TerminadorAuthorization,
+    action: "approve" | "deny" | "revoke" | "refresh",
+  ) => {
+    if (authorizationBusy) return;
+    setAuthorizationBusy(authorization.id);
+    setAuthorizationNotice("");
+    try {
+      const result = action === "approve"
+        ? await approveTerminadorAuthorization(authorization.id)
+        : action === "deny"
+          ? await denyTerminadorAuthorization(authorization.id)
+        : action === "revoke"
+          ? await revokeTerminadorAuthorization(authorization.id)
+          : await refreshTerminadorAuthorization(authorization.id);
+      if (!result.ok) {
+        setAuthorizationNotice(
+          `No se confirmó la acción en el servidor (${result.code ?? result.status}).`,
+        );
+        return;
+      }
+      setServerAuthorizations((previous) =>
+        previous.map((entry) => entry.id === result.data.id ? result.data : entry),
+      );
+      appendCoreMessage(
+        `Estado confirmado por HBG Authority: ${result.data.state}. La aprobación no ejecuta la operación.`,
+        "authorization",
+      );
+    } finally {
+      setAuthorizationBusy(null);
+    }
   };
 
   const executeCoreCommand = async () => {
@@ -278,10 +405,7 @@ export function TerminadorModule() {
       );
       if (needsAuthorization) {
         setPendingPlan(plan);
-        appendCoreMessage(
-          "Esperando tu confirmación. Todavía no se envió ninguna mutación; al confirmar, el servidor verificará HBG Authority.",
-          "authorization",
-        );
+        await proposePlanOperations(plan);
         return;
       }
 
@@ -295,27 +419,31 @@ export function TerminadorModule() {
     }
   };
 
-  const confirmPendingPlan = async () => {
-    if (!pendingPlan || coreBusy) return;
-    setCoreBusy(true);
-    appendCoreMessage(
-      "Confirmación recibida. Solicitando la operación al servidor; HBG Authority validará permisos y registrará el resultado.",
-      "execution",
-    );
-    try {
-      await executePlan(pendingPlan, true);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "No se pudo ejecutar el plan.";
-      appendCoreMessage(message, "error");
-    } finally {
-      setCoreBusy(false);
-    }
-  };
-
-  const cancelPendingPlan = () => {
+  const cancelPendingPlan = async () => {
     if (!pendingPlan) return;
+    const openAuthorizations = serverAuthorizations.filter(
+      (authorization) =>
+        authorization.state === "pending" || authorization.state === "approved",
+    );
+    for (const authorization of openAuthorizations) {
+      const result = await revokeTerminadorAuthorization(authorization.id);
+      if (!result.ok) {
+        setAuthorizationNotice(
+          `No se pudo confirmar la revocación de ${authorization.id}; el estado permanece sin confirmar.`,
+        );
+        return;
+      }
+      setServerAuthorizations((previous) =>
+        previous.map((entry) => entry.id === result.data.id ? result.data : entry),
+      );
+    }
     setPendingPlan(null);
-    appendCoreMessage("Plan cancelado; no se solicitó autorización ni se ejecutó la operación.", "result");
+    appendCoreMessage(
+      openAuthorizations.length
+        ? "Propuesta revocada por HBG Authority; no se ejecutó la operación."
+        : "Plan descartado; no se ejecutó la operación.",
+      "result",
+    );
   };
 
   const exportMemory = () => {
@@ -478,14 +606,83 @@ export function TerminadorModule() {
             {pendingPlan && (
               <div role="group" aria-label="Confirmación de plan de Terminador" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 10, padding: 9, border: "1px solid rgba(255,215,64,0.4)", borderRadius: 3 }}>
                 <span style={{ flex: 1, minWidth: 200, fontFamily: "var(--font-mono)", fontSize: 10, color: "#ffd740" }}>
-                  AUTORIZACIÓN PENDIENTE · {pendingPlan.tasks.map((task) => task.title).join(" · ")}
+                  PROPUESTA BLOQUEADA · {pendingPlan.tasks.map((task) => task.title).join(" · ")}
+                  {" · "}
+                  {pendingPlan.tasks.find((task) => task.state === "blocked")?.reason}
                 </span>
-                <button className="hbg-btn hbg-btn-success" disabled={coreBusy} onClick={() => void confirmPendingPlan()}>
-                  CONFIRMAR Y SOLICITAR
-                </button>
                 <button className="hbg-btn hbg-btn-ghost" disabled={coreBusy} onClick={cancelPendingPlan}>
-                  CANCELAR
+                  REVOCAR / DESCARTAR
                 </button>
+              </div>
+            )}
+            {serverAuthorizations.length > 0 && (
+              <div aria-label="Autorizaciones confirmadas por HBG Authority" style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                {serverAuthorizations.map((authorization) => {
+                  const requestedStatus = authorization.parameters.requestedStatus;
+                  const currentStatus = authorization.parameters.currentStatus;
+                  return (
+                    <section key={authorization.id} style={{ padding: 10, border: "1px solid rgba(255,215,64,0.4)", borderRadius: 3, background: "var(--bg-deep)" }}>
+                      <div style={{ fontFamily: "var(--font-display)", fontSize: 10, color: "#ffd740", marginBottom: 6 }}>
+                        HBG AUTHORITY · {authorization.state.toUpperCase()} · {authorization.operation}
+                      </div>
+                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, lineHeight: 1.6, color: "var(--text-secondary)" }}>
+                        <div>Recurso: {authorization.resource} · aplicación: {authorization.applicationId}</div>
+                        <div>Cambio propuesto: {String(currentStatus)} → {String(requestedStatus)}</div>
+                        <div>Ámbito: {authorization.workspace} · permisos: {authorization.requestedPermissions.join(", ")}</div>
+                        <div>Motivo: {authorization.reason}</div>
+                        <div>Riesgo: el cambio altera el estado de la aplicación; no se ejecuta en esta misión.</div>
+                        <div>Hash de propuesta: {authorization.proposalHash}</div>
+                        <div>Expira: {new Date(authorization.expiresAt).toLocaleString("es-ES")}</div>
+                      </div>
+                      <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                        {authorization.state === "pending" && (
+                          <>
+                            <button
+                              className="hbg-btn hbg-btn-success"
+                              disabled={authorizationBusy !== null}
+                              onClick={() => void updateAuthorizationFromServer(authorization, "approve")}
+                            >
+                              {authorizationBusy === authorization.id ? "CONFIRMANDO…" : "APROBAR ESTA OPERACIÓN"}
+                            </button>
+                            <button
+                              className="hbg-btn hbg-btn-ghost"
+                              disabled={authorizationBusy !== null}
+                              onClick={() => void updateAuthorizationFromServer(authorization, "deny")}
+                            >
+                              DENEGAR
+                            </button>
+                          </>
+                        )}
+                        {(authorization.state === "pending" || authorization.state === "approved") && (
+                          <button
+                            className="hbg-btn hbg-btn-ghost"
+                            disabled={authorizationBusy !== null}
+                            onClick={() => void updateAuthorizationFromServer(authorization, "revoke")}
+                          >
+                            REVOCAR
+                          </button>
+                        )}
+                        <button
+                          className="hbg-btn hbg-btn-ghost"
+                          disabled={authorizationBusy !== null}
+                          onClick={() => void updateAuthorizationFromServer(authorization, "refresh")}
+                        >
+                          ACTUALIZAR ESTADO
+                        </button>
+                      </div>
+                      {authorization.state === "approved" && (
+                        <div role="status" style={{ marginTop: 7, color: "#ffd740", fontSize: 9 }}>
+                          Aprobación server-side confirmada. La operación no fue ejecutada; escritura, borrado, scripts y Code Tools siguen bloqueados.
+                        </div>
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
+            )}
+            {authorizationNotice && (
+              <div role="status" style={{ marginTop: 8, color: "var(--neon-pink)", fontSize: 9 }}>
+                {authorizationNotice}
               </div>
             )}
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 9 }}>

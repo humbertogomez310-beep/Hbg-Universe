@@ -88,8 +88,8 @@ function taskFor(
       scope: "authority",
       requiredPermission: "terminador.manage",
       dependsOn: [],
-      state: "planned",
-      reason: "Requiere confirmación explícita y autorización del servidor HBG Authority.",
+      state: "blocked",
+      reason: "No existe autorización individual server-side para esta operación; no se ejecutará.",
     };
   }
   if (operation.type === "development") {
@@ -214,35 +214,8 @@ export function validateTerminadorPlan(plan: TerminadorPlan): string[] {
   return errors;
 }
 
-export class TerminadorExecutionLedger {
-  private readonly executed = new Map<string, number>();
-
-  claim(key: string, now = Date.now(), ttlMs = 30_000): boolean {
-    for (const [storedKey, createdAt] of this.executed) {
-      if (now - createdAt >= ttlMs) this.executed.delete(storedKey);
-    }
-    if (this.executed.has(key)) return false;
-    this.executed.set(key, now);
-    if (this.executed.size > 500) {
-      const oldest = this.executed.keys().next().value;
-      if (oldest) this.executed.delete(oldest);
-    }
-    return true;
-  }
-
-  release(key: string): void {
-    this.executed.delete(key);
-  }
-
-  remember(key: string): void {
-    this.executed.set(key, Date.now());
-  }
-}
-
 export interface PlanExecutionOptions {
-  authorized?: boolean;
   signal?: AbortSignal;
-  ledger?: TerminadorExecutionLedger;
 }
 
 export class TerminadorTaskBlockedError extends Error {
@@ -267,7 +240,6 @@ export async function executeTerminadorPlan<T>(
   }
   if (plan.interpretation.requiresClarification) return { ...plan, state: "pending" };
 
-  const ledger = options.ledger ?? new TerminadorExecutionLedger();
   const results = new Map<string, T>();
   const states = new Map(plan.tasks.map((task) => [task.id, task.state]));
   const updatedTasks: TerminadorTask[] = [];
@@ -282,15 +254,6 @@ export async function executeTerminadorPlan<T>(
       updatedTasks.push(task);
       continue;
     }
-    if (task.scope === "authority" && task.requiredPermission === "terminador.manage" && !options.authorized) {
-      updatedTasks.push({
-        ...task,
-        state: "blocked",
-        reason: "La tarea requiere confirmación y autorización del servidor.",
-      });
-      states.set(task.id, "blocked");
-      continue;
-    }
     const failedDependency = task.dependsOn.find((id) => states.get(id) !== "completed");
     if (failedDependency) {
       updatedTasks.push({
@@ -301,30 +264,12 @@ export async function executeTerminadorPlan<T>(
       states.set(task.id, "blocked");
       continue;
     }
-    const needsDeduplication = task.scope === "authority" &&
-      task.requiredPermission === "terminador.manage";
-    if (needsDeduplication && !ledger.claim(task.idempotencyKey)) {
-      updatedTasks.push({
-        ...task,
-        state: "blocked",
-        reason: "Esta operación ya fue enviada o completada; se evitó repetirla.",
-      });
-      states.set(task.id, "blocked");
-      continue;
-    }
-
     try {
-      const result = await executeTask(
-        task.scope === "authority" && task.requiredPermission === "terminador.manage"
-          ? { ...task, state: "authorized" }
-          : { ...task, state: "executing" },
-        results,
-      );
+      const result = await executeTask({ ...task, state: "executing" }, results);
       results.set(task.id, result);
       states.set(task.id, "completed");
       updatedTasks.push({ ...task, state: "completed", output: result });
     } catch (error) {
-      ledger.release(task.idempotencyKey);
       const state = error instanceof TerminadorTaskBlockedError ? "blocked" : "failed";
       states.set(task.id, state);
       updatedTasks.push({

@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  approveTerminadorAuthorization,
   executeTerminadorRequest,
   interpretTerminadorRequest,
+  listTerminadorAuthorizations,
+  proposeTerminadorAuthorization,
 } from "./terminadorRequest.ts";
 
 const applications = [
@@ -51,57 +54,31 @@ test("reads the real application registry without claiming an execution", async 
   assert.equal(calls.length, 1);
 });
 
-test("does not execute when HBG Authority denies the state change", async () => {
+test("never treats a browser action as approval for an app state change", async () => {
   const { request, calls } = requestWith({
     "/terminador/apps": { ok: true, data: { applications } },
-    "/terminador/apps/demo-app/status": { ok: false, status: 403, code: "FORBIDDEN" },
   });
   const result = await executeTerminadorRequest(
     { type: "set_app_status", target: "Demo App", status: "disabled" },
     request,
   );
 
-  assert.equal(result.status, "denied");
-  assert.match(result.message, /HBG Authority no autorizó/);
-  assert.equal(calls.length, 2);
+  assert.equal(result.status, "blocked");
+  assert.match(result.message, /autorización individual server-side/i);
+  assert.equal(calls.length, 0);
 });
 
-test("still checks manage permission when the requested registry state is already set", async () => {
-  const { request, calls } = requestWith({
-    "/terminador/apps": {
-      ok: true,
-      data: { applications: [{ ...applications[1], status: "disabled" }] },
-    },
-    "/terminador/apps/demo-app/status": { ok: false, status: 403, code: "FORBIDDEN" },
-  });
+test("blocks app state changes before looking up or submitting a protected target", async () => {
+  const { request, calls } = requestWith({});
   const result = await executeTerminadorRequest(
-    { type: "set_app_status", target: "Demo App", status: "disabled" },
+    { type: "set_app_status", target: "HBG Core", status: "disabled" },
     request,
   );
-
-  assert.equal(result.status, "denied");
-  assert.equal(calls.length, 2);
+  assert.equal(result.status, "blocked");
+  assert.equal(calls.length, 0);
 });
 
-test("uses the authorized server endpoint and reports its actual registry result", async () => {
-  const { request, calls } = requestWith({
-    "/terminador/apps": { ok: true, data: { applications } },
-    "/terminador/apps/demo-app/status": {
-      ok: true,
-      data: { success: true, changed: true },
-    },
-  });
-  const result = await executeTerminadorRequest(
-    { type: "set_app_status", target: "Demo App", status: "disabled" },
-    request,
-  );
-
-  assert.equal(result.status, "executed");
-  assert.match(result.message, /no inicia ni detiene el proceso/);
-  assert.deepEqual(JSON.parse(calls[1].init.body), { status: "disabled" });
-});
-
-test("stops on missing context, protected apps, malformed responses, and server errors", async () => {
+test("stops on unapproved changes, malformed responses, and server errors", async () => {
   const missingApp = requestWith({
     "/terminador/apps": { ok: true, data: { applications } },
   });
@@ -110,25 +87,9 @@ test("stops on missing context, protected apps, malformed responses, and server 
       { type: "set_app_status", target: "unknown", status: "active" },
       missingApp.request,
     )).status,
-    "needs_context",
-  );
-  assert.equal(missingApp.calls.length, 1);
-
-  const protectedApp = requestWith({
-    "/terminador/apps": { ok: true, data: { applications } },
-    "/terminador/apps/hbg-core/status": {
-      ok: false,
-      status: 409,
-      code: "APP_PROTECTED",
-    },
-  });
-  assert.equal(
-    (await executeTerminadorRequest(
-      { type: "set_app_status", target: "hbg-core", status: "disabled" },
-      protectedApp.request,
-    )).status,
     "blocked",
   );
+  assert.equal(missingApp.calls.length, 0);
 
   const malformed = requestWith({
     "/terminador/apps": { ok: true, data: { applications: "not-an-array" } },
@@ -154,4 +115,69 @@ test("stops on missing context, protected apps, malformed responses, and server 
   );
   assert.equal(networkError.status, "failed");
   assert.match(networkError.message, /conectar con el servidor/);
+});
+
+test("proposal and approval states come only from the Authority response", async () => {
+  const calls = [];
+  const authorization = {
+    id: "proposal-1",
+    operation: "apps.set_status",
+    resource: "application:demo-app",
+    applicationId: "demo-app",
+    workspace: "hbg-app-registry",
+    parameters: { currentStatus: "active", requestedStatus: "disabled" },
+    requestedPermissions: ["terminador.manage"],
+    contentHash: null,
+    proposalHash: "a".repeat(64),
+    reason: "Test",
+    state: "pending",
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    approvedAt: null,
+    revokedAt: null,
+    consumedAt: null,
+  };
+  const request = async (path, init) => {
+    calls.push({ path, init });
+    const state = path.endsWith("/approve")
+      ? { ...authorization, state: "approved", approvedAt: new Date().toISOString() }
+      : authorization;
+    return { ok: true, data: { success: true, authorization: state } };
+  };
+
+  const proposal = await proposeTerminadorAuthorization(
+    "demo-app",
+    "disabled",
+    "Test",
+    request,
+  );
+  assert.equal(proposal.ok, true);
+  if (!proposal.ok) return;
+  assert.equal(proposal.data.state, "pending");
+  assert.deepEqual(JSON.parse(calls[0].init.body), {
+    applicationId: "demo-app",
+    status: "disabled",
+    reason: "Test",
+  });
+  assert.equal("authorized" in JSON.parse(calls[0].init.body), false);
+
+  const approval = await approveTerminadorAuthorization(proposal.data.id, request);
+  assert.equal(approval.ok, true);
+  if (!approval.ok) return;
+  assert.equal(approval.data.state, "approved");
+  assert.equal(calls[1].path, "/terminador/authorizations/proposal-1/approve");
+  assert.equal(calls[1].init.method, "POST");
+
+  const unavailable = await approveTerminadorAuthorization(
+    proposal.data.id,
+    async () => ({ ok: false, status: 503, code: "AUDIT_UNAVAILABLE" }),
+  );
+  assert.equal(unavailable.ok, false);
+
+  const listed = await listTerminadorAuthorizations(async () => ({
+    ok: true,
+    data: { success: true, authorizations: [authorization] },
+  }));
+  assert.equal(listed.ok, true);
+  if (listed.ok) assert.equal(listed.data[0].state, "pending");
 });
