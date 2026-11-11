@@ -9,6 +9,8 @@ export interface AuditInput {
   metadata?: Record<string, unknown>;
 }
 
+type AuditWriter = Pick<typeof db, "insert">;
+
 const SECRET_KEY_PATTERN =
   /(secret|token|password|credential|authorization|cookie|private.?key)/i;
 
@@ -28,8 +30,11 @@ function safeMetadata(
   );
 }
 
-export async function recordAudit(input: AuditInput): Promise<void> {
-  await db.insert(hbgAuditEvents).values({
+export async function recordAudit(
+  input: AuditInput,
+  writer: AuditWriter = db,
+): Promise<void> {
+  await writer.insert(hbgAuditEvents).values({
     actorUserId: input.actorUserId,
     action: input.action,
     resource: input.resource,

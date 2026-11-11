@@ -1,4 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import type { Logger } from "pino";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import {
@@ -27,6 +28,9 @@ export interface HBGAuthContext {
   role: HBGRole;
   permissions: ReadonlySet<HBGPermission>;
   isDevelopment: boolean;
+  sessionTokenHash: string;
+  sessionExpiresAt: Date;
+  developmentSessionTokenHash?: string;
   developmentSessionExpiresAt?: Date;
 }
 
@@ -34,6 +38,7 @@ declare global {
   namespace Express {
     interface Request {
       hbgAuth?: HBGAuthContext;
+      log: Logger;
     }
   }
 }
@@ -49,6 +54,10 @@ const ROLE_PERMISSIONS: Record<HBGRole, ReadonlySet<HBGPermission>> = {
     "core.action.execute",
     "terminador.use",
     "terminador.manage",
+    "terminador.develop",
+    "universe.code.inspect",
+    "universe.code.modify",
+    "universe.command.execute",
     "universe.audit.read",
     "universe.registry.read",
   ]),
@@ -72,6 +81,10 @@ export function hasPermission(
   permission: HBGPermission,
 ): boolean {
   return context.permissions.has(permission);
+}
+
+export function canStartDevelopmentSession(user: HBGUser): boolean {
+  return roleOf(user) === "owner";
 }
 
 export function hashSecret(value: string): string {
@@ -187,9 +200,8 @@ async function loadContext(req: Request): Promise<HBGAuthContext | undefined> {
   const role = roleOf(row.user);
   if (!role) return undefined;
 
-  const developmentToken = req.cookies?.[
-    DEVELOPMENT_COOKIE
-  ] as string | undefined;
+  const developmentToken = req.cookies?.[DEVELOPMENT_COOKIE] as string | undefined;
+  let developmentSessionTokenHash: string | undefined;
   let developmentSessionExpiresAt: Date | undefined;
   let isDevelopment = false;
   if (developmentToken) {
@@ -208,6 +220,7 @@ async function loadContext(req: Request): Promise<HBGAuthContext | undefined> {
     const developmentSession = developmentRows[0]?.session;
     if (developmentSession) {
       isDevelopment = true;
+      developmentSessionTokenHash = hashSecret(developmentToken!);
       developmentSessionExpiresAt = developmentSession.expiresAt;
     }
   }
@@ -217,6 +230,9 @@ async function loadContext(req: Request): Promise<HBGAuthContext | undefined> {
     role,
     permissions: permissionsFor(row.user),
     isDevelopment,
+    sessionTokenHash: hashSecret(sessionToken),
+    sessionExpiresAt: row.session.expiresAt,
+    developmentSessionTokenHash,
     developmentSessionExpiresAt,
   };
 }
@@ -270,6 +286,10 @@ export const requireDevelopment: RequestHandler = (req, res, next) => {
     forbidden(res, "Se requiere una sesión de desarrollo activa.");
     return;
   }
+  if (req.hbgAuth.role !== "owner") {
+    forbidden(res, "Solo el propietario puede operar en modo desarrollo.");
+    return;
+  }
   next();
 };
 
@@ -285,6 +305,10 @@ export function requireDevelopmentPermission(
       forbidden(res, "Se requiere una sesión de desarrollo activa.");
       return;
     }
+    if (req.hbgAuth.role !== "owner") {
+      forbidden(res, "Solo el propietario puede operar en modo desarrollo.");
+      return;
+    }
     if (!hasPermission(req.hbgAuth, permission)) {
       forbidden(res);
       return;
@@ -294,8 +318,7 @@ export function requireDevelopmentPermission(
 }
 
 export function bootstrapCredential(): string | undefined {
-  const credential =
-    process.env.HBG_OWNER_SECRET ?? process.env.HBG_OWNER_TOKEN;
+  const credential = process.env.HBG_OWNER_SECRET ?? process.env.HBG_OWNER_TOKEN;
   return credential && credential.length >= 16 ? credential : undefined;
 }
 
@@ -314,7 +337,33 @@ export function rejectClientAuthorityFields(
     "isDevelopment",
     "authorized",
     "approved",
+    "hbgAuth",
+    "tokenHash",
+    "credentialHash",
+    "developmentSession",
+    "developmentSessionExpiresAt",
+    "authority",
+    "accessControl",
+    "permissionSet",
+    "session",
+    "cookie",
   ];
   const found = forbiddenFields.find((field) => field in body);
   return found ? `El campo "${found}" no es controlable por el cliente.` : undefined;
+}
+
+export function isProtectedAuthorityMutation(body: Record<string, unknown>): boolean {
+  const protectedKeys = [
+    "role",
+    "permissions",
+    "hbgAuth",
+    "permissionSet",
+    "isDevelopment",
+    "developmentSession",
+    "developmentSessionExpiresAt",
+    "authority",
+    "accessControl",
+    "credentialHash",
+  ];
+  return protectedKeys.some((key) => key in body);
 }

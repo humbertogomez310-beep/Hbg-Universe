@@ -1,3 +1,4 @@
+
 import { useState, useEffect, type CSSProperties, type ReactNode } from "react";
 import { hbgCore, MODULES, type ModuleConfig, type ModuleId } from "../core/hbgCore";
 import { ownerSession, useOwnerSession } from "../core/ownerSession";
@@ -9,20 +10,31 @@ import { InstintoModule } from "../modules/instinto";
 import { VibraModule } from "../modules/vibra";
 import { TerminadorModule } from "../modules/terminador";
 import { TerminadorAppsSection } from "../modules/terminador-apps";
+import { VoiceCommandBar } from "../voice/VoiceCommandBar";
 
-// En teléfono (pantalla angosta) se muestra un menú de tarjetas en vez de la barra lateral.
+// En teléfono se muestra un menú de tarjetas en vez de la barra lateral.
 function useIsMobile(): boolean {
   const query = "(max-width: 800px)";
-  const supported = typeof window !== "undefined" && typeof window.matchMedia === "function";
-  const [mobile, setMobile] = useState(() => (supported ? window.matchMedia(query).matches : false));
+  const supported =
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function";
+
+  const [mobile, setMobile] = useState(() =>
+    supported ? window.matchMedia(query).matches : false
+  );
+
   useEffect(() => {
     if (!supported) return;
+
     const list = window.matchMedia(query);
     const update = () => setMobile(list.matches);
+
     update();
     list.addEventListener("change", update);
+
     return () => list.removeEventListener("change", update);
   }, [supported]);
+
   return mobile;
 }
 
@@ -58,10 +70,12 @@ function MobileMenu({
 
 function Clock() {
   const [time, setTime] = useState(new Date());
+
   useEffect(() => {
     const id = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
+
   return (
     <span className="hbg-clock">
       {time.toLocaleTimeString("es-ES", { hour12: false })}
@@ -82,22 +96,25 @@ function ModulePanel({
   const [displayModule, setDisplayModule] = useState(module);
 
   useEffect(() => {
-    setKey((k) => k + 1);
+    setKey((current) => current + 1);
     setDisplayModule(module);
   }, [module]);
 
-  // Terminador solo se dibuja con sesión de dueño confirmada por el servidor.
+  // Defensa adicional: Terminador nunca se monta sin sesión OWNER confirmada.
+  if (displayModule === "terminador" && (!isOwner || checking)) {
+    return <UniversoModule />;
+  }
+
   const panels: Record<ModuleId, ReactNode> = {
     universo: <UniversoModule />,
     instinto: <InstintoModule />,
     vibra: <VibraModule />,
-    terminador:
-      isOwner && !checking ? (
-        <>
-          <TerminadorAppsSection />
-          <TerminadorModule />
-        </>
-      ) : null,
+    terminador: (
+      <>
+        <TerminadorAppsSection />
+        <TerminadorModule />
+      </>
+    ),
   };
 
   return (
@@ -112,52 +129,76 @@ export function Shell() {
     hbgCore.init();
     return hbgCore.getModule();
   });
-  const [gateOpen, setGateOpen] = useState(false);
+
+  const [showOwnerGate, setShowOwnerGate] = useState(false);
   const [showMenu, setShowMenu] = useState(true);
+
   const isMobile = useIsMobile();
   const { isOwner, checking } = useOwnerSession();
 
   useEffect(() => {
-    const unsub = hbgCore.subscribe((mod) => setActiveModule(mod));
-    return unsub;
+    const unsubscribe = hbgCore.subscribe((module) => {
+      setActiveModule(module);
+    });
+
+    return unsubscribe;
   }, []);
 
   useEffect(() => {
     void ownerSession.checkSession();
   }, []);
 
-  // Si el módulo guardado es Terminador pero no hay sesión de dueño, se vuelve a Universo.
+  // Si localStorage restauró Terminador, la sesión del servidor decide.
+  // Sin OWNER confirmado, se vuelve al módulo público.
   useEffect(() => {
     if (!checking && !isOwner && activeModule === "terminador") {
       hbgCore.setModule("universo");
     }
-  }, [checking, isOwner, activeModule]);
+  }, [activeModule, checking, isOwner]);
 
-  const logoGesture = useLogoGesture(() => {
-    if (ownerSession.getState().isOwner) {
+  const selectModule = (module: ModuleId) => {
+    if (module === "terminador" && (!isOwner || checking)) {
+      setShowOwnerGate(true);
+      return;
+    }
+
+    hbgCore.setModule(module);
+    setShowMenu(false);
+  };
+
+  const handleLogoUnlock = () => {
+    if (checking) return;
+
+    if (isOwner) {
       hbgCore.setModule("terminador");
       setShowMenu(false);
     } else {
-      setGateOpen(true);
+      setShowOwnerGate(true);
     }
-  });
-
-  const config = hbgCore.getModuleConfig(activeModule);
-  const visibleModules = isOwner ? MODULES : MODULES.filter((m) => m.id !== "terminador");
-  const select = (id: ModuleId) => {
-    hbgCore.setModule(id);
-    setShowMenu(false);
   };
+
+  const logoGesture = useLogoGesture(handleLogoUnlock);
+
+  const config = hbgCore.getModuleConfig(
+    activeModule === "terminador" && (!isOwner || checking)
+      ? "universo"
+      : activeModule
+  );
+
+  const visibleModules = isOwner
+    ? MODULES
+    : MODULES.filter((module) => module.id !== "terminador");
 
   return (
     <>
       <div className="hbg-scanlines" />
+
       <div className="hbg-shell">
-        {/* Top bar */}
         <header className="hbg-topbar">
           <span className="hbg-logo" {...logoGesture}>
             UNIVERSO HBG
           </span>
+
           {isMobile && !showMenu && (
             <button
               className="hbg-btn hbg-btn-ghost hbg-topbar-btn"
@@ -166,15 +207,19 @@ export function Shell() {
               ← MENÚ
             </button>
           )}
+
           <div className="hbg-topbar-divider" />
+
           <span className="hbg-topbar-module">
             {config.icon} {config.label}
           </span>
+
           <div className="hbg-topbar-status">
-            {isOwner && (
+            {isOwner && !checking && (
               <button
+                type="button"
                 className="hbg-btn hbg-btn-ghost hbg-topbar-btn"
-                style={{ marginRight: 8 }}
+                style={{ padding: "4px 8px", fontSize: 9 }}
                 onClick={() => {
                   void ownerSession.logout().then(() => {
                     hbgCore.setModule("universo");
@@ -185,30 +230,59 @@ export function Shell() {
                 BLOQUEAR
               </button>
             )}
+
             <div className="hbg-status-dot" />
             <Clock />
           </div>
         </header>
 
-        {/* Sidebar */}
-        {!isMobile && <Sidebar active={activeModule} onSelect={select} isOwner={isOwner} />}
+        {!isMobile && (
+          <Sidebar
+            active={activeModule}
+            isOwner={isOwner && !checking}
+            onSelect={selectModule}
+          />
+        )}
 
-        {/* Main */}
         <main className="hbg-main">
           <div className="hbg-panel">
             {isMobile && showMenu ? (
-              <MobileMenu modules={visibleModules} active={activeModule} onSelect={select} />
+              <MobileMenu
+                modules={visibleModules}
+                active={activeModule}
+                onSelect={selectModule}
+              />
             ) : (
-              <ModulePanel module={activeModule} isOwner={isOwner} checking={checking} />
+              <>
+                {/* VIBRA permanece montada para no interrumpir la música. */}
+                <div
+                  style={{
+                    display: activeModule === "vibra" ? "block" : "none",
+                  }}
+                >
+                  <VibraModule />
+                </div>
+
+                {activeModule !== "vibra" && (
+                  <ModulePanel
+                    module={activeModule}
+                    isOwner={isOwner}
+                    checking={checking}
+                  />
+                )}
+              </>
             )}
           </div>
         </main>
       </div>
-      {gateOpen && (
+
+      <VoiceCommandBar accentColor={config.color} />
+
+      {showOwnerGate && (
         <OwnerGate
-          onClose={() => setGateOpen(false)}
+          onClose={() => setShowOwnerGate(false)}
           onSuccess={() => {
-            setGateOpen(false);
+            setShowOwnerGate(false);
             hbgCore.setModule("terminador");
             setShowMenu(false);
           }}

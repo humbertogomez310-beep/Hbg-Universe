@@ -16,3 +16,21 @@ export async function getApplication(id: string) {
     .limit(1);
   return result[0];
 }
+
+export function isProtectedApplication(application: {
+  id: string;
+  name: string;
+  capabilities: unknown;
+}): boolean {
+  const capabilities = Array.isArray(application.capabilities)
+    ? application.capabilities.filter(
+        (capability): capability is string => typeof capability === "string",
+      )
+    : [];
+  return (
+    application.id === "hbg-auth" ||
+    application.id === "hbg-core" ||
+    ["HBG-AUTH", "HBG CORE"].includes(application.name.trim().toUpperCase()) ||
+    capabilities.includes("operator")
+  );
+}
