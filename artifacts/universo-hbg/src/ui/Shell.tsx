@@ -246,32 +246,33 @@ export function Shell() {
 
         <main className="hbg-main">
           <div className="hbg-panel">
+
+            {/* VIBRA permanece montada incluso cuando se abre el menú móvil. */}
+            <div
+              style={{
+                display:
+                  activeModule === "vibra" && !(isMobile && showMenu)
+                    ? "block"
+                    : "none",
+              }}
+            >
+              <VibraModule />
+            </div>
+
             {isMobile && showMenu ? (
               <MobileMenu
                 modules={visibleModules}
                 active={activeModule}
                 onSelect={selectModule}
               />
-            ) : (
-              <>
-                {/* VIBRA permanece montada para no interrumpir la música. */}
-                <div
-                  style={{
-                    display: activeModule === "vibra" ? "block" : "none",
-                  }}
-                >
-                  <VibraModule />
-                </div>
+            ) : activeModule !== "vibra" ? (
+              <ModulePanel
+                module={activeModule}
+                isOwner={isOwner}
+                checking={checking}
+              />
+            ) : null}
 
-                {activeModule !== "vibra" && (
-                  <ModulePanel
-                    module={activeModule}
-                    isOwner={isOwner}
-                    checking={checking}
-                  />
-                )}
-              </>
-            )}
           </div>
         </main>
       </div>
