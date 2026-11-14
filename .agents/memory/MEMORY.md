@@ -1,1 +1,2 @@
 - [Ejecución HBG Core](hbg-core-execution.md) — las órdenes entre módulos deben pasar por un registro único y poder esperar a que la app destino se monte.
+- [Permisos HBG Authority](hbg-authority-permissions.md) — los permisos críticos de desarrollo no deben heredarse automáticamente del rol OWNER.

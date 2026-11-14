@@ -19,6 +19,7 @@ export type HBGPermission =
   | "terminador.develop"
   | "universe.code.inspect"
   | "universe.code.modify"
+  | "authority.core.modify"
   | "universe.command.execute"
   | "universe.audit.read"
   | "universe.registry.read";
@@ -48,22 +49,37 @@ const DEVELOPMENT_COOKIE = "hbg_development_session";
 const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const DEVELOPMENT_MAX_AGE_MS = 60 * 60 * 1000;
 
-const ROLE_PERMISSIONS: Record<HBGRole, ReadonlySet<HBGPermission>> = {
-  owner: new Set([
+const ROLE_PERMISSIONS: Record<HBGRole, readonly HBGPermission[]> = {
+  owner: [
     "universe.read",
     "core.action.execute",
     "terminador.use",
     "terminador.manage",
-    "terminador.develop",
     "universe.code.inspect",
-    "universe.code.modify",
-    "universe.command.execute",
     "universe.audit.read",
     "universe.registry.read",
-  ]),
-  user: new Set(["universe.read", "core.action.execute"]),
-  system: new Set(["universe.read", "core.action.execute"]),
+  ],
+  user: ["universe.read", "core.action.execute"],
+  system: ["universe.read", "core.action.execute"],
 };
+
+function immutableSet<T>(values: Iterable<T>): ReadonlySet<T> {
+  const set = new Set(values);
+  let view: ReadonlySet<T>;
+  view = {
+    get size() {
+      return set.size;
+    },
+    has: (value) => set.has(value),
+    entries: () => set.entries(),
+    keys: () => set.keys(),
+    values: () => set.values(),
+    forEach: (callback, thisArg) =>
+      set.forEach((value) => callback.call(thisArg, value, value, view)),
+    [Symbol.iterator]: () => set[Symbol.iterator](),
+  };
+  return Object.freeze(view);
+}
 
 function roleOf(user: HBGUser): HBGRole | null {
   return user.role === "owner" || user.role === "user" || user.role === "system"
@@ -73,7 +89,7 @@ function roleOf(user: HBGUser): HBGRole | null {
 
 export function permissionsFor(user: HBGUser): ReadonlySet<HBGPermission> {
   const role = roleOf(user);
-  return role ? ROLE_PERMISSIONS[role] : new Set();
+  return immutableSet(role ? ROLE_PERMISSIONS[role] : []);
 }
 
 export function hasPermission(
@@ -326,11 +342,12 @@ export function isSafeUsername(value: string): boolean {
   return /^[a-zA-Z0-9_.-]{3,64}$/.test(value);
 }
 
-export function rejectClientAuthorityFields(
-  body: Record<string, unknown>,
-): string | undefined {
-  const forbiddenFields = [
+const CLIENT_AUTHORITY_FIELDS = new Set(
+  [
+    "owner",
     "role",
+    "roles",
+    "permission",
     "permissions",
     "isOwner",
     "isSystem",
@@ -347,23 +364,41 @@ export function rejectClientAuthorityFields(
     "permissionSet",
     "session",
     "cookie",
-  ];
-  const found = forbiddenFields.find((field) => field in body);
+  ].map((field) => field.toLowerCase().replace(/[^a-z0-9]/g, "")),
+);
+
+function findClientAuthorityField(
+  value: unknown,
+  seen: WeakSet<object> = new WeakSet(),
+): string | undefined {
+  if (typeof value !== "object" || value === null || seen.has(value)) {
+    return undefined;
+  }
+  seen.add(value);
+  const entries = Array.isArray(value)
+    ? value.map((item, index) => [String(index), item] as const)
+    : Object.entries(value);
+  for (const [key, nestedValue] of entries) {
+    if (
+      CLIENT_AUTHORITY_FIELDS.has(
+        key.toLowerCase().replace(/[^a-z0-9]/g, ""),
+      )
+    ) {
+      return key;
+    }
+    const nested = findClientAuthorityField(nestedValue, seen);
+    if (nested) return nested;
+  }
+  return undefined;
+}
+
+export function rejectClientAuthorityFields(
+  body: Record<string, unknown>,
+): string | undefined {
+  const found = findClientAuthorityField(body);
   return found ? `El campo "${found}" no es controlable por el cliente.` : undefined;
 }
 
 export function isProtectedAuthorityMutation(body: Record<string, unknown>): boolean {
-  const protectedKeys = [
-    "role",
-    "permissions",
-    "hbgAuth",
-    "permissionSet",
-    "isDevelopment",
-    "developmentSession",
-    "developmentSessionExpiresAt",
-    "authority",
-    "accessControl",
-    "credentialHash",
-  ];
-  return protectedKeys.some((key) => key in body);
+  return findClientAuthorityField(body) !== undefined;
 }

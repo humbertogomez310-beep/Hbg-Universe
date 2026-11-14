@@ -36,10 +36,16 @@ const PROTECTED_FILES = new Set([
   "artifacts/api-server/src/lib/hbgAuth.ts",
   "artifacts/api-server/src/lib/audit.ts",
   "artifacts/api-server/src/lib/codeTools.ts",
+  "artifacts/api-server/src/lib/registry.ts",
+  "artifacts/api-server/src/lib/terminadorAuthorization.ts",
   "artifacts/api-server/src/routes/auth.ts",
+  "artifacts/api-server/src/routes/audit.ts",
   "artifacts/api-server/src/routes/index.ts",
+  "artifacts/api-server/src/routes/registry.ts",
+  "artifacts/api-server/src/routes/terminador.ts",
   "artifacts/api-server/src/routes/tools.ts",
   "artifacts/api-server/src/app.ts",
+  "artifacts/api-server/src/middlewares/authMiddleware.ts",
   "lib/db/src/schema/hbg.ts",
 ]);
 

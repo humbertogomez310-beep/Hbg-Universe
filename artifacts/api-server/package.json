@@ -7,7 +7,7 @@
     "dev": "export NODE_ENV=development && pnpm run build && pnpm run start",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
-    "test": "node --experimental-strip-types --test src/lib/codeTools.test.mjs src/lib/terminadorAuthorization.test.mjs",
+    "test": "node --experimental-transform-types --experimental-loader=./test-loader.mjs --test src/lib/codeTools.test.mjs src/lib/terminadorAuthorization.test.mjs src/lib/hbgAuth.test.mjs src/lib/audit.test.mjs src/lib/terminadorGuards.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

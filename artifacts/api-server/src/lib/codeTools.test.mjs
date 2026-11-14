@@ -27,6 +27,14 @@ test("Code Tools block traversal, protected files, symlink escapes, and all writ
 
     await assert.rejects(inspectFile("../package.json"), /traversal/i);
     await assert.rejects(inspectFile(".env.local"), /protegido/i);
+    await assert.rejects(
+      inspectFile("artifacts/api-server/src/lib/terminadorAuthorization.ts"),
+      /protegido/i,
+    );
+    await assert.rejects(
+      inspectFile("artifacts/api-server/src/routes/terminador.ts"),
+      /protegido/i,
+    );
     await assert.rejects(inspectFile(`${fixtureName}/outside-link/outside.txt`), /simbólicos/i);
     await assert.rejects(inspectFile(`${fixtureName}/file-link`), /simbólicos/i);
     await assert.rejects(

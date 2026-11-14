@@ -31,43 +31,80 @@ const SAFE_APP_ID = /^[a-zA-Z0-9_.-]{1,64}$/;
 async function recordTerminadorAudit(
   req: Parameters<RequestHandler>[0],
   input: AuditInput,
-): Promise<void> {
+  auditWriter: typeof recordAudit = recordAudit,
+): Promise<boolean> {
   try {
-    await recordAudit(input);
+    await auditWriter(input);
+    return true;
   } catch (error) {
     req.log.error({ err: error }, "Terminador audit write failed");
+    return false;
   }
 }
 
-function requireTerminadorPermission(permission: HBGPermission): RequestHandler {
+function auditUnavailable(
+  res: Parameters<RequestHandler>[1],
+): void {
+  res.status(503).json({
+    success: false,
+    error: "Auditoría no disponible; la operación permanece bloqueada.",
+    code: "AUDIT_UNAVAILABLE",
+  });
+}
+
+export function createTerminadorPermissionGuard(
+  permission: HBGPermission,
+  auditWriter: typeof recordAudit = recordAudit,
+): RequestHandler {
   return async (req, res, next) => {
     const auth = req.hbgAuth;
     if (!auth) {
-      await recordTerminadorAudit(req, {
+      const audited = await recordTerminadorAudit(req, {
         action: "terminador.authorization.denied",
         resource: req.path,
         result: "denied",
         errorCode: "AUTH_REQUIRED",
         metadata: { method: req.method },
-      });
+      }, auditWriter);
+      if (!audited) {
+        auditUnavailable(res);
+        return;
+      }
       res.status(401).json({ success: false, error: "Autenticación requerida.", code: "AUTH_REQUIRED" });
       return;
     }
     if (!hasPermission(auth, permission)) {
-      await recordTerminadorAudit(req, {
+      const audited = await recordTerminadorAudit(req, {
         actorUserId: auth.user.id,
         action: "terminador.authorization.denied",
         resource: req.path,
         result: "denied",
         errorCode: "FORBIDDEN",
         metadata: { permission, method: req.method },
-      });
+      }, auditWriter);
+      if (!audited) {
+        auditUnavailable(res);
+        return;
+      }
       res.status(403).json({ success: false, error: "Permiso insuficiente.", code: "FORBIDDEN" });
+      return;
+    }
+    const audited = await recordTerminadorAudit(req, {
+      actorUserId: auth.user.id,
+      action: "terminador.authorization.allowed",
+      resource: req.path,
+      result: "success",
+      metadata: { permission, method: req.method },
+    }, auditWriter);
+    if (!audited) {
+      auditUnavailable(res);
       return;
     }
     next();
   };
 }
+
+const requireTerminadorPermission = createTerminadorPermissionGuard;
 
 async function runAuthorizationRoute(
   req: Parameters<RequestHandler>[0],
@@ -308,7 +345,7 @@ router.post(
     try {
       const application = await getApplication(id);
       if (!application) {
-        await recordTerminadorAudit(req, {
+        const audited = await recordTerminadorAudit(req, {
           actorUserId,
           action: "terminador.app.status",
           resource: id,
@@ -316,12 +353,16 @@ router.post(
           errorCode: "APP_NOT_FOUND",
           metadata: { requestedStatus: status },
         });
+        if (!audited) {
+          auditUnavailable(res);
+          return;
+        }
         res.status(404).json({ success: false, error: "App no encontrada.", code: "APP_NOT_FOUND" });
         return;
       }
 
       if (isProtectedApplication(application)) {
-        await recordTerminadorAudit(req, {
+        const audited = await recordTerminadorAudit(req, {
           actorUserId,
           action: "terminador.app.status",
           resource: id,
@@ -329,6 +370,10 @@ router.post(
           errorCode: "APP_PROTECTED",
           metadata: { requestedStatus: status },
         });
+        if (!audited) {
+          auditUnavailable(res);
+          return;
+        }
         res.status(409).json({
           success: false,
           error: "Esta app está protegida y no se puede apagar.",
@@ -372,7 +417,7 @@ router.post(
       });
     } catch (error) {
       req.log.error({ err: error }, "Terminador status change failed");
-      await recordTerminadorAudit(req, {
+      const audited = await recordTerminadorAudit(req, {
         actorUserId,
         action: "terminador.app.status",
         resource: id,
@@ -380,6 +425,10 @@ router.post(
         errorCode: "STATUS_CHANGE_FAILED",
         metadata: { requestedStatus: status },
       });
+      if (!audited) {
+        auditUnavailable(res);
+        return;
+      }
       res.status(503).json({ success: false, error: "No se pudo cambiar el estado." });
     }
   },
