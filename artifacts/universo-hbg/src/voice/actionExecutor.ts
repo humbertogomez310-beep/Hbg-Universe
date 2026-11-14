@@ -58,6 +58,72 @@ export async function executeVoiceAction(action: VoiceAction): Promise<string> {
       return res.error ?? "No se pudo cambiar el modo de ánimo.";
     }
 
+    case "SET_DIRECTION": {
+      const res = await hbgCore.dispatchAction("music.direct", { text: action.text });
+      return res.success
+        ? `Objetivo musical actualizado: ${(res.data as { goal?: string } | undefined)?.goal ?? action.text}.`
+        : res.error ?? "No se pudo actualizar el objetivo musical.";
+    }
+
+    case "SET_AUTO_DJ": {
+      const res = await hbgCore.dispatchAction("music.autoDj", { enabled: action.enabled });
+      return res.success
+        ? `Auto DJ ${action.enabled ? "activado" : "desactivado"}.`
+        : res.error ?? "No se pudo cambiar Auto DJ.";
+    }
+
+    case "SET_PARTY": {
+      const res = await hbgCore.dispatchAction("music.party", { enabled: action.enabled });
+      return res.success
+        ? `Modo Fiesta PRO ${action.enabled ? "activado" : "desactivado"}.`
+        : res.error ?? "No se pudo cambiar Modo Fiesta PRO.";
+    }
+
+    case "NOW_PLAYING": {
+      const track = hbgCore.getContext<{ title?: string; artist?: string }>("music.currentTrack");
+      if (!track) return "No hay una canción seleccionada en VIBRA.";
+      const title = `${track.title ?? "una canción"}${track.artist ? ` de ${track.artist}` : ""}`;
+      return hbgCore.getContext<boolean>("music.isPlaying")
+        ? `Está sonando ${title}.`
+        : `${title} está seleccionada, pero la reproducción está en pausa.`;
+    }
+
+    case "SET_VOLUME": {
+      const res = await hbgCore.dispatchAction("music.volume", { volume: action.volume });
+      return res.success
+        ? `Volumen ajustado al ${action.volume}%.`
+        : res.error ?? "No se pudo cambiar el volumen.";
+    }
+
+    case "PLAYLIST_CREATE": {
+      const res = await hbgCore.dispatchAction("music.playlist", {
+        mode: "create",
+        name: action.name,
+        ...(action.query ? { query: action.query } : {}),
+      });
+      if (!res.success) return res.error ?? "No se pudo crear la playlist.";
+      const playlist = (res.data as { playlist?: { trackIds?: string[] } } | undefined)?.playlist;
+      return `Playlist "${action.name}" creada con ${playlist?.trackIds?.length ?? 0} canciones reales de la biblioteca.`;
+    }
+
+    case "PLAYLIST_ADD":
+    case "PLAYLIST_REMOVE": {
+      const res = await hbgCore.dispatchAction("music.playlist", {
+        mode: action.type === "PLAYLIST_ADD" ? "add" : "remove",
+        name: action.name,
+      });
+      return res.success
+        ? `Canción ${action.type === "PLAYLIST_ADD" ? "agregada a" : "quitada de"} "${action.name}".`
+        : res.error ?? "No se pudo modificar la playlist.";
+    }
+
+    case "PLAYLIST_PLAY": {
+      const res = await hbgCore.dispatchAction("music.playlist", { mode: "play", name: action.name });
+      return res.success
+        ? `Reproduciendo la playlist "${action.name}".`
+        : res.error ?? `No se pudo reproducir "${action.name}".`;
+    }
+
     case "PLAY_TRACK": {
       const searchRes = await hbgCore.dispatchAction("music.search", { query: action.query });
       const results = (searchRes.data as { results?: unknown[] } | undefined)?.results ?? [];

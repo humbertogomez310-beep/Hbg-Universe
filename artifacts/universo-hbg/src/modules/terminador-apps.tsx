@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { requestTerminadorApi as api } from "./terminadorRequest";
 
 interface ManagedApp {
   id: string;
@@ -17,25 +18,6 @@ interface AuditEvent {
   result: string;
   errorCode: string | null;
   createdAt: string;
-}
-
-type ApiResult<T> = { ok: true; data: T } | { ok: false; status: number; code?: string };
-
-async function api<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {
-  try {
-    const response = await fetch(`/api${path}`, {
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      ...init,
-    });
-    const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-    if (!response.ok) {
-      return { ok: false, status: response.status, code: typeof body.code === "string" ? body.code : undefined };
-    }
-    return { ok: true, data: body as T };
-  } catch {
-    return { ok: false, status: 0 };
-  }
 }
 
 function describeError(status: number, code?: string): string {
@@ -92,7 +74,7 @@ export function TerminadorApps() {
       return;
     }
     await refresh();
-    setMessage(status === "disabled" ? `${app.name} apagada.` : `${app.name} encendida.`);
+    setMessage(`${app.name}: estado del registro actualizado; no se controla el proceso de la app.`);
   };
 
   return (
@@ -119,7 +101,7 @@ export function TerminadorApps() {
                       {app.name} <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>v{app.version}</span>
                     </div>
                     <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginTop: 2 }}>
-                      estado: {active ? "ACTIVA" : "APAGADA"} · {formatTime(app.updatedAt)}
+                      registro: {active ? "ACTIVO" : "DESHABILITADO"} · {formatTime(app.updatedAt)}
                     </div>
                   </div>
                   {app.protected ? (
@@ -128,7 +110,7 @@ export function TerminadorApps() {
                     confirmId === app.id ? (
                       <div style={{ display: "flex", gap: 4 }}>
                         <button className="hbg-btn hbg-btn-danger" style={{ padding: "4px 8px", fontSize: 9 }} disabled={busyId !== null} onClick={() => void changeStatus(app, "disabled")}>
-                          CONFIRMAR
+                          CONFIRMAR CAMBIO
                         </button>
                         <button className="hbg-btn hbg-btn-ghost" style={{ padding: "4px 8px", fontSize: 9 }} onClick={() => setConfirmId(null)}>
                           NO
@@ -136,12 +118,12 @@ export function TerminadorApps() {
                       </div>
                     ) : (
                       <button className="hbg-btn hbg-btn-danger" style={{ padding: "4px 10px", fontSize: 9 }} disabled={busyId !== null} onClick={() => setConfirmId(app.id)}>
-                        APAGAR
+                        MARCAR APAGADA
                       </button>
                     )
                   ) : (
                     <button className="hbg-btn hbg-btn-success" style={{ padding: "4px 10px", fontSize: 9 }} disabled={busyId !== null} onClick={() => void changeStatus(app, "active")}>
-                      ENCENDER
+                      MARCAR ACTIVA
                     </button>
                   )}
                 </div>

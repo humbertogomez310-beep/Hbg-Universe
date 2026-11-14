@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useVoiceCapture } from "./useVoiceCapture";
 import { parseIntent } from "./intentParser";
 import { executeVoiceAction } from "./actionExecutor";
+import { hbgCore } from "../core/hbgCore";
 
 export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
   const [processing, setProcessing] = useState(false);
+  const processingRef = useRef(false);
   const [lastRecognizedText, setLastRecognizedText] = useState<string | null>(null);
   const [lastResponseText, setLastResponseText] = useState<string | null>(null);
   const [speechEnabled, setSpeechEnabled] = useState(() => {
@@ -32,18 +34,50 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
 
   const handleResult = useCallback(
     async (text: string) => {
+      if (processingRef.current) {
+        setLastResponseText("Estoy procesando la orden anterior; espera un momento.");
+        return;
+      }
+      processingRef.current = true;
       setLastRecognizedText(text);
       setProcessing(true);
-      const action = parseIntent(text);
-      const response = await executeVoiceAction(action);
-      setLastResponseText(response);
-      speak(response);
-      setProcessing(false);
+      try {
+        const action = parseIntent(text);
+        const response = await executeVoiceAction(action);
+        setLastResponseText(response);
+        speak(response);
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : "Falló la ejecución de la orden.";
+        setLastResponseText(message);
+      } finally {
+        processingRef.current = false;
+        setProcessing(false);
+      }
     },
     [speak]
   );
 
-  const { supported, listening, error, start, stop } = useVoiceCapture(handleResult);
+  const { supported, listening, error, start, cancel } = useVoiceCapture(handleResult);
+
+  const setVoiceDucking = useCallback((active: boolean) => {
+    return hbgCore.dispatchAction(
+      "music.voiceCapture",
+      { active },
+      { timeoutMs: 1000 }
+    );
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void setVoiceDucking(listening).then((result) => {
+      if (active && !result.success) {
+        setLastResponseText(
+          result.error ?? "No se pudo ajustar temporalmente el volumen para la captura de voz."
+        );
+      }
+    });
+    return () => { active = false; };
+  }, [listening, setVoiceDucking]);
 
   useEffect(() => {
     try {
@@ -54,8 +88,8 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
   }, [speechEnabled]);
 
   const handleMicClick = () => {
-    if (!supported) return;
-    if (listening) stop();
+    if (!supported || processingRef.current) return;
+    if (listening) cancel();
     else start();
   };
 
@@ -84,7 +118,7 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
         </button>
         <button
           onClick={handleMicClick}
-          disabled={!supported}
+          disabled={!supported || processing}
           style={{
             width: 52,
             height: 52,

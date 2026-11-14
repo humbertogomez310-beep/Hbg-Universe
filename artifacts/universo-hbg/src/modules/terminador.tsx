@@ -1,6 +1,21 @@
 import { useState, useEffect, useRef } from "react";
 import { UniversoScreen } from "../components/UniversoScreen";
-import { hbgCore, type HBGActionName, type HBGActionResult } from "../core/hbgCore";
+import { hbgCore } from "../core/hbgCore";
+import { TerminadorAppsSection } from "./terminador-apps";
+import {
+  approveTerminadorAuthorization,
+  denyTerminadorAuthorization,
+  listTerminadorAuthorizations,
+  proposeTerminadorAuthorization,
+  refreshTerminadorAuthorization,
+  requestTerminadorApi,
+  revokeTerminadorAuthorization,
+  type TerminadorAuthorization,
+} from "./terminadorRequest";
+import { TerminadorEngine, createDefaultTerminadorProviders } from "./terminadorEngine";
+import { createTerminadorPlan, type TerminadorPlan, type TerminadorTask } from "./terminadorPlanner";
+import { executeTerminadorPlanWithHBG } from "./terminadorExecution";
+import { TerminadorMemory } from "./terminadorMemory";
 
 type ViewMode = "dashboard" | "recursos" | "automatizaciones" | "cronjobs" | "logs" | "salud" | "universo";
 type HealthLevel = "excellent" | "warning" | "critical";
@@ -55,6 +70,40 @@ interface CoreMessage {
   id: string;
   role: "user" | "core";
   text: string;
+  phase?: "interpretation" | "plan" | "authorization" | "execution" | "result" | "error";
+}
+
+const terminadorEngine = new TerminadorEngine({
+  providers: createDefaultTerminadorProviders(),
+});
+
+function describeTask(task: TerminadorTask): string {
+  if (task.state === "completed") {
+    const output = task.output;
+    if (typeof output === "object" && output !== null && "message" in output &&
+        typeof output.message === "string") return output.message;
+    if (task.operation.type === "memory.recall" && Array.isArray(output)) {
+      return output.length
+        ? (output as Array<{ key: string; value: string }>).map((entry) => `${entry.key}: ${entry.value}`).join(" · ")
+        : "No hay recuerdos pertinentes guardados.";
+    }
+    if (Array.isArray(output)) return `Capacidades HBG Core registradas: ${output.join(", ") || "ninguna"}.`;
+    if (typeof output === "object" && output !== null && "track" in output) {
+      const current = output as { track?: { title?: string; artist?: string }; playing?: boolean };
+      return `Estado real de VIBRA: ${current.track?.title ?? "canción seleccionada"}${current.track?.artist ? ` · ${current.track.artist}` : ""} · ${current.playing ? "reproduciendo" : "en pausa"}.`;
+    }
+    if (typeof output === "object" && output !== null && "success" in output) {
+      return `${task.title}: confirmado por la capacidad conectada de HBG Core.`;
+    }
+    if (typeof output === "object" && output !== null && "key" in output) {
+      return `Memoria local actualizada: ${task.title.toLowerCase()}.`;
+    }
+    return `${task.title}: completada.`;
+  }
+  if (task.state === "blocked") return `Bloqueada: ${task.reason ?? task.title}`;
+  if (task.state === "failed") return `Falló: ${task.reason ?? task.title}`;
+  if (task.state === "cancelled") return `Cancelada: ${task.title}`;
+  return `${task.title}: ${task.state}.`;
 }
 
 const HISTORY_KEY = "hbg_terminador_history";
@@ -87,9 +136,9 @@ function getHealth(metrics: Metric[]): HealthLevel {
 }
 
 const HEALTH_CONFIG = {
-  excellent: { label: "🟢 EXCELENTE", color: "var(--neon-green)", score: 87, desc: "Todos los sistemas operando correctamente. Sin errores críticos." },
-  warning: { label: "🟡 ATENCIÓN", color: "#ffd740", score: 62, desc: "Algunos recursos en niveles altos. Se recomienda optimización." },
-  critical: { label: "🔴 CRÍTICO", color: "var(--neon-pink)", score: 31, desc: "Recursos críticos detectados. Acción inmediata requerida." },
+  excellent: { label: "🟢 EXCELENTE", color: "var(--neon-green)", score: 87, desc: "Indicador de demostración; no hay telemetría real conectada." },
+  warning: { label: "🟡 ATENCIÓN", color: "#ffd740", score: 62, desc: "Indicador de demostración; no hay telemetría real conectada." },
+  critical: { label: "🔴 CRÍTICO", color: "var(--neon-pink)", score: 31, desc: "Indicador de demostración; no hay telemetría real conectada." },
 };
 
 function getMetricColor(m: Metric): string {
@@ -103,7 +152,7 @@ const levelColor: Record<string, string> = { INFO: "var(--neon-cyan)", WARN: "#f
 
 export function TerminadorModule() {
   const [view, setView] = useState<ViewMode>("dashboard");
-  const [metrics, setMetrics] = useState<Metric[]>([
+  const [metrics] = useState<Metric[]>([
     { label: "CPU", value: 23, max: 100, unit: "%", color: "var(--neon-cyan)", critical: 90, warning: 70 },
     { label: "RAM", value: 4.2, max: 16, unit: "GB", color: "var(--neon-purple)", critical: 90, warning: 75 },
     { label: "DISCO", value: 62, max: 100, unit: "%", color: "var(--neon-green)", critical: 95, warning: 80 },
@@ -115,19 +164,23 @@ export function TerminadorModule() {
   const [history, setHistory] = useState<ActionHistory[]>(loadHistory);
   const [tasks, setTasks] = useState<AutoTask[]>(() => { try { return JSON.parse(localStorage.getItem(TASKS_KEY) ?? "null") ?? DEFAULT_TASKS; } catch { return DEFAULT_TASKS; } });
   const [crons, setCrons] = useState<CronJob[]>(() => { try { return JSON.parse(localStorage.getItem(CRONS_KEY) ?? "null") ?? DEFAULT_CRONS; } catch { return DEFAULT_CRONS; } });
-  const [scanning, setScanning] = useState(false);
-  const [optimizing, setOptimizing] = useState(false);
   const [uptime, setUptime] = useState(0);
   const [newTaskName, setNewTaskName] = useState("");
   const [newTaskTrigger, setNewTaskTrigger] = useState("");
   const [newTaskAction, setNewTaskAction] = useState("");
   const [newTaskPriority, setNewTaskPriority] = useState<Priority>("media");
   const [cronFilter, setCronFilter] = useState<"todas" | "diaria" | "semanal" | "mensual">("todas");
-  const [selectedRes, setSelectedRes] = useState<Set<string>>(new Set());
   const [coreInput, setCoreInput] = useState("");
   const [coreBusy, setCoreBusy] = useState(false);
+  const [pendingPlan, setPendingPlan] = useState<TerminadorPlan | null>(null);
+  const [serverAuthorizations, setServerAuthorizations] = useState<TerminadorAuthorization[]>([]);
+  const [authorizationBusy, setAuthorizationBusy] = useState<string | null>(null);
+  const [authorizationNotice, setAuthorizationNotice] = useState("");
+  const [memoryStatus, setMemoryStatus] = useState("");
+  const [terminadorMemory] = useState(() => new TerminadorMemory());
+  const memoryFileRef = useRef<HTMLInputElement>(null);
   const [coreMessages, setCoreMessages] = useState<CoreMessage[]>([
-    { id: "welcome", role: "core", text: "HBG CORE en línea. Puedo ejecutar órdenes reales en VIBRA PRO." },
+    { id: "welcome", role: "core", text: "Interpretación local sin llamadas externas. Los cambios en apps requieren confirmación y HBG Authority; las acciones de desarrollo permanecen separadas.", phase: "result" },
   ]);
   const logRef = useRef<HTMLDivElement>(null);
 
@@ -135,11 +188,38 @@ export function TerminadorModule() {
   const healthCfg = HEALTH_CONFIG[health];
 
   useEffect(() => {
-    const id = setInterval(() => {
-      setMetrics((prev) => prev.map((m) => ({ ...m, value: Math.max(0, Math.min(m.max, m.value + (Math.random() - 0.45) * (m.max * 0.025))) })));
-      setUptime((u) => u + 1);
-    }, 2000);
+    const id = setInterval(() => setUptime((u) => u + 1), 1000);
     return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    try {
+      terminadorMemory.init();
+      setMemoryStatus(
+        terminadorMemory.persistenceAvailable
+          ? `Memoria local lista · ${terminadorMemory.list().length} recuerdos persistentes`
+          : "Almacenamiento persistente no disponible; no se guardarán recuerdos persistentes.",
+      );
+    } catch (error) {
+      setMemoryStatus(error instanceof Error ? error.message : "No se pudo cargar la memoria local.");
+    }
+  }, [terminadorMemory]);
+
+  useEffect(() => {
+    let active = true;
+    void listTerminadorAuthorizations().then((result) => {
+      if (!active) return;
+      if (result.ok) {
+        setServerAuthorizations(result.data);
+      } else if (result.status !== 401 && result.status !== 403) {
+        setAuthorizationNotice(
+          "No se pudo consultar el estado de las autorizaciones en HBG Authority.",
+        );
+      }
+    });
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [logs]);
@@ -158,15 +238,133 @@ export function TerminadorModule() {
     setHistory((prev) => [entry, ...prev.slice(0, 49)]);
   };
 
-  const runCoreAction = async (
-    action: HBGActionName,
-    payload?: Record<string, unknown>,
-  ): Promise<HBGActionResult> => {
-    const isMusic = action.startsWith("music.");
-    if (isMusic && !hbgCore.getRegisteredActions().some((name) => name === action)) {
-      hbgCore.setModule("vibra");
+  const appendCoreMessage = (text: string, phase: CoreMessage["phase"] = "result") => {
+    setCoreMessages((prev) => [
+      ...prev,
+      { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, role: "core", text, phase },
+    ]);
+  };
+
+  const executePlan = async (plan: TerminadorPlan) => {
+    const result = await executeTerminadorPlanWithHBG(plan, {
+      request: requestTerminadorApi,
+      memory: terminadorMemory,
+    });
+    hbgCore.setContext("terminador.lastPlanResult", {
+      planId: result.id,
+      state: result.state,
+      tasks: result.tasks.map(({ id, state, reason }) => ({ id, state, reason })),
+      completedAt: new Date().toISOString(),
+    });
+    result.tasks.forEach((task) => {
+      const detail = describeTask(task);
+      appendCoreMessage(detail, task.state === "failed" ? "error" : "result");
+      addHistory(
+        task.title,
+        task.state === "completed" ? "ok" : task.state === "failed" ? "error" : "warn",
+        detail,
+      );
+    });
+    setPendingPlan(null);
+  };
+
+  const proposePlanOperations = async (plan: TerminadorPlan) => {
+    const tasks = plan.tasks.filter(
+      (task) =>
+        task.scope === "authority" &&
+        task.requiredPermission === "terminador.manage",
+    );
+    const applicationsResult =
+      await requestTerminadorApi<{ applications: Array<{ id: string; name: string }> }>(
+        "/terminador/apps",
+      );
+    if (!applicationsResult.ok || !Array.isArray(applicationsResult.data.applications)) {
+      appendCoreMessage(
+        applicationsResult.ok
+          ? "No se pudo determinar de forma segura la aplicación afectada."
+          : applicationsResult.error ?? "HBG Authority no está disponible.",
+        "error",
+      );
+      return;
     }
-    return hbgCore.dispatchAction(action, payload);
+
+    for (const task of tasks) {
+      if (task.operation.type !== "apps.set_status") {
+        appendCoreMessage(
+          "Esta operación todavía no tiene un tipo de propuesta soportado por HBG Authority.",
+          "error",
+        );
+        continue;
+      }
+      const target = task.operation.target.trim().toLocaleLowerCase();
+      const matches = applicationsResult.data.applications.filter(
+        (application) =>
+          application.id.toLocaleLowerCase() === target ||
+          application.name.trim().toLocaleLowerCase() === target,
+      );
+      if (matches.length !== 1) {
+        appendCoreMessage(
+          matches.length
+            ? `La aplicación "${task.operation.target}" no es inequívoca; no se creó propuesta.`
+            : `No se encontró la aplicación exacta "${task.operation.target}"; no se creó propuesta.`,
+          "error",
+        );
+        continue;
+      }
+      const result = await proposeTerminadorAuthorization(
+        matches[0].id,
+        task.operation.status,
+        plan.interpretation.explanation,
+      );
+      if (!result.ok) {
+        appendCoreMessage(
+          result.error ?? `HBG Authority rechazó la propuesta (${result.code ?? result.status}).`,
+          "error",
+        );
+        continue;
+      }
+      setServerAuthorizations((previous) => [
+        ...previous.filter((authorization) => authorization.id !== result.data.id),
+        result.data,
+      ]);
+      appendCoreMessage(
+        `HBG Authority registró la propuesta ${result.data.id} como ${result.data.state}. No se ejecutó ningún cambio.`,
+        "authorization",
+      );
+    }
+  };
+
+  const updateAuthorizationFromServer = async (
+    authorization: TerminadorAuthorization,
+    action: "approve" | "deny" | "revoke" | "refresh",
+  ) => {
+    if (authorizationBusy) return;
+    setAuthorizationBusy(authorization.id);
+    setAuthorizationNotice("");
+    try {
+      const result = action === "approve"
+        ? await approveTerminadorAuthorization(authorization.id)
+        : action === "deny"
+          ? await denyTerminadorAuthorization(authorization.id)
+        : action === "revoke"
+          ? await revokeTerminadorAuthorization(authorization.id)
+          : await refreshTerminadorAuthorization(authorization.id);
+      if (!result.ok) {
+        setAuthorizationNotice(
+          `No se confirmó la acción en el servidor (${result.code ?? result.status}).`,
+        );
+        return;
+      }
+      setServerAuthorizations((previous) =>
+        previous.map((entry) => entry.id === result.data.id ? result.data : entry),
+      );
+      appendCoreMessage(
+        `Estado confirmado por HBG Authority: ${result.data.state}. La aprobación no ejecuta la operación.`,
+        "authorization",
+      );
+    } finally {
+      setAuthorizationBusy(null);
+    }
   };
 
   const executeCoreCommand = async () => {
@@ -175,178 +373,121 @@ export function TerminadorModule() {
     setCoreInput("");
     setCoreMessages((prev) => [...prev, { id: `${Date.now()}-u`, role: "user", text: command }]);
     setCoreBusy(true);
-
-    const normalized = command.toLowerCase();
-    let action: HBGActionName | null = null;
-    let payload: Record<string, unknown> | undefined;
-    let fallback = "No reconocí esa orden. Prueba: “pon play”, “pon mis favoritos”, “crea una playlist” o “reproduce mi playlist”.";
-
-    if (/^(abre|abrir|ve a|ir a).*(vibra|música)/.test(normalized)) {
-      hbgCore.setModule("vibra");
-      fallback = "VIBRA PRO abierto.";
-    } else if (/\b(pon|reproduce|reproducir)\b.*\b(mis favoritos|favoritos)\b/.test(normalized)) {
-      action = "music.playlist";
-      payload = { mode: "play", favorites: true, name: "Mis favoritos" };
-      fallback = "No pude reproducir tus favoritos. Verifica que tengas canciones favoritas.";
-    } else if (/\b(crea|crear)\b.*\b(playlist|lista)\b/.test(normalized)) {
-      action = "music.playlist";
-      const playlistName = command
-        .replace(/^.*?\b(crea|crear)\b/i, "")
-        .replace(/^\s*(una\s+)?(playlist|lista)(\s+(llamada|llamado|de))?\s*/i, "")
-        .trim();
-      payload = { mode: "create", name: playlistName || "Nueva playlist" };
-      fallback = "No pude crear la playlist.";
-    } else if (/\b(pon|reproduce|reproducir)\b.*\b(playlist|lista)\b/.test(normalized)) {
-      action = "music.playlist";
-      const playlistName = command
-        .replace(/^.*?\b(playlist|lista)\b/i, "")
-        .replace(/^\s*(mi|la)\s+/i, "")
-        .trim();
-      payload = { mode: "play", name: playlistName };
-      fallback = `No existe la playlist "${playlistName || "indicada"}".`;
-    } else if (/\b(agrega|añade|anade)\b.*\b(playlist|lista)\b/.test(normalized)) {
-      action = "music.playlist";
-      const playlistName = command
-        .replace(/^.*?\b(playlist|lista)\b/i, "")
-        .trim();
-      payload = { mode: "add", name: playlistName };
-      fallback = `No pude agregar la canción a "${playlistName || "la playlist"}".`;
-    } else if (/\b(busca|buscar)\b/.test(normalized)) {
-      action = "music.search";
-      payload = { query: command.replace(/^.*?\b(busca|buscar)\b/i, "").trim() };
-      fallback = "No encontré coincidencias en la biblioteca local.";
-    } else if (/\b(pon|reproduce|reproducir)\b.*\b(la )?(segunda|2)\b/.test(normalized)) {
-      action = "music.playTrack";
-      payload = { index: 2 };
-      fallback = "No encontré el segundo resultado de la búsqueda.";
-    } else if (/\b(pausa|pausar|detén|detener)\b/.test(normalized)) {
-      action = "music.pause";
-      fallback = "No pude pausar la reproducción.";
-    } else if (/\b(siguiente|siguiente canción|next)\b/.test(normalized)) {
-      action = "music.next";
-      fallback = "No hay una siguiente canción disponible.";
-    } else if (/\b(anterior|previous)\b/.test(normalized)) {
-      action = "music.previous";
-      fallback = "No hay una canción anterior disponible.";
-    } else if (/\b(play|reproduce|reproducir|pon música)\b/.test(normalized)) {
-      action = "music.play";
-      fallback = "No pude iniciar la reproducción.";
-    } else {
-      const volume = normalized.match(/volumen.*?(\d{1,3})|(\d{1,3}).*?%/);
-      if (volume) {
-        action = "music.volume";
-        payload = { volume: Number(volume[1] ?? volume[2]) };
-        fallback = "No pude cambiar el volumen.";
+    try {
+      const interpretation = await terminadorEngine.interpret(command);
+      hbgCore.setContext("terminador.lastRequest", {
+        text: command,
+        interpretation,
+        module: hbgCore.getModule(),
+        receivedAt: new Date().toISOString(),
+      });
+      appendCoreMessage(
+        `Interpretación (${interpretation.providerId}, confianza ${Math.round(interpretation.confidence * 100)}%): ${interpretation.explanation}`,
+        "interpretation",
+      );
+      if (interpretation.requiresClarification) {
+        appendCoreMessage(interpretation.clarification ?? "Necesito más información antes de continuar.", "error");
+        setPendingPlan(null);
+        return;
       }
-    }
 
-    if (action) {
-      const result = await runCoreAction(action, payload);
-      const detail = result.success
-        ? action === "music.search"
-          ? `Búsqueda completada: ${((result.data as { results?: unknown[] })?.results ?? []).length} resultado(s).`
-          : action === "music.volume"
-            ? `Volumen ajustado al ${(result.data as { volume?: number })?.volume}%.`
-          : action === "music.playTrack"
-              ? `Reproduciendo ${(result.data as { track?: { title?: string } })?.track?.title ?? "la selección"}.`
-              : action === "music.playlist"
-                ? (() => {
-                    const data = result.data as { playlist?: { name?: string }; track?: { title?: string }; added?: boolean };
-                    if (data.added) return `Canción agregada a "${data.playlist?.name ?? "la playlist"}".`;
-                    return `Reproduciendo ${data.playlist?.name ?? "la selección"}${data.track?.title ? ` · ${data.track.title}` : ""}.`;
-                  })()
-              : "Acción ejecutada y verificada en VIBRA PRO."
-        : result.error ?? fallback;
-      setCoreMessages((prev) => [...prev, { id: `${Date.now()}-c`, role: "core", text: detail }]);
-      addHistory(action, result.success ? "ok" : "error", detail);
-    } else {
-      setCoreMessages((prev) => [...prev, { id: `${Date.now()}-c`, role: "core", text: fallback }]);
-      if (/^(abre|abrir|ve a|ir a)/.test(normalized)) addHistory("NAVEGACIÓN", "ok", fallback);
+      const plan = createTerminadorPlan(interpretation);
+      hbgCore.setContext("terminador.currentPlan", plan);
+      appendCoreMessage(
+        plan.tasks.length
+          ? `Plan: ${plan.tasks.map((task, index) => `${index + 1}. ${task.title}${task.dependsOn.length ? ` (depende de ${task.dependsOn.join(", ")})` : ""}`).join(" → ")}`
+          : "Plan vacío; no hay ninguna operación ejecutable.",
+        "plan",
+      );
+
+      const needsAuthorization = plan.tasks.some(
+        (task) => task.scope === "authority" && task.requiredPermission === "terminador.manage",
+      );
+      if (needsAuthorization) {
+        setPendingPlan(plan);
+        await proposePlanOperations(plan);
+        return;
+      }
+
+      await executePlan(plan);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Terminador no pudo procesar la solicitud.";
+      appendCoreMessage(message, "error");
+      addHistory("terminador.request", "error", message);
+    } finally {
+      setCoreBusy(false);
     }
-    setCoreBusy(false);
   };
 
-  const runOperation = async (name: string, steps: Array<{ level: LogEntry["level"]; msg: string }>, onDone?: () => void) => {
+  const cancelPendingPlan = async () => {
+    if (!pendingPlan) return;
+    const openAuthorizations = serverAuthorizations.filter(
+      (authorization) =>
+        authorization.state === "pending" || authorization.state === "approved",
+    );
+    for (const authorization of openAuthorizations) {
+      const result = await revokeTerminadorAuthorization(authorization.id);
+      if (!result.ok) {
+        setAuthorizationNotice(
+          `No se pudo confirmar la revocación de ${authorization.id}; el estado permanece sin confirmar.`,
+        );
+        return;
+      }
+      setServerAuthorizations((previous) =>
+        previous.map((entry) => entry.id === result.data.id ? result.data : entry),
+      );
+    }
+    setPendingPlan(null);
+    appendCoreMessage(
+      openAuthorizations.length
+        ? "Propuesta revocada por HBG Authority; no se ejecutó la operación."
+        : "Plan descartado; no se ejecutó la operación.",
+      "result",
+    );
+  };
+
+  const exportMemory = () => {
+    try {
+      const blob = new Blob([terminadorMemory.exportBackup()], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `terminador-memory-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setMemoryStatus(`Respaldo exportado · ${terminadorMemory.list().length} recuerdos`);
+    } catch (error) {
+      setMemoryStatus(error instanceof Error ? error.message : "No se pudo exportar la memoria.");
+    }
+  };
+
+  const importMemory = async (file?: File) => {
+    if (!file) return;
+    try {
+      terminadorMemory.importBackup(await file.text());
+      setMemoryStatus(`Respaldo importado · ${terminadorMemory.list().length} recuerdos`);
+    } catch (error) {
+      setMemoryStatus(error instanceof Error ? error.message : "No se pudo importar el respaldo.");
+    } finally {
+      if (memoryFileRef.current) memoryFileRef.current.value = "";
+    }
+  };
+
+  const reportUnavailableOperation = (name: string) => {
     setView("logs");
-    for (const step of steps) {
-      await new Promise((r) => setTimeout(r, 300 + Math.random() * 200));
-      addLog({ level: step.level, message: step.msg });
-    }
-    addHistory(name, "ok", `${steps.length} operaciones ejecutadas`);
-    onDone?.();
+    const message = `${name}: no hay una capacidad real conectada; no se ejecutó.`;
+    addLog({ level: "WARN", message });
+    addHistory(name, "warn", message);
   };
 
-  const runOptimize = () => {
-    if (optimizing || scanning) return;
-    setOptimizing(true);
-    runOperation("OPTIMIZACIÓN MASIVA", [
-      { level: "OPTIM", msg: "Iniciando optimización masiva del sistema..." },
-      { level: "INFO", msg: "Limpiando archivos temporales..." },
-      { level: "INFO", msg: "Compactando registros de sistema..." },
-      { level: "INFO", msg: "Eliminando caché del ecosistema..." },
-      { level: "OPTIM", msg: "Defragmentando índices de memoria..." },
-      { level: "OK", msg: `Optimización completada — ${(Math.random() * 30 + 15).toFixed(1)} MB recuperados` },
-    ], () => setOptimizing(false));
-  };
-
-  const runScan = () => {
-    if (optimizing || scanning) return;
-    setScanning(true);
-    runOperation("ESCANEO DEL SISTEMA", [
-      { level: "SCAN", msg: "Iniciando escaneo completo del sistema..." },
-      { level: "SCAN", msg: `Analizando /tmp — ${Math.floor(Math.random() * 500 + 500)} archivos encontrados` },
-      { level: "SCAN", msg: `Analizando ~/.cache — ${(Math.random() * 2 + 1).toFixed(1)} GB detectados` },
-      { level: "WARN", msg: `Disco al ${Math.floor(metrics.find(m => m.label === "DISCO")?.value ?? 62)}% — monitoreo activo` },
-      { level: "INFO", msg: "Procesos zombie: 0 — limpio" },
-      { level: "OK", msg: `Escaneo completado — health score: ${healthCfg.score}/100` },
-    ], () => setScanning(false));
-  };
-
-  const runRepairAll = () => runOperation("REPARAR TODO", [
-    { level: "INFO", msg: "Verificando integridad de todos los módulos..." },
-    { level: "INFO", msg: "VIBRA PRO → integridad verificada ✓" },
-    { level: "INFO", msg: "INSTINTO → integridad verificada ✓" },
-    { level: "INFO", msg: "HBG CORE → integridad verificada ✓" },
-    { level: "OPTIM", msg: "Reparando índices corruptos..." },
-    { level: "OK", msg: "Reparación completada — todos los módulos íntegros" },
-  ]);
-
-  const runFullBackup = () => runOperation("RESPALDO TOTAL", [
-    { level: "INFO", msg: "Iniciando respaldo total del ecosistema..." },
-    { level: "INFO", msg: "Serializando notas de Instinto..." },
-    { level: "INFO", msg: "Exportando playlists de Vibra Pro..." },
-    { level: "INFO", msg: "Guardando memoria del HBG Core..." },
-    { level: "INFO", msg: "Empaquetando configuraciones..." },
-    { level: "OK", msg: "universo_hbg_backup.json generado correctamente" },
-  ]);
-
-  const runDeepClean = () => runOperation("LIMPIEZA PROFUNDA", [
-    { level: "OPTIM", msg: "Iniciando limpieza profunda..." },
-    { level: "INFO", msg: "Eliminando logs obsoletos (>30 días)..." },
-    { level: "INFO", msg: "Limpiando caché del sistema..." },
-    { level: "INFO", msg: "Eliminando archivos .tmp y .bak..." },
-    { level: "INFO", msg: "Comprimiendo backups antiguos..." },
-    { level: "OK", msg: `Limpieza profunda completada — ${(Math.random() * 50 + 20).toFixed(1)} MB liberados` },
-  ]);
-
-  const runRestartServices = () => runOperation("REINICIAR SERVICIOS", [
-    { level: "INFO", msg: "Deteniendo Share Engine..." },
-    { level: "INFO", msg: "Deteniendo Node Manager..." },
-    { level: "INFO", msg: "Esperando cierre limpio..." },
-    { level: "INFO", msg: "Reiniciando Share Engine..." },
-    { level: "INFO", msg: "Reiniciando Node Manager..." },
-    { level: "OK", msg: "Todos los servicios reiniciados correctamente" },
-  ]);
+  const runOptimize = () => reportUnavailableOperation("OPTIMIZACIÓN MASIVA");
+  const runScan = () => reportUnavailableOperation("ESCANEO DEL SISTEMA");
+  const runRepairAll = () => reportUnavailableOperation("REPARAR TODO");
+  const runFullBackup = () => reportUnavailableOperation("RESPALDO TOTAL");
+  const runDeepClean = () => reportUnavailableOperation("LIMPIEZA PROFUNDA");
+  const runRestartServices = () => reportUnavailableOperation("REINICIAR SERVICIOS");
 
   const formatUptime = (s: number) => `${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
-
-  const MOCK_RESOURCES = [
-    { name: "session_cache.tmp", size: "14.2 MB", type: "temp" },
-    { name: "__pycache__", size: "3.8 MB", type: "pycache" },
-    { name: "vibra_session.bak", size: "2.1 MB", type: "backup" },
-    { name: "core_debug.log", size: "5.6 MB", type: "log" },
-    { name: "instinto_draft.tmp", size: "0.8 MB", type: "temp" },
-  ];
 
   const filteredCrons = crons.filter((c) => cronFilter === "todas" || c.frequency === cronFilter);
 
@@ -355,8 +496,6 @@ export function TerminadorModule() {
     { id: "automatizaciones", label: "AUTOMATIZACIONES" }, { id: "cronjobs", label: "CRON JOBS" },
     { id: "logs", label: "LOGS" }, { id: "salud", label: "SALUD" }, { id: "universo", label: "UNIVERSO HBG" },
   ];
-
-  const anyBusy = scanning || optimizing;
 
   return (
     <div>
@@ -367,8 +506,8 @@ export function TerminadorModule() {
           <div className="mod-subtitle">// administrador autónomo del ecosistema</div>
         </div>
         <div style={{ marginLeft: "auto", display: "flex", gap: 5 }}>
-          <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 8, padding: "6px 8px" }} onClick={runScan} disabled={anyBusy}>{scanning ? "◎ SCAN..." : "◎ SCAN"}</button>
-          <button className="hbg-btn hbg-btn-success" style={{ fontSize: 8, padding: "6px 8px" }} onClick={runOptimize} disabled={anyBusy}>{optimizing ? "⚙ OPTIM..." : "⚙ OPTIM"}</button>
+          <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 8, padding: "6px 8px" }} onClick={runScan}>◎ SCAN</button>
+          <button className="hbg-btn hbg-btn-success" style={{ fontSize: 8, padding: "6px 8px" }} onClick={runOptimize}>⚙ OPTIM</button>
           <span className="hbg-badge" style={{ background: `${healthCfg.color}15`, borderColor: `${healthCfg.color}40`, color: healthCfg.color }}>
             {healthCfg.label.split(" ")[0]} {healthCfg.score}/100
           </span>
@@ -388,6 +527,9 @@ export function TerminadorModule() {
       {/* DASHBOARD */}
       {view === "dashboard" && (
         <div>
+          <div className="hbg-card" style={{ marginBottom: 12, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>
+            Telemetría y health score de muestra. Las acciones de mantenimiento no están conectadas y se detienen sin ejecutarse.
+          </div>
           <div className="hbg-card hbg-card-accent" style={{ "--card-color": healthCfg.color, marginBottom: 16, padding: "16px 20px" } as React.CSSProperties}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
@@ -423,8 +565,8 @@ export function TerminadorModule() {
           <div className="hbg-card hbg-card-accent" style={{ "--card-color": "var(--neon-green)", marginBottom: 16 } as React.CSSProperties}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
               <div>
-                <div className="card-label">HBG CORE · ACTION ROUTER</div>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: 13, color: "var(--neon-green)", letterSpacing: "0.08em" }}>EJECUCIÓN VERIFICADA</div>
+                <div className="card-label">TERMINADOR IA · HBG CORE</div>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: 13, color: "var(--neon-green)", letterSpacing: "0.08em" }}>INTERPRETACIÓN Y CAPACIDADES CONECTADAS</div>
               </div>
               <span className="hbg-badge" style={{ color: "var(--neon-cyan)", borderColor: "rgba(0,229,255,0.35)" }}>
                 {hbgCore.getRegisteredActions().length} CAPACIDADES
@@ -433,7 +575,9 @@ export function TerminadorModule() {
             <div style={{ background: "var(--bg-deep)", border: "1px solid var(--border-dim)", borderRadius: 3, padding: "8px 10px", minHeight: 74, maxHeight: 138, overflowY: "auto", marginBottom: 8 }}>
               {coreMessages.map((message) => (
                 <div key={message.id} style={{ display: "flex", gap: 8, marginBottom: 5, fontFamily: "var(--font-mono)", fontSize: 10, lineHeight: 1.45 }}>
-                  <span style={{ color: message.role === "user" ? "var(--neon-cyan)" : "var(--neon-green)", flexShrink: 0 }}>{message.role === "user" ? ">" : "CORE:"}</span>
+                  <span style={{ color: message.role === "user" ? "var(--neon-cyan)" : message.phase === "error" ? "var(--neon-pink)" : message.phase === "authorization" ? "#ffd740" : "var(--neon-green)", flexShrink: 0 }}>
+                    {message.role === "user" ? ">" : `CORE${message.phase ? ` · ${message.phase.toUpperCase()}` : ""}:`}
+                  </span>
                   <span style={{ color: message.role === "user" ? "var(--text-primary)" : "var(--text-secondary)" }}>{message.text}</span>
                 </div>
               ))}
@@ -444,8 +588,8 @@ export function TerminadorModule() {
                 value={coreInput}
                 onChange={(e) => setCoreInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") void executeCoreCommand(); }}
-                placeholder='Ej: "pon play" · "busca Bad Bunny" · "pon la segunda"'
-                aria-label="Orden para HBG Core"
+                placeholder='Ej: "lista las apps" · "apaga la app Demo" · "pausa"'
+                aria-label="Solicitud para Terminador IA"
                 disabled={coreBusy}
               />
               <button className="hbg-btn hbg-btn-success" onClick={() => void executeCoreCommand()} disabled={coreBusy || !coreInput.trim()}>
@@ -459,6 +603,107 @@ export function TerminadorModule() {
                 </button>
               ))}
             </div>
+            {pendingPlan && (
+              <div role="group" aria-label="Confirmación de plan de Terminador" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 10, padding: 9, border: "1px solid rgba(255,215,64,0.4)", borderRadius: 3 }}>
+                <span style={{ flex: 1, minWidth: 200, fontFamily: "var(--font-mono)", fontSize: 10, color: "#ffd740" }}>
+                  PROPUESTA BLOQUEADA · {pendingPlan.tasks.map((task) => task.title).join(" · ")}
+                  {" · "}
+                  {pendingPlan.tasks.find((task) => task.state === "blocked")?.reason}
+                </span>
+                <button className="hbg-btn hbg-btn-ghost" disabled={coreBusy} onClick={cancelPendingPlan}>
+                  REVOCAR / DESCARTAR
+                </button>
+              </div>
+            )}
+            {serverAuthorizations.length > 0 && (
+              <div aria-label="Autorizaciones confirmadas por HBG Authority" style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                {serverAuthorizations.map((authorization) => {
+                  const requestedStatus = authorization.parameters.requestedStatus;
+                  const currentStatus = authorization.parameters.currentStatus;
+                  return (
+                    <section key={authorization.id} style={{ padding: 10, border: "1px solid rgba(255,215,64,0.4)", borderRadius: 3, background: "var(--bg-deep)" }}>
+                      <div style={{ fontFamily: "var(--font-display)", fontSize: 10, color: "#ffd740", marginBottom: 6 }}>
+                        HBG AUTHORITY · {authorization.state.toUpperCase()} · {authorization.operation}
+                      </div>
+                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, lineHeight: 1.6, color: "var(--text-secondary)" }}>
+                        <div>Recurso: {authorization.resource} · aplicación: {authorization.applicationId}</div>
+                        <div>Cambio propuesto: {String(currentStatus)} → {String(requestedStatus)}</div>
+                        <div>Ámbito: {authorization.workspace} · permisos: {authorization.requestedPermissions.join(", ")}</div>
+                        <div>Motivo: {authorization.reason}</div>
+                        <div>Riesgo: el cambio altera el estado de la aplicación; no se ejecuta en esta misión.</div>
+                        <div>Hash de propuesta: {authorization.proposalHash}</div>
+                        <div>Expira: {new Date(authorization.expiresAt).toLocaleString("es-ES")}</div>
+                      </div>
+                      <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                        {authorization.state === "pending" && (
+                          <>
+                            <button
+                              className="hbg-btn hbg-btn-success"
+                              disabled={authorizationBusy !== null}
+                              onClick={() => void updateAuthorizationFromServer(authorization, "approve")}
+                            >
+                              {authorizationBusy === authorization.id ? "CONFIRMANDO…" : "APROBAR ESTA OPERACIÓN"}
+                            </button>
+                            <button
+                              className="hbg-btn hbg-btn-ghost"
+                              disabled={authorizationBusy !== null}
+                              onClick={() => void updateAuthorizationFromServer(authorization, "deny")}
+                            >
+                              DENEGAR
+                            </button>
+                          </>
+                        )}
+                        {(authorization.state === "pending" || authorization.state === "approved") && (
+                          <button
+                            className="hbg-btn hbg-btn-ghost"
+                            disabled={authorizationBusy !== null}
+                            onClick={() => void updateAuthorizationFromServer(authorization, "revoke")}
+                          >
+                            REVOCAR
+                          </button>
+                        )}
+                        <button
+                          className="hbg-btn hbg-btn-ghost"
+                          disabled={authorizationBusy !== null}
+                          onClick={() => void updateAuthorizationFromServer(authorization, "refresh")}
+                        >
+                          ACTUALIZAR ESTADO
+                        </button>
+                      </div>
+                      {authorization.state === "approved" && (
+                        <div role="status" style={{ marginTop: 7, color: "#ffd740", fontSize: 9 }}>
+                          Aprobación server-side confirmada. La operación no fue ejecutada; escritura, borrado, scripts y Code Tools siguen bloqueados.
+                        </div>
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
+            )}
+            {authorizationNotice && (
+              <div role="status" style={{ marginTop: 8, color: "var(--neon-pink)", fontSize: 9 }}>
+                {authorizationNotice}
+              </div>
+            )}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 9 }}>
+              <span style={{ flex: 1, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }} role="status">
+                {memoryStatus}
+              </span>
+              <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 8, padding: "5px 7px" }} onClick={exportMemory}>
+                RESPALDAR MEMORIA
+              </button>
+              <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 8, padding: "5px 7px" }} onClick={() => memoryFileRef.current?.click()}>
+                IMPORTAR / MIGRAR
+              </button>
+              <input
+                ref={memoryFileRef}
+                type="file"
+                accept="application/json,.json"
+                aria-label="Importar respaldo de memoria"
+                style={{ display: "none" }}
+                onChange={(event) => void importMemory(event.target.files?.[0])}
+              />
+            </div>
           </div>
 
           {/* Action buttons */}
@@ -470,7 +715,7 @@ export function TerminadorModule() {
               { label: "LIMPIEZA PROFUNDA", fn: runDeepClean, color: "#ff9100", icon: "◎" },
               { label: "REINICIAR SERVICIOS", fn: runRestartServices, color: "var(--neon-purple)", icon: "↻" },
             ].map((btn) => (
-              <button key={btn.label} className="hbg-card" style={{ cursor: "pointer", textAlign: "left", padding: "12px 16px", border: `1px solid ${btn.color}25`, display: "flex", alignItems: "center", gap: 10 }} onClick={btn.fn} disabled={anyBusy}>
+              <button key={btn.label} className="hbg-card" style={{ cursor: "pointer", textAlign: "left", padding: "12px 16px", border: `1px solid ${btn.color}25`, display: "flex", alignItems: "center", gap: 10 }} onClick={btn.fn}>
                 <span style={{ fontSize: 20, color: btn.color, filter: `drop-shadow(0 0 6px ${btn.color})` }}>{btn.icon}</span>
                 <span style={{ fontFamily: "var(--font-display)", fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: btn.color }}>{btn.label}</span>
               </button>
@@ -478,7 +723,7 @@ export function TerminadorModule() {
           </div>
 
           {/* History */}
-          <div className="section-title">// historial de acciones</div>
+          <div className="section-title">// historial local (no es auditoría del servidor)</div>
           {history.length === 0 ? (
             <div className="hbg-card" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)" }}>// sin historial — ejecuta una operación para comenzar</div>
           ) : (
@@ -501,51 +746,16 @@ export function TerminadorModule() {
       {/* RECURSOS */}
       {view === "recursos" && (
         <div>
-          <div className="hbg-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 16 }}>
-            {metrics.map((m) => {
-              const color = getMetricColor(m);
-              const pct = Math.min((m.value / m.max) * 100, 100);
-              return (
-                <div key={m.label} className="hbg-card hbg-card-accent" style={{ "--card-color": color } as React.CSSProperties}>
-                  <div className="card-label">{m.label}</div>
-                  <div className="card-value" style={{ color, textShadow: `0 0 12px ${color}`, fontSize: 20 }}>
-                    {m.label === "RAM" ? m.value.toFixed(1) : Math.round(m.value)}<span style={{ fontSize: 10, opacity: 0.7, marginLeft: 2 }}>{m.unit}</span>
-                  </div>
-                  <div className="hbg-progress"><div className="hbg-progress-bar" style={{ "--bar-color": color, width: `${pct}%` } as React.CSSProperties} /></div>
-                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginTop: 4 }}>{pct.toFixed(0)}% de {m.max}{m.unit}</div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="section-title">// archivos temporales detectados</div>
-          <div className="hbg-list" style={{ marginBottom: 12 }}>
-            {MOCK_RESOURCES.map((f) => (
-              <div key={f.name} className="hbg-list-item" style={{ cursor: "pointer", borderColor: selectedRes.has(f.name) ? "var(--neon-pink)" : undefined, background: selectedRes.has(f.name) ? "rgba(255,64,129,0.06)" : undefined }}
-                onClick={() => setSelectedRes((prev) => { const n = new Set(prev); n.has(f.name) ? n.delete(f.name) : n.add(f.name); return n; })}>
-                <div style={{ width: 14, height: 14, borderRadius: 2, border: `1px solid ${selectedRes.has(f.name) ? "var(--neon-pink)" : "var(--border-dim)"}`, background: selectedRes.has(f.name) ? "var(--neon-pink)" : "transparent", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "var(--bg-void)" }}>
-                  {selectedRes.has(f.name) ? "✓" : ""}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-primary)" }}>{f.name}</div>
-                  <span className="hbg-badge hbg-badge-pink" style={{ marginTop: 2 }}>{f.type}</span>
-                </div>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-secondary)" }}>{f.size}</span>
-              </div>
-            ))}
-          </div>
-          {selectedRes.size > 0 && (
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, alignItems: "center" }}>
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)" }}>{selectedRes.size} seleccionados</span>
-              <button className="hbg-btn hbg-btn-danger" onClick={() => { setSelectedRes(new Set()); addHistory("LIMPIAR ARCHIVOS", "ok", `${selectedRes.size} archivos eliminados`); }}>✕ ELIMINAR</button>
-            </div>
-          )}
+          <TerminadorAppsSection />
         </div>
       )}
 
       {/* AUTOMATIZACIONES */}
       {view === "automatizaciones" && (
         <div>
+          <div className="hbg-card" style={{ marginBottom: 12, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>
+            Datos locales de muestra. No hay scheduler conectado: estos cambios no programan ni ejecutan tareas.
+          </div>
           <div className="hbg-grid hbg-grid-2" style={{ gap: 12 }}>
             <div>
               <div className="section-title">// tareas automatizadas</div>
@@ -565,7 +775,7 @@ export function TerminadorModule() {
                     <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", lineHeight: 1.8 }}>
                       <div>⚡ {task.trigger}</div>
                       <div>▶ {task.action}</div>
-                      <div style={{ color: "var(--neon-cyan)" }}>Ejecutada {task.runCount}x · Última: {task.lastRun}</div>
+                      <div style={{ color: "var(--neon-cyan)" }}>Historial de muestra: {task.runCount}x · {task.lastRun}</div>
                     </div>
                   </div>
                 ))}
@@ -592,6 +802,9 @@ export function TerminadorModule() {
       {/* CRON JOBS */}
       {view === "cronjobs" && (
         <div>
+          <div className="hbg-card" style={{ marginBottom: 12, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>
+            Datos locales de muestra. No hay scheduler conectado y ningún cron se ejecuta.
+          </div>
           <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
             {(["todas", "diaria", "semanal", "mensual"] as const).map((f) => (
               <button key={f} className="hbg-badge" style={{ cursor: "pointer", background: cronFilter === f ? "rgba(105,255,71,0.12)" : undefined, borderColor: cronFilter === f ? "var(--neon-green)" : "var(--border-dim)", color: cronFilter === f ? "var(--neon-green)" : "var(--text-muted)" }} onClick={() => setCronFilter(f)}>
@@ -625,6 +838,9 @@ export function TerminadorModule() {
       {/* LOGS */}
       {view === "logs" && (
         <div>
+          <div className="hbg-card" style={{ marginBottom: 12, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>
+            Estos logs son locales a esta sesión; las operaciones no disponibles se detienen sin ejecutarse.
+          </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <div className="section-title" style={{ marginBottom: 0 }}>// terminal de operaciones</div>
             <div style={{ display: "flex", gap: 6 }}>
@@ -640,7 +856,6 @@ export function TerminadorModule() {
                 <span style={{ color: "var(--text-primary)" }}>{l.message}</span>
               </div>
             ))}
-            {anyBusy && <span style={{ color: "var(--neon-cyan)" }}>▌</span>}
           </div>
           <div className="hbg-grid-3 hbg-grid" style={{ gap: 8, marginTop: 10 }}>
             {[
@@ -660,6 +875,9 @@ export function TerminadorModule() {
       {/* SALUD */}
       {view === "salud" && (
         <div>
+          <div className="hbg-card" style={{ marginBottom: 12, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>
+            Estado y métricas de muestra; no son comprobaciones ni telemetría de los módulos.
+          </div>
           <div className="hbg-card hbg-card-accent" style={{ "--card-color": healthCfg.color, marginBottom: 16, padding: "20px 24px" } as React.CSSProperties}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <div>
@@ -680,7 +898,7 @@ export function TerminadorModule() {
               { name: "HBG CORE", status: "excellent" as HealthLevel, detail: "Memoria activa · 5 registros · latencia 0ms" },
               { name: "VIBRA PRO", status: "excellent" as HealthLevel, detail: "PlayerEngine activo · 8ms latencia · 6 favs" },
               { name: "INSTINTO", status: "excellent" as HealthLevel, detail: "2 notas · 1 letra · autosave activo" },
-              { name: "TERMINADOR IA", status: health, detail: `Health score ${healthCfg.score}/100 · ${tasks.filter(t => t.active).length} tareas activas` },
+              { name: "TERMINADOR IA", status: health, detail: "Estado ilustrativo; sin telemetría ni scheduler conectados" },
               { name: "SHARE ENGINE", status: "excellent" as HealthLevel, detail: "Bus de mensajes activo · 4 nodos conectados" },
             ].map((mod) => {
               const cfg = HEALTH_CONFIG[mod.status];
