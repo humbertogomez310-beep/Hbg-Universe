@@ -42,6 +42,11 @@ test(
       writer,
     );
 
+    assert.equal(Object.getPrototypeOf(inserted.metadata), Object.prototype);
+    assert.equal(Object.getPrototypeOf(inserted.metadata.nested), Object.prototype);
+    const { db, hbgAuditEvents } = await import("@workspace/db");
+    assert.doesNotThrow(() => db.insert(hbgAuditEvents).values(inserted));
+
     const stored = JSON.parse(JSON.stringify(inserted.metadata));
     assert.deepEqual(stored, {
       publicValue: "kept",
