@@ -73,9 +73,25 @@ function safeMetadata(
 ): Record<string, unknown> {
   if (!metadata) return {};
   const sanitized = sanitizeAuditValue(metadata, new WeakSet());
-  return typeof sanitized === "object" && sanitized !== null && !Array.isArray(sanitized)
-    ? sanitized as Record<string, unknown>
-    : {};
+  if (typeof sanitized !== "object" || sanitized === null || Array.isArray(sanitized)) {
+    return {};
+  }
+  return toPlainJsonValue(sanitized) as Record<string, unknown>;
+}
+
+function toPlainJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(toPlainJsonValue);
+  }
+  if (typeof value === "object" && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nestedValue]) => [
+        key,
+        toPlainJsonValue(nestedValue),
+      ]),
+    );
+  }
+  return value;
 }
 
 export async function recordAudit(
