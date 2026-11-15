@@ -23,12 +23,18 @@ function requestId(): string {
 export class HBGRequestProcessor {
   private readonly handlers = new Map<HBGActionName, HBGActionHandler>();
   private pending: PendingAction[] = [];
+  private readonly actionSubscribers = new Set<(actions: HBGActionName[]) => void>();
 
   registerAction(name: HBGActionName, handler: HBGActionHandler): () => void {
+    const changed = this.handlers.get(name) !== handler;
     this.handlers.set(name, handler);
+    if (changed) this.notifyActionSubscribers();
     void this.flushPending();
     return () => {
-      if (this.handlers.get(name) === handler) this.handlers.delete(name);
+      if (this.handlers.get(name) === handler) {
+        this.handlers.delete(name);
+        this.notifyActionSubscribers();
+      }
     };
   }
 
@@ -69,6 +75,12 @@ export class HBGRequestProcessor {
 
   getRegisteredActions(): HBGActionName[] {
     return [...this.handlers.keys()];
+  }
+
+  subscribeActions(subscriber: (actions: HBGActionName[]) => void): () => void {
+    this.actionSubscribers.add(subscriber);
+    subscriber(this.getRegisteredActions());
+    return () => this.actionSubscribers.delete(subscriber);
   }
 
   getPendingRequests(): HBGPendingRequest[] {
@@ -138,5 +150,10 @@ export class HBGRequestProcessor {
 
   private removePending(id: string): void {
     this.pending = this.pending.filter((action) => action.requestId !== id);
+  }
+
+  private notifyActionSubscribers(): void {
+    const actions = this.getRegisteredActions();
+    this.actionSubscribers.forEach((subscriber) => subscriber(actions));
   }
 }
