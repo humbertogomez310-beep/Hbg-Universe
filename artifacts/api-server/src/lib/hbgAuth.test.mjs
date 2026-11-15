@@ -104,6 +104,51 @@ test(
 );
 
 test(
+  "bootstrap recovery reuses only the existing OWNER identity and requires its configured credential",
+  async () => {
+    const { classifyLoginCredential } = await import("../routes/auth.ts");
+    const bootstrap = "fixture-bootstrap-credential-012345";
+    const inactiveOwner = {
+      username: "owner",
+      role: "owner",
+      active: false,
+      credentialHash: null,
+    };
+
+    assert.equal(
+      classifyLoginCredential("owner", inactiveOwner, bootstrap, bootstrap),
+      "owner-reactivation",
+    );
+    assert.equal(
+      classifyLoginCredential("owner", inactiveOwner, "wrong-fixture", bootstrap),
+      "invalid",
+    );
+    assert.equal(
+      classifyLoginCredential(
+        "owner",
+        { ...inactiveOwner, role: "user" },
+        bootstrap,
+        bootstrap,
+      ),
+      "invalid",
+    );
+    assert.equal(
+      classifyLoginCredential("owner", undefined, bootstrap, bootstrap),
+      "owner-record-missing",
+    );
+    assert.equal(
+      classifyLoginCredential(
+        "owner",
+        { ...inactiveOwner, active: true, credentialHash: "not-a-matching-hash" },
+        "wrong-fixture",
+        undefined,
+      ),
+      "invalid",
+    );
+  },
+);
+
+test(
   "auth middleware rejects expired or revoked sessions and keeps development separate",
   { skip: !process.env.DATABASE_URL },
   async () => {

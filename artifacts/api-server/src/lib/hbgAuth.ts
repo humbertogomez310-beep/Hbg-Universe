@@ -147,9 +147,12 @@ export function clearAuthCookies(res: Response): void {
   res.clearCookie(DEVELOPMENT_COOKIE, { httpOnly: true, path: "/" });
 }
 
-export async function createSession(userId: string): Promise<string> {
+export async function createSession(
+  userId: string,
+  writer: Pick<typeof db, "insert"> = db,
+): Promise<string> {
   const token = createOpaqueToken();
-  await db.insert(hbgSessions).values({
+  await writer.insert(hbgSessions).values({
     tokenHash: hashSecret(token),
     userId,
     expiresAt: new Date(Date.now() + SESSION_MAX_AGE_MS),
