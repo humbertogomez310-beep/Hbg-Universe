@@ -154,6 +154,10 @@ export class HBGCore implements HBGActionRouter {
     return this.requestProcessor.getRegisteredActions();
   }
 
+  subscribeActions(subscriber: (actions: HBGActionName[]) => void): () => void {
+    return this.requestProcessor.subscribeActions(subscriber);
+  }
+
   getPendingRequests(): HBGPendingRequest[] {
     return this.requestProcessor.getPendingRequests();
   }

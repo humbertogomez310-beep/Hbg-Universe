@@ -15,7 +15,8 @@ export type HBGActionName =
   | "music.party"
   | "music.favorite"
   | "music.playlist"
-  | "universe.navigate";
+  | "universe.navigate"
+  | "instinto.createLyricDraft";
 
 export type HBGPermissionScope = "USE" | "DEVELOP" | "SENSITIVE";
 
@@ -77,6 +78,7 @@ export interface HBGActionRouter {
     options?: HBGDispatchOptions,
   ): Promise<HBGActionResult>;
   getRegisteredActions(): HBGActionName[];
+  subscribeActions(subscriber: (actions: HBGActionName[]) => void): () => void;
   getPendingRequests(): HBGPendingRequest[];
   cancelPending(requestId?: string): number;
 }

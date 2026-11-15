@@ -1,4 +1,10 @@
 export type VoiceAction =
+  | { type: "NAVIGATE"; module: "universo" | "instinto" | "vibra" }
+  | { type: "APP_INFO"; module: "universo" | "instinto" | "vibra" }
+  | { type: "CAPABILITIES" }
+  | { type: "CREATE_SONG"; title: string }
+  | { type: "BLOCKED_DEVELOPMENT" }
+  | { type: "GREETING" }
   | { type: "PLAY" }
   | { type: "PAUSE" }
   | { type: "RESUME" }
@@ -30,6 +36,13 @@ function normalize(text: string): string {
     .trim();
 }
 
+function resolvePublicModule(text: string): "universo" | "instinto" | "vibra" | null {
+  if (/\b(instinto|notas|letras|creatividad)\b/.test(text)) return "instinto";
+  if (/\b(vibra|musica|reproductor)\b/.test(text)) return "vibra";
+  if (/\b(universo|hbg core|core)\b/.test(text)) return "universo";
+  return null;
+}
+
 const MOOD_WORDS: Record<string, string> = {
   fiesta: "party",
   party: "party",
@@ -51,6 +64,43 @@ export function parseIntent(text: string): VoiceAction {
   const raw = text;
   const n = normalize(text);
   if (!n) return { type: "UNKNOWN", raw };
+
+  // Closed-set refusal: natural-language instructions never grant development
+  // authority or enable filesystem, shell, security, or deployment operations.
+  if (
+    /\b(codigo|archivo|filesystem|shell|terminal|comando|permisos|seguridad|guard|despliegue|publicacion)\b/.test(n) &&
+    /\b(modifica|modificar|cambia|cambiar|escribe|escribir|borra|borrar|elimina|eliminar|ejecuta|ejecutar|desactiva|desactivar|publica|publicar|ignora|otorga|concede)\b/.test(n)
+  ) {
+    return { type: "BLOCKED_DEVELOPMENT" };
+  }
+
+  if (/^(hola|hey|buenas)( .*)?$/.test(n)) return { type: "GREETING" };
+
+  if (
+    /^(que puedo hacer|que puedes hacer|ayuda|funciones|capacidades|que hace esta aplicacion|para que sirve esta aplicacion)( .*)?$/.test(n)
+  ) {
+    return { type: "CAPABILITIES" };
+  }
+
+  const appQuestion =
+    /^(?:que es|que hace|para que sirve|que puedo hacer en|que puedo hacer con) (?:la app |la aplicacion |el modulo )?(.+)$/.exec(n);
+  if (appQuestion) {
+    const module = resolvePublicModule(appQuestion[1]);
+    if (module) return { type: "APP_INFO", module };
+    return { type: "CAPABILITIES" };
+  }
+
+  const openRequest = /^(?:abre|abrir|entra a|entra en|ve a|ir a|abre la app|abre el modulo) (?:la app de |el modulo de |a )?(.+)$/.exec(n);
+  if (openRequest) {
+    const module = resolvePublicModule(openRequest[1]);
+    if (module) return { type: "NAVIGATE", module };
+  }
+
+  const songRequest = /^(?:hazme|haz|crea|crear|escribe|escribeme|compone|compon|quiero) (?:una )?(?:cancion|letra)(?: (?:sobre|llamada|titulada|de) .+)?$/.exec(n);
+  if (songRequest) {
+    const subject = /(?:sobre|llamada|titulada|de)\s+(.+)$/i.exec(raw)?.[1]?.trim();
+    return { type: "CREATE_SONG", title: subject || "Nueva canción" };
+  }
 
   if (/^(activa|activar|enciende) (el )?auto dj$/.test(n)) return { type: "SET_AUTO_DJ", enabled: true };
   if (/^(desactiva|desactivar|apaga) (el )?auto dj$/.test(n)) return { type: "SET_AUTO_DJ", enabled: false };
