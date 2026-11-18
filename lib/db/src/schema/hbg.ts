@@ -1,11 +1,15 @@
 import {
   boolean,
+  check,
+  index,
   jsonb,
   pgTable,
   text,
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
+
+import { sql } from "drizzle-orm";
 
 export const hbgUsers = pgTable("hbg_users", {
   id: uuid("id").defaultRandom().primaryKey(),
