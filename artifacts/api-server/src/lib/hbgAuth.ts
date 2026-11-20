@@ -59,6 +59,7 @@ const ROLE_PERMISSIONS: Record<HBGRole, readonly HBGPermission[]> = {
     "universe.audit.read",
     "universe.registry.read",
   ],
+
   user: ["universe.read", "core.action.execute"],
   system: ["universe.read", "core.action.execute"],
 };
