@@ -42,7 +42,7 @@ No modificar las protecciones de HBG Authority para facilitar una función. La I
 
 ## Capacidades actuales
 
-- HBG CORE: navegación de módulos, comandos locales compatibles, despacho de acciones registradas, memoria local y respaldo JSON. No hay un proveedor generativo remoto configurado por defecto; los mensajes no reconocidos no se presentan como respuestas de IA.
+- HBG CORE: navegación de módulos, comandos locales compatibles, despacho de acciones registradas, memoria local y respaldo JSON. Puede usar opcionalmente OpenAI Responses API desde el servidor cuando `OPENAI_API_KEY` esté configurada. Solo las consultas conversacionales no reconocidas se envían al proveedor; los comandos locales siguen su ruta de acciones y HBG Authority. Sin clave, permanece en modo local.
 - INSTINTO: notas, letras y proyectos con persistencia local del navegador.
 - VIBRA PRO: biblioteca local, reproducción de audio, playlists, controles de reproducción, aleatorio, repetición, volumen y preferencias persistidas.
 - TERMINADOR IA: interpretación local, planificación, memoria local, lectura del registro, propuestas y ejecución autorizada de cambios del registro.
@@ -55,6 +55,8 @@ No modificar las protecciones de HBG Authority para facilitar una función. La I
 - El login recupera únicamente el registro OWNER existente; no crea ni sustituye identidades OWNER automáticamente.
 - `PORT`: puerto de la API o del frontend según el servicio.
 - `BASE_PATH`: ruta base del frontend; en el deployment actual es `/`.
+- `OPENAI_API_KEY`: opcional; secreto solo del servidor para habilitar conversación remota de HBG CORE. Nunca debe exponerse al frontend.
+- `OPENAI_MODEL`: opcional; modelo de Responses API. Por defecto `gpt-6.2-astra`.
 
 La comprobación `/api/healthz` valida conectividad y existencia de las tablas esenciales de HBG. Si falta alguna, devuelve HTTP 503.
 
