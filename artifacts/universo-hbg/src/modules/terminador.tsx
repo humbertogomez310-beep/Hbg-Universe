@@ -5,6 +5,7 @@ import { TerminadorAppsSection } from "./terminador-apps";
 import {
   approveTerminadorAuthorization,
   denyTerminadorAuthorization,
+  executeTerminadorAuthorization,
   listTerminadorAuthorizations,
   proposeTerminadorAuthorization,
   refreshTerminadorAuthorization,
@@ -351,7 +352,7 @@ export function TerminadorModule() {
 
   const updateAuthorizationFromServer = async (
     authorization: TerminadorAuthorization,
-    action: "approve" | "deny" | "revoke" | "refresh",
+    action: "approve" | "deny" | "revoke" | "refresh" | "execute",
   ) => {
     if (authorizationBusy) return;
     setAuthorizationBusy(authorization.id);
@@ -363,7 +364,9 @@ export function TerminadorModule() {
           ? await denyTerminadorAuthorization(authorization.id)
         : action === "revoke"
           ? await revokeTerminadorAuthorization(authorization.id)
-          : await refreshTerminadorAuthorization(authorization.id);
+          : action === "execute"
+            ? await executeTerminadorAuthorization(authorization.id)
+            : await refreshTerminadorAuthorization(authorization.id);
       if (!result.ok) {
         setAuthorizationNotice(
           `No se confirmó la acción en el servidor (${result.code ?? result.status}).`,
@@ -373,10 +376,24 @@ export function TerminadorModule() {
       setServerAuthorizations((previous) =>
         previous.map((entry) => entry.id === result.data.id ? result.data : entry),
       );
-      appendCoreMessage(
-        `Estado confirmado por HBG Authority: ${result.data.state}. La aprobación no ejecuta la operación.`,
-        "authorization",
-      );
+      if (result.data.state === "consumed") {
+        const requestedStatus = result.data.parameters.requestedStatus;
+        appendCoreMessage(
+          `HBG Authority ejecutó el cambio del registro de ${result.data.applicationId} a ${String(requestedStatus)}. Esto no detiene el proceso ni el deployment de la aplicación.`,
+          "result",
+        );
+        setPendingPlan(null);
+      } else if (result.data.state === "approved") {
+        appendCoreMessage(
+          "Aprobación confirmada por HBG Authority. El cambio todavía no se ejecuta; requiere la acción explícita «EJECUTAR CAMBIO DE REGISTRO».",
+          "authorization",
+        );
+      } else {
+        appendCoreMessage(
+          `Estado confirmado por HBG Authority: ${result.data.state}.`,
+          "authorization",
+        );
+      }
     } finally {
       setAuthorizationBusy(null);
     }
@@ -678,6 +695,15 @@ export function TerminadorModule() {
                             </button>
                           </>
                         )}
+                        {authorization.state === "approved" && (
+                          <button
+                            className="hbg-btn hbg-btn-success"
+                            disabled={authorizationBusy !== null}
+                            onClick={() => void updateAuthorizationFromServer(authorization, "execute")}
+                          >
+                            {authorizationBusy === authorization.id ? "EJECUTANDO…" : "EJECUTAR CAMBIO DE REGISTRO"}
+                          </button>
+                        )}
                         {(authorization.state === "pending" || authorization.state === "approved") && (
                           <button
                             className="hbg-btn hbg-btn-ghost"
@@ -697,7 +723,7 @@ export function TerminadorModule() {
                       </div>
                       {authorization.state === "approved" && (
                         <div role="status" style={{ marginTop: 7, color: "#ffd740", fontSize: 9 }}>
-                          Aprobación server-side confirmada. La operación no fue ejecutada; escritura, borrado, scripts y Code Tools siguen bloqueados.
+                          Aprobación server-side confirmada. El cambio del registro aún no se ejecuta. La ejecución no detiene procesos ni deployments; Code Tools siguen sujetos a sus guards y concesiones independientes.
                         </div>
                       )}
                     </section>
