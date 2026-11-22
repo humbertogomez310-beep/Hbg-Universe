@@ -1,4 +1,4 @@
-import { HBGError } from "./errors";
+import { HBGError } from "./errors.ts";
 import type { HBGMemorySubscriber } from "./types";
 
 const MEMORY_KEY = "hbg_core_memory";
