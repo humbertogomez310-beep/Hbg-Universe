@@ -669,10 +669,10 @@ export function TerminadorModule() {
                       </div>
                       <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, lineHeight: 1.6, color: "var(--text-secondary)" }}>
                         <div>Recurso: {authorization.resource} · aplicación: {authorization.applicationId}</div>
-                        <div>Cambio propuesto: {String(currentStatus)} → {String(requestedStatus)}</div>
+                        <div>Cambio de registro propuesto: {String(currentStatus)} → {String(requestedStatus)}</div>
                         <div>Ámbito: {authorization.workspace} · permisos: {authorization.requestedPermissions.join(", ")}</div>
                         <div>Motivo: {authorization.reason}</div>
-                        <div>Riesgo: el cambio altera el estado de la aplicación; no se ejecuta en esta misión.</div>
+                        <div>Alcance: solo cambia el estado del registro; no detiene procesos ni deployments.</div>
                         <div>Hash de propuesta: {authorization.proposalHash}</div>
                         <div>Expira: {new Date(authorization.expiresAt).toLocaleString("es-ES")}</div>
                       </div>
