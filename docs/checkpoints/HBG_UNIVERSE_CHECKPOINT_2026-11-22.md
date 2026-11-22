@@ -1,9 +1,9 @@
 # Universo HBG — checkpoint de continuidad
 Fecha: 2026-11-22
 Rama de trabajo: `replit-agent`
-HEAD validado de este checkpoint: `8a8634e71a49e3ef8b62b1c474e7d8bd1733e908`
+HEAD validado de este checkpoint: `17e38f3e7a929ca0cfa297f763e30f82198271d5`
 Base de esta tanda: `6ec70948e69e5b2e82f92564e0fd317484dc9b24`
-Avance desde esa base: 100 commits confirmados en GitHub.
+Avance desde esa base: 106 commits confirmados en GitHub.
 
 ## Orden de trabajo que permanece vigente
 - GitHub es la fuente única de desarrollo y finalización. No adaptar la aplicación a las limitaciones del workspace de Replit.
@@ -40,6 +40,7 @@ Avance desde esa base: 100 commits confirmados en GitHub.
 - INSTINTO con respaldo/exportación e importación local, validación de contenido y pruebas asociadas.
 - VIBRA con selección de reproducción determinista para shuffle/repeat, historial de shuffle alineado con reproducción, casos de pista única y modos repeat; controles y acciones conectados.
 - Comandos de voz para shuffle/repeat conectados a las acciones de VIBRA y con pruebas de parser/ejecución.
+- Comandos globales de voz para saludo, capacidades disponibles, información de módulos y navegación entre UNIVERSO, INSTINTO y VIBRA; la orden de crear canción abre INSTINTO e informa que no ha creado nada. Las operaciones de desarrollo desde modo de uso se rechazan. Tests de integración del ejecutor de voz incluidos en la suite.
 - Manejo de error de Web Audio para que un fallo al crear el grafo de audio no silencie la reproducción base.
 
 ### PWA
@@ -47,11 +48,11 @@ Avance desde esa base: 100 commits confirmados en GitHub.
 - Manifest y service worker incluidos en validaciones CI.
 
 ## Estado de verificación al guardar este checkpoint
-- HEAD validado: `8a8634e71a49e3ef8b62b1c474e7d8bd1733e908`.
-- GitHub Actions run `45068523321` terminó `success` sobre exactamente ese HEAD.
+- HEAD validado: `17e38f3e7a929ca0cfa297f763e30f82198271d5`.
+- GitHub Actions run `45068744282` terminó `success` sobre exactamente ese HEAD.
 - Node.js 24: instalación congelada, PostgreSQL 16 aislado y provisionamiento de schema correctos.
 - Tests API: aprobados.
-- Tests de aplicación Universo HBG: aprobados.
+- Tests de aplicación Universo HBG: aprobados, incluidos tests de integración del ejecutor global de voz.
 - Typecheck del workspace: aprobado.
 - Build de producción del workspace: aprobado.
 - Validación sintáctica de service worker, manifest y script post-merge: aprobada.
