@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   approveTerminadorAuthorization,
+  executeTerminadorAuthorization,
   executeTerminadorRequest,
   interpretTerminadorRequest,
   listTerminadorAuthorizations,
@@ -141,7 +142,9 @@ test("proposal and approval states come only from the Authority response", async
     calls.push({ path, init });
     const state = path.endsWith("/approve")
       ? { ...authorization, state: "approved", approvedAt: new Date().toISOString() }
-      : authorization;
+      : path.endsWith("/execute")
+        ? { ...authorization, state: "consumed", consumedAt: new Date().toISOString() }
+        : authorization;
     return { ok: true, data: { success: true, authorization: state } };
   };
 
@@ -167,6 +170,12 @@ test("proposal and approval states come only from the Authority response", async
   assert.equal(approval.data.state, "approved");
   assert.equal(calls[1].path, "/terminador/authorizations/proposal-1/approve");
   assert.equal(calls[1].init.method, "POST");
+
+  const execution = await executeTerminadorAuthorization(proposal.data.id, request);
+  assert.equal(execution.ok, true);
+  if (execution.ok) assert.equal(execution.data.state, "consumed");
+  assert.equal(calls[2].path, "/terminador/authorizations/proposal-1/execute");
+  assert.equal(calls[2].init.method, "POST");
 
   const unavailable = await approveTerminadorAuthorization(
     proposal.data.id,
