@@ -25,6 +25,7 @@ export function selectNextPlaybackId(
 
   if (shuffle) {
     const remaining = trackIds.filter((id) => id !== currentId);
+    if (!remaining.length) return repeat === "all" ? currentId : null;
     const fresh = remaining.filter((id) => !recentIds.includes(id));
     return chooseRandom(fresh.length ? fresh : remaining, random);
   }
@@ -45,8 +46,11 @@ export function selectPreviousPlaybackId(
   const currentIndex = currentId ? trackIds.indexOf(currentId) : -1;
   if (currentIndex < 0) return trackIds[0] ?? null;
 
+  if (repeat === "one") return currentId;
+
   if (shuffle) {
     const remaining = trackIds.filter((id) => id !== currentId);
+    if (!remaining.length) return repeat === "all" ? currentId : null;
     const fresh = remaining.filter((id) => !recentIds.includes(id));
     return chooseRandom(fresh.length ? fresh : remaining, random);
   }
