@@ -488,20 +488,6 @@ export function TerminadorModule() {
     }
   };
 
-  const reportUnavailableOperation = (name: string) => {
-    setView("logs");
-    const message = `${name}: no hay una capacidad real conectada; no se ejecutó.`;
-    addLog({ level: "WARN", message });
-    addHistory(name, "warn", message);
-  };
-
-  const runOptimize = () => reportUnavailableOperation("OPTIMIZACIÓN MASIVA");
-  const runScan = () => reportUnavailableOperation("ESCANEO DEL SISTEMA");
-  const runRepairAll = () => reportUnavailableOperation("REPARAR TODO");
-  const runFullBackup = () => reportUnavailableOperation("RESPALDO TOTAL");
-  const runDeepClean = () => reportUnavailableOperation("LIMPIEZA PROFUNDA");
-  const runRestartServices = () => reportUnavailableOperation("REINICIAR SERVICIOS");
-
   const formatUptime = (s: number) => `${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
   const filteredCrons = crons.filter((c) => cronFilter === "todas" || c.frequency === cronFilter);
@@ -521,8 +507,8 @@ export function TerminadorModule() {
           <div className="mod-subtitle">// administrador autónomo del ecosistema</div>
         </div>
         <div style={{ marginLeft: "auto", display: "flex", gap: 5 }}>
-          <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 8, padding: "6px 8px" }} onClick={runScan}>◎ SCAN</button>
-          <button className="hbg-btn hbg-btn-success" style={{ fontSize: 8, padding: "6px 8px" }} onClick={runOptimize}>⚙ OPTIM</button>
+          <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 8, padding: "6px 8px" }} disabled title="No hay un servicio de escaneo conectado">◎ SCAN · NO DISPONIBLE</button>
+          <button className="hbg-btn hbg-btn-success" style={{ fontSize: 8, padding: "6px 8px" }} disabled title="No hay un servicio de optimización conectado">⚙ OPTIM · NO DISPONIBLE</button>
           <span className="hbg-badge" style={{ background: `${healthCfg.color}15`, borderColor: `${healthCfg.color}40`, color: healthCfg.color }}>
             {healthCfg.label}
           </span>
@@ -734,12 +720,12 @@ export function TerminadorModule() {
           <div className="section-title">// acciones rápidas</div>
           <div className="hbg-grid hbg-grid-2" style={{ gap: 8, marginBottom: 16 }}>
             {[
-              { label: "REPARAR TODO", fn: runRepairAll, color: "var(--neon-cyan)", icon: "⚙" },
-              { label: "RESPALDO TOTAL", fn: runFullBackup, color: "var(--neon-green)", icon: "↓" },
-              { label: "LIMPIEZA PROFUNDA", fn: runDeepClean, color: "#ff9100", icon: "◎" },
-              { label: "REINICIAR SERVICIOS", fn: runRestartServices, color: "var(--neon-purple)", icon: "↻" },
+              { label: "REPARAR TODO · NO DISPONIBLE", color: "var(--neon-cyan)", icon: "⚙" },
+              { label: "RESPALDO TOTAL · NO DISPONIBLE", color: "var(--neon-green)", icon: "↓" },
+              { label: "LIMPIEZA PROFUNDA · NO DISPONIBLE", color: "#ff9100", icon: "◎" },
+              { label: "REINICIAR SERVICIOS · NO DISPONIBLE", color: "var(--neon-purple)", icon: "↻" },
             ].map((btn) => (
-              <button key={btn.label} className="hbg-card" style={{ cursor: "pointer", textAlign: "left", padding: "12px 16px", border: `1px solid ${btn.color}25`, display: "flex", alignItems: "center", gap: 10 }} onClick={btn.fn}>
+              <button key={btn.label} className="hbg-card" disabled title="Servicio de mantenimiento no conectado" style={{ cursor: "not-allowed", opacity: 0.55, textAlign: "left", padding: "12px 16px", border: `1px solid ${btn.color}25`, display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={{ fontSize: 20, color: btn.color, filter: `drop-shadow(0 0 6px ${btn.color})` }}>{btn.icon}</span>
                 <span style={{ fontFamily: "var(--font-display)", fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: btn.color }}>{btn.label}</span>
               </button>
@@ -792,14 +778,14 @@ export function TerminadorModule() {
                         <span className="hbg-badge" style={{ background: `${PRIORITY_COLORS[task.priority]}12`, borderColor: `${PRIORITY_COLORS[task.priority]}40`, color: PRIORITY_COLORS[task.priority], fontSize: 8 }}>{task.priority.toUpperCase()}</span>
                       </div>
                       <div style={{ display: "flex", gap: 4 }}>
-                        <button className={`hbg-btn ${task.active ? "hbg-btn-success" : "hbg-btn-ghost"}`} style={{ padding: "3px 8px", fontSize: 8 }} onClick={() => setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, active: !t.active } : t))}>{task.active ? "ON" : "OFF"}</button>
+                        <button className={`hbg-btn ${task.active ? "hbg-btn-success" : "hbg-btn-ghost"}`} style={{ padding: "3px 8px", fontSize: 8 }} onClick={() => setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, active: !t.active } : t))}>{task.active ? "BORRADOR" : "ARCHIVADO"}</button>
                         <button className="hbg-btn hbg-btn-danger" style={{ padding: "3px 8px", fontSize: 8 }} onClick={() => setTasks((prev) => prev.filter((t) => t.id !== task.id))}>✕</button>
                       </div>
                     </div>
                     <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", lineHeight: 1.8 }}>
                       <div>⚡ {task.trigger}</div>
                       <div>▶ {task.action}</div>
-                      <div style={{ color: "var(--neon-cyan)" }}>Ejecuciones confirmadas: {task.runCount} · última: {task.lastRun}</div>
+                      <div style={{ color: "var(--neon-cyan)" }}>Ejecución real: no conectada · solo configuración local</div>
                     </div>
                   </div>
                 ))}
@@ -816,7 +802,7 @@ export function TerminadorModule() {
                 ))}
               </div>
               <button className="hbg-btn hbg-btn-primary w-full" disabled={!newTaskName.trim()} onClick={() => { setTasks((prev) => [...prev, { id: Date.now().toString(), name: newTaskName, trigger: newTaskTrigger || "Manual", action: newTaskAction || "Ejecutar acción", active: false, priority: newTaskPriority, lastRun: "Nunca", runCount: 0 }]); setNewTaskName(""); setNewTaskTrigger(""); setNewTaskAction(""); }}>
-                + PROGRAMAR TAREA
+                + GUARDAR BORRADOR
               </button>
             </div>
           </div>
@@ -845,13 +831,13 @@ export function TerminadorModule() {
                     <span className="hbg-badge" style={{ fontSize: 8, color: "var(--text-muted)" }}>{cron.frequency.toUpperCase()}</span>
                   </div>
                   <button className={`hbg-btn ${cron.active ? "hbg-btn-primary" : "hbg-btn-ghost"}`} style={{ padding: "3px 8px", fontSize: 8 }} onClick={() => setCrons((prev) => prev.map((c) => c.id === cron.id ? { ...c, active: !c.active } : c))}>
-                    {cron.active ? "ACTIVO" : "PAUSADO"}
+                    {cron.active ? "BORRADOR" : "ARCHIVADO"}
                   </button>
                 </div>
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", lineHeight: 1.9 }}>
                   <div style={{ color: "var(--text-secondary)" }}>schedule: <span style={{ color: "var(--neon-cyan)" }}>{cron.schedule}</span></div>
                   <div>action: {cron.action}</div>
-                  <div style={{ color: "var(--neon-green)" }}>Próxima ejecución: {cron.nextRun}</div>
+                  <div style={{ color: "var(--neon-green)" }}>Ejecución real: no conectada</div>
                 </div>
               </div>
             ))}
