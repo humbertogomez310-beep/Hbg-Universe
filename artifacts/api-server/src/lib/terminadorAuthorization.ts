@@ -693,6 +693,29 @@ export async function consumeAuthorization(
       };
     }
     if (
+      row.operation !== OPERATION ||
+      row.workspace !== WORKSPACE ||
+      !Array.isArray(row.requestedPermissions) ||
+      row.requestedPermissions.length !== 1 ||
+      row.requestedPermissions[0] !== REQUIRED_PERMISSION ||
+      typeof row.parameters.currentStatus !== "string" ||
+      !["active", "disabled"].includes(String(row.parameters.requestedStatus))
+    ) {
+      await recordAudit(
+        auditInput(row, "terminador.authorization.consume.denied", "denied", {
+          reason: "unsupported-or-malformed-authorized-operation",
+        }),
+        tx,
+      );
+      return {
+        error: new AuthorizationError(
+          "La propuesta no contiene una operación de registro compatible.",
+          409,
+          "PROPOSAL_OPERATION_INVALID",
+        ),
+      };
+    }
+    if (
       (row.state === "pending" || row.state === "approved") &&
       row.expiresAt.getTime() <= Date.now()
     ) {
@@ -739,6 +762,7 @@ export async function consumeAuthorization(
       .select()
       .from(hbgApplications)
       .where(eq(hbgApplications.id, row.applicationId))
+      .for("update")
       .limit(1);
     if (
       !application ||
@@ -826,9 +850,40 @@ export async function consumeAuthorization(
         ),
       };
     }
+    const [updatedApplication] = await tx
+      .update(hbgApplications)
+      .set({
+        status: row.parameters.requestedStatus as "active" | "disabled",
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(hbgApplications.id, row.applicationId),
+          eq(hbgApplications.status, row.parameters.currentStatus as string),
+        ),
+      )
+      .returning({ id: hbgApplications.id, status: hbgApplications.status });
+
+    if (!updatedApplication) {
+      throw new AuthorizationError(
+        "El estado del registro cambió durante la ejecución; la autorización no se consumió.",
+        409,
+        "APP_STATUS_UPDATE_CONFLICT",
+      );
+    }
+
     await recordAudit(
       auditInput(consumed, "terminador.authorization.consumed", "success", {
         consumedAt: now.toISOString(),
+      }),
+      tx,
+    );
+    await recordAudit(
+      auditInput(consumed, "terminador.app.status.changed", "success", {
+        previousStatus: row.parameters.currentStatus,
+        requestedStatus: updatedApplication.status,
+        applicationId: updatedApplication.id,
+        updatedAt: now.toISOString(),
       }),
       tx,
     );
