@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import healthRouter from "./health";
+import coreRouter from "./core";
 import authRouter from "./auth";
 import auditRouter from "./audit";
 import registryRouter from "./registry";
@@ -10,6 +11,7 @@ import permissionGrantsRouter from "./permission-grants";
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(coreRouter);
 router.use(authRouter);
 router.use(auditRouter);
 router.use(registryRouter);
