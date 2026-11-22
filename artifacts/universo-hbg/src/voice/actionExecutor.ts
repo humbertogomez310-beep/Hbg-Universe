@@ -15,7 +15,7 @@ const MOOD_LABELS: Record<string, string> = {
 const CORE_MOOD_KEYS: Record<string, string> = {
   party: "energia",
   focus: "enfocado",
-  creative: "enfocado",
+  creative: "creativo",
   chill: "relajado",
   nostalgia: "nostalgico",
   sad: "triste",
