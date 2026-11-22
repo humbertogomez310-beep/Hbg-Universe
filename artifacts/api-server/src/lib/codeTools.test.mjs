@@ -58,6 +58,10 @@ test("Code Tools block traversal, protected files, symlink escapes, and unauthen
       /protegido/i,
     );
     await assert.rejects(
+      inspectFile("ARTIFACTS/API-SERVER/SRC/LIB/HBGAUTH.TS"),
+      /protegido/i,
+    );
+    await assert.rejects(
       inspectFile("artifacts/api-server/src/routes/terminador.ts"),
       /protegido/i,
     );
