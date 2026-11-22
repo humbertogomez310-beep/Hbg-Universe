@@ -18,6 +18,8 @@ test("HBG Core routes music commands to concrete actions", () => {
   assert.deepEqual(parseIntent("activa modo fiesta"), { type: "SET_MOOD", mood: "party" });
   assert.deepEqual(parseIntent("activa modo creativo"), { type: "SET_MOOD", mood: "creative" });
   assert.deepEqual(parseIntent("pon volumen a 75%"), { type: "SET_VOLUME", volume: 75 });
+  assert.deepEqual(parseIntent("activa el aleatorio"), { type: "SET_SHUFFLE", value: true });
+  assert.deepEqual(parseIntent("desactiva la repetición"), { type: "SET_REPEAT", value: false });
 });
 
 test("HBG Core refuses development and deployment instructions in use mode", () => {
