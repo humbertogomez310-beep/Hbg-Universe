@@ -65,7 +65,7 @@ test("Code Tools block traversal, protected files, symlink escapes, and unauthen
     );
 
     const listed = await listFiles(fixtureName);
-    assert.deepEqual(listed.map((entry) => entry.name).sort(), ["inside.txt"]);
+    assert.deepEqual(listed.map((entry) => entry.name).sort(), ["inside.txt", "safe"]);
     assert.equal(
       (await inspectFile(`${fixtureName}/inside.txt`)).content,
       "inside",
