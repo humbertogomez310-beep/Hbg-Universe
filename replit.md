@@ -58,7 +58,9 @@ No modificar las protecciones de HBG Authority para facilitar una función. La I
 
 La comprobación `/api/healthz` valida conectividad y existencia de las tablas esenciales de HBG. Si falta alguna, devuelve HTTP 503.
 
-El comando `pnpm --filter @workspace/db run push` está destinado al desarrollo. No usar `push-force` ni aplicar cambios de esquema en producción sin respaldo, revisión del estado real de PostgreSQL y una ventana de mantenimiento autorizada. La base de datos de producción no se ha inspeccionado desde GitHub Actions: CI utiliza una base PostgreSQL aislada de pruebas.
+El esquema inicial versionado vive en `lib/db/migrations` y se aplica con `pnpm --filter @workspace/db migrate`. El runner usa una transacción, bloqueo advisory, versión y checksum inmutable; CI lo ejecuta dos veces contra PostgreSQL aislado para comprobar tanto aplicación como idempotencia. Para una base nueva, el comando crea las tablas de HBG. Para una base existente, primero se debe respaldar e inspeccionar el esquema real y reconciliarlo con la migración: `CREATE TABLE IF NOT EXISTS` no repara columnas o constraints de tablas preexistentes.
+
+El comando `pnpm --filter @workspace/db run push` queda destinado al desarrollo. No usar `push-force` ni aplicar migraciones en producción sin respaldo, revisión del estado real de PostgreSQL y una ventana de mantenimiento autorizada. La base de datos de producción no se ha inspeccionado desde GitHub Actions: CI utiliza una base PostgreSQL aislada de pruebas.
 
 ## Build y publicación
 
