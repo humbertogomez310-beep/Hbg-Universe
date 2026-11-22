@@ -21,6 +21,12 @@ function requestId(): string {
 }
 
 export class HBGRequestProcessor {
+  constructor(private readonly defaultTimeoutMs = 15_000) {
+    if (!Number.isInteger(defaultTimeoutMs) || defaultTimeoutMs < 0) {
+      throw new HBGError("INVALID_TIMEOUT", "El tiempo de espera predeterminado no es válido.");
+    }
+  }
+
   private readonly handlers = new Map<HBGActionName, HBGActionHandler>();
   private pending: PendingAction[] = [];
   private readonly actionSubscribers = new Set<(actions: HBGActionName[]) => void>();
@@ -55,7 +61,8 @@ export class HBGRequestProcessor {
           resolve,
         };
 
-        if (options?.timeoutMs !== undefined && options.timeoutMs > 0) {
+        const timeoutMs = options?.timeoutMs ?? this.defaultTimeoutMs;
+        if (timeoutMs > 0) {
           pending.timer = setTimeout(() => {
             this.removePending(id);
             resolve({
@@ -64,7 +71,7 @@ export class HBGRequestProcessor {
               code: "ACTION_TIMEOUT",
               requestId: id,
             });
-          }, options.timeoutMs);
+          }, timeoutMs);
         }
         this.pending.push(pending);
       });
