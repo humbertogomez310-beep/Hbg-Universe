@@ -921,7 +921,7 @@ export function TerminadorModule() {
             {[
               { name: "HBG CORE", status: "unavailable" as HealthLevel, detail: "Sin comprobación de salud publicada." },
               { name: "VIBRA PRO", status: "unavailable" as HealthLevel, detail: "Sin telemetría de reproducción publicada." },
-              { name: "INSTINTO", status: "unavailable" as HealthLevel, detail: `${notes.filter((note) => !note.deleted).length} notas · ${lyrics.length} letras · almacenamiento local` },
+              { name: "INSTINTO", status: "unavailable" as HealthLevel, detail: "Datos locales no compartidos con el panel de salud." },
               { name: "TERMINADOR IA", status: health, detail: "Scheduler y telemetría del host no conectados." },
               { name: "SHARE ENGINE", status: "unavailable" as HealthLevel, detail: "Sin telemetría del bus de mensajes." },
             ].map((mod) => {
