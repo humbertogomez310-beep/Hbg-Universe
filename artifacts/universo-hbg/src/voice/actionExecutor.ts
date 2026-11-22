@@ -12,6 +12,17 @@ const MOOD_LABELS: Record<string, string> = {
   normal: "normal",
 };
 
+const CORE_MOOD_KEYS: Record<string, string> = {
+  party: "energia",
+  focus: "enfocado",
+  creative: "enfocado",
+  chill: "relajado",
+  nostalgia: "nostalgico",
+  sad: "triste",
+  happy: "feliz",
+  normal: "neutral",
+};
+
 export async function executeVoiceAction(action: VoiceAction): Promise<string> {
   switch (action.type) {
     case "UNKNOWN":
@@ -52,6 +63,8 @@ export async function executeVoiceAction(action: VoiceAction): Promise<string> {
     case "SET_MOOD": {
       const res = await hbgCore.dispatchAction("music.mood", { mode: action.mood });
       if (res.success) {
+        const coreMood = CORE_MOOD_KEYS[action.mood];
+        if (coreMood) hbgCore.remember("core.mood", coreMood);
         const label = MOOD_LABELS[action.mood] ?? action.mood;
         return `Modo ${label} activado.`;
       }
