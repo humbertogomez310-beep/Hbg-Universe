@@ -65,8 +65,12 @@ function requestForVoiceAction(action: VoiceAction): {
     case "PLAY_TRACK":
       return { name: "music.playTrack", payload: { index: 1 } };
     case "SET_SHUFFLE":
+      return { name: "music.shuffle", payload: { enabled: action.value } };
     case "SET_REPEAT":
-      throw new TerminadorTaskBlockedError("Esta capacidad aún no está conectada en VIBRA.");
+      return {
+        name: "music.repeat",
+        payload: { mode: action.value ? "all" : "off" },
+      };
     case "UNKNOWN":
       throw new TerminadorTaskBlockedError("La intención musical no es ejecutable.");
     case "NOW_PLAYING":
