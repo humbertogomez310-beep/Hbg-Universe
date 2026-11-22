@@ -577,7 +577,7 @@ export function VibraModule() {
 
     if (repeatMode === "one" && currentTrackId) {
       autoAdvanceInProgressRef.current = true;
-      void playTrack(currentTrackId, true, 0).finally(() => {
+      void playTrack(currentTrackId, true, true).finally(() => {
         autoAdvanceInProgressRef.current = false;
       });
       return;
