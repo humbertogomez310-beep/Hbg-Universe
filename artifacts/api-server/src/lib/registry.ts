@@ -113,6 +113,8 @@ export function isProtectedApplication(application: {
   return (
     application.id === "hbg-auth" ||
     application.id === "hbg-core" ||
+    application.id === "universo" ||
+    application.id === "terminador" ||
     ["HBG-AUTH", "HBG CORE"].includes(application.name.trim().toUpperCase()) ||
     capabilities.includes("operator")
   );
