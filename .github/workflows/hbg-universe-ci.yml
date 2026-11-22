@@ -57,7 +57,9 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Provision isolated test schema
-        run: pnpm --filter @workspace/db push
+        run: |
+          pnpm --filter @workspace/db migrate
+          pnpm --filter @workspace/db migrate
 
       - name: Validate deployment and PWA scripts
         run: |
