@@ -128,7 +128,7 @@ test(
       pool,
     } = await import("@workspace/db");
     const { hashSecret, permissionsFor } = await import("./hbgAuth.ts");
-    const { createPermissionGrant } = await import("./permissionGrants.ts");
+    const { createPermissionGrant, revokePermissionGrant } = await import("./permissionGrants.ts");
 
     const username = `code_tools_test_${randomUUID().replaceAll("-", "")}`;
     const [owner] = await db
@@ -177,9 +177,33 @@ test(
         resourcePath,
         reason: "Integration test: exact-path write and delete.",
       });
+      await assert.rejects(
+        writeWorkspaceFile(`${resourcePath}.different`, "wrong path", context),
+        (error) => error?.code === "PERMISSION_GRANT_REQUIRED",
+      );
+
       await writeWorkspaceFile(resourcePath, "authorized content", context);
       assert.equal(await readFile(absolutePath, "utf8"), "authorized content");
 
+      const [grant] = await db
+        .select()
+        .from(hbgPermissionGrants)
+        .where(eq(hbgPermissionGrants.resourcePath, resourcePath))
+        .limit(1);
+      assert.ok(grant);
+      await revokePermissionGrant(context, grant.id);
+
+      await assert.rejects(
+        deleteFile(resourcePath, context),
+        (error) => error?.code === "PERMISSION_GRANT_REQUIRED",
+      );
+      assert.equal(await readFile(absolutePath, "utf8"), "authorized content");
+
+      await createPermissionGrant(context, {
+        permission: "universe.code.modify",
+        resourcePath,
+        reason: "Integration test: grant renewed after revocation.",
+      });
       await deleteFile(resourcePath, context);
       await assert.rejects(readFile(absolutePath, "utf8"), { code: "ENOENT" });
     } finally {
