@@ -5,12 +5,46 @@ export type HBGActionName =
   | "music.pause"
   | "music.next"
   | "music.previous"
+  | "music.shuffle"
+  | "music.repeat"
   | "music.search"
+  | "music.mood"
   | "music.playTrack"
   | "music.volume"
+  | "music.voiceCapture"
+  | "music.direct"
+  | "music.autoDj"
+  | "music.party"
   | "music.favorite"
   | "music.playlist"
-  | "universe.navigate";
+  | "universe.navigate"
+  | "instinto.createLyricDraft";
+
+export type HBGPermissionScope = "USE" | "DEVELOP" | "SENSITIVE";
+
+export interface HBGModuleCapability {
+  name: string;
+  action: HBGActionName | string;
+  module: ModuleId;
+  description: string;
+  requiredPermission?: HBGPermissionScope;
+  requiresUserAuth?: boolean;
+  enabled: boolean;
+}
+
+export interface HBGVoiceIntent {
+  rawText: string;
+  intent: string;
+  module: ModuleId | "unknown";
+  action?: string;
+  parameters: Record<string, unknown>;
+  entities: Array<{ type: string; value: string; confidence?: number }>;
+  context?: Record<string, unknown>;
+  confidence: number;
+  requiresClarification: boolean;
+  needsAuth: boolean;
+  warnings: string[];
+}
 
 export interface HBGActionResult<T = unknown> {
   success: boolean;
@@ -46,6 +80,7 @@ export interface HBGActionRouter {
     options?: HBGDispatchOptions,
   ): Promise<HBGActionResult>;
   getRegisteredActions(): HBGActionName[];
+  subscribeActions(subscriber: (actions: HBGActionName[]) => void): () => void;
   getPendingRequests(): HBGPendingRequest[];
   cancelPending(requestId?: string): number;
 }

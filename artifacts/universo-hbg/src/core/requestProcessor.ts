@@ -1,4 +1,4 @@
-import { HBGError, toActionError } from "./errors";
+import { HBGError, toActionError } from "./errors.ts";
 import type {
   HBGActionHandler,
   HBGActionName,
@@ -21,14 +21,29 @@ function requestId(): string {
 }
 
 export class HBGRequestProcessor {
+  private readonly defaultTimeoutMs: number;
+
+  constructor(defaultTimeoutMs = 15_000) {
+    this.defaultTimeoutMs = defaultTimeoutMs;
+    if (!Number.isInteger(defaultTimeoutMs) || defaultTimeoutMs < 0) {
+      throw new HBGError("INVALID_TIMEOUT", "El tiempo de espera predeterminado no es válido.");
+    }
+  }
+
   private readonly handlers = new Map<HBGActionName, HBGActionHandler>();
   private pending: PendingAction[] = [];
+  private readonly actionSubscribers = new Set<(actions: HBGActionName[]) => void>();
 
   registerAction(name: HBGActionName, handler: HBGActionHandler): () => void {
+    const changed = this.handlers.get(name) !== handler;
     this.handlers.set(name, handler);
+    if (changed) this.notifyActionSubscribers();
     void this.flushPending();
     return () => {
-      if (this.handlers.get(name) === handler) this.handlers.delete(name);
+      if (this.handlers.get(name) === handler) {
+        this.handlers.delete(name);
+        this.notifyActionSubscribers();
+      }
     };
   }
 
@@ -49,7 +64,8 @@ export class HBGRequestProcessor {
           resolve,
         };
 
-        if (options?.timeoutMs !== undefined && options.timeoutMs > 0) {
+        const timeoutMs = options?.timeoutMs ?? this.defaultTimeoutMs;
+        if (timeoutMs > 0) {
           pending.timer = setTimeout(() => {
             this.removePending(id);
             resolve({
@@ -58,7 +74,7 @@ export class HBGRequestProcessor {
               code: "ACTION_TIMEOUT",
               requestId: id,
             });
-          }, options.timeoutMs);
+          }, timeoutMs);
         }
         this.pending.push(pending);
       });
@@ -69,6 +85,12 @@ export class HBGRequestProcessor {
 
   getRegisteredActions(): HBGActionName[] {
     return [...this.handlers.keys()];
+  }
+
+  subscribeActions(subscriber: (actions: HBGActionName[]) => void): () => void {
+    this.actionSubscribers.add(subscriber);
+    subscriber(this.getRegisteredActions());
+    return () => this.actionSubscribers.delete(subscriber);
   }
 
   getPendingRequests(): HBGPendingRequest[] {
@@ -138,5 +160,10 @@ export class HBGRequestProcessor {
 
   private removePending(id: string): void {
     this.pending = this.pending.filter((action) => action.requestId !== id);
+  }
+
+  private notifyActionSubscribers(): void {
+    const actions = this.getRegisteredActions();
+    this.actionSubscribers.forEach((subscriber) => subscriber(actions));
   }
 }

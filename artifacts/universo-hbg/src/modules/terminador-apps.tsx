@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { requestTerminadorApi as api } from "./terminadorRequest";
 
 interface ManagedApp {
   id: string;
@@ -19,25 +20,6 @@ interface AuditEvent {
   createdAt: string;
 }
 
-type ApiResult<T> = { ok: true; data: T } | { ok: false; status: number; code?: string };
-
-async function api<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {
-  try {
-    const response = await fetch(`/api${path}`, {
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      ...init,
-    });
-    const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-    if (!response.ok) {
-      return { ok: false, status: response.status, code: typeof body.code === "string" ? body.code : undefined };
-    }
-    return { ok: true, data: body as T };
-  } catch {
-    return { ok: false, status: 0 };
-  }
-}
-
 function describeError(status: number, code?: string): string {
   if (status === 401 || status === 403) return "Sesión vencida o sin permiso. Vuelve a entrar.";
   if (code === "APP_PROTECTED") return "Esa app está protegida y no se puede apagar.";
@@ -55,8 +37,6 @@ export function TerminadorApps() {
   const [apps, setApps] = useState<ManagedApp[]>([]);
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [confirmId, setConfirmId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
 
   const refresh = useCallback(async () => {
@@ -78,26 +58,12 @@ export function TerminadorApps() {
     void refresh();
   }, [refresh]);
 
-  const changeStatus = async (app: ManagedApp, status: "active" | "disabled") => {
-    if (busyId) return;
-    setBusyId(app.id);
-    setConfirmId(null);
-    const result = await api<{ changed: boolean }>(
-      `/terminador/apps/${encodeURIComponent(app.id)}/status`,
-      { method: "POST", body: JSON.stringify({ status }) },
-    );
-    setBusyId(null);
-    if (!result.ok) {
-      setMessage(describeError(result.status, result.code));
-      return;
-    }
-    await refresh();
-    setMessage(status === "disabled" ? `${app.name} apagada.` : `${app.name} encendida.`);
-  };
-
   return (
     <div>
-      <div className="section-title">// apps del ecosistema (datos reales)</div>
+      <div className="section-title">// apps del ecosistema (registro real)</div>
+      <div className="hbg-card" style={{ marginBottom: 10, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>
+        Este panel consulta el registro. Los cambios se proponen y ejecutan con autorización individual desde el dashboard de TERMINADOR; modificar el registro no detiene el proceso ni el deployment de una app.
+      </div>
       {message && (
         <div className="hbg-card" role="status" style={{ marginBottom: 10, fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--neon-cyan)" }}>
           {message}
@@ -111,6 +77,11 @@ export function TerminadorApps() {
         <div className="hbg-list" style={{ gap: 8, marginBottom: 16 }}>
           {apps.map((app) => {
             const active = app.status === "active";
+            const statusLabel = app.status === "active"
+              ? "ACTIVO"
+              : app.status === "disabled"
+                ? "DESHABILITADO"
+                : app.status.toUpperCase();
             return (
               <div key={app.id} className="hbg-card" style={{ padding: "12px 14px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
@@ -119,30 +90,13 @@ export function TerminadorApps() {
                       {app.name} <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>v{app.version}</span>
                     </div>
                     <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginTop: 2 }}>
-                      estado: {active ? "ACTIVA" : "APAGADA"} · {formatTime(app.updatedAt)}
+                      registro: {statusLabel} · {formatTime(app.updatedAt)}
                     </div>
                   </div>
                   {app.protected ? (
                     <span className="hbg-badge hbg-badge-purple">PROTEGIDA</span>
-                  ) : active ? (
-                    confirmId === app.id ? (
-                      <div style={{ display: "flex", gap: 4 }}>
-                        <button className="hbg-btn hbg-btn-danger" style={{ padding: "4px 8px", fontSize: 9 }} disabled={busyId !== null} onClick={() => void changeStatus(app, "disabled")}>
-                          CONFIRMAR
-                        </button>
-                        <button className="hbg-btn hbg-btn-ghost" style={{ padding: "4px 8px", fontSize: 9 }} onClick={() => setConfirmId(null)}>
-                          NO
-                        </button>
-                      </div>
-                    ) : (
-                      <button className="hbg-btn hbg-btn-danger" style={{ padding: "4px 10px", fontSize: 9 }} disabled={busyId !== null} onClick={() => setConfirmId(app.id)}>
-                        APAGAR
-                      </button>
-                    )
                   ) : (
-                    <button className="hbg-btn hbg-btn-success" style={{ padding: "4px 10px", fontSize: 9 }} disabled={busyId !== null} onClick={() => void changeStatus(app, "active")}>
-                      ENCENDER
-                    </button>
+                    <span className="hbg-badge">SOLO AUTHORITY</span>
                   )}
                 </div>
               </div>

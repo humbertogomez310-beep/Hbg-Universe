@@ -9,27 +9,96 @@ export interface AuditInput {
   metadata?: Record<string, unknown>;
 }
 
-const SECRET_KEY_PATTERN =
-  /(secret|token|password|credential|authorization|cookie|private.?key)/i;
+type AuditWriter = Pick<typeof db, "insert">;
+
+const SECRET_METADATA_KEY_PATTERN =
+  /(secret|token|password|passwd|credential|authorization|cookie|private.?key|api.?key|access.?key|bearer|session.?id)/i;
+const SENSITIVE_VALUE_MARKER_PATTERN =
+  /(secret|token|password|passwd|credential|authorization|cookie|private.?key|api.?key|access.?key|bearer)/i;
+
+function sanitizeAuditValue(
+  value: unknown,
+  seen: WeakSet<object>,
+): unknown {
+  if (typeof value === "string") {
+    return SENSITIVE_VALUE_MARKER_PATTERN.test(value) ? "[REDACTED]" : value;
+  }
+  if (
+    value === null ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+  if (typeof value !== "object") {
+    return undefined;
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  }
+  if (Buffer.isBuffer(value)) {
+    return "[REDACTED_BINARY]";
+  }
+  if (seen.has(value)) {
+    return "[CIRCULAR]";
+  }
+
+  seen.add(value);
+  if (Array.isArray(value)) {
+    const result = value.map((item) => {
+      const sanitized = sanitizeAuditValue(item, seen);
+      return sanitized === undefined ? null : sanitized;
+    });
+    seen.delete(value);
+    return result;
+  }
+
+  const result = Object.create(null) as Record<string, unknown>;
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (SECRET_METADATA_KEY_PATTERN.test(key)) continue;
+    const sanitized = sanitizeAuditValue(nestedValue, seen);
+    if (sanitized !== undefined) result[key] = sanitized;
+  }
+  seen.delete(value);
+  return result;
+}
 
 function safeMetadata(
   metadata: Record<string, unknown> | undefined,
 ): Record<string, unknown> {
   if (!metadata) return {};
-  return Object.fromEntries(
-    Object.entries(metadata)
-      .filter(([key]) => !SECRET_KEY_PATTERN.test(key))
-      .map(([key, value]) => [
-        key,
-        typeof value === "string" && SECRET_KEY_PATTERN.test(value)
-          ? "[REDACTED]"
-          : value,
-      ]),
-  );
+  const sanitized = sanitizeAuditValue(metadata, new WeakSet());
+  if (typeof sanitized !== "object" || sanitized === null || Array.isArray(sanitized)) {
+    return {};
+  }
+  return toPlainJsonValue(sanitized) as Record<string, unknown>;
 }
 
-export async function recordAudit(input: AuditInput): Promise<void> {
-  await db.insert(hbgAuditEvents).values({
+function toPlainJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(toPlainJsonValue);
+  }
+  if (typeof value === "object" && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nestedValue]) => [
+        key,
+        toPlainJsonValue(nestedValue),
+      ]),
+    );
+  }
+  return value;
+}
+
+export async function recordAudit(
+  input: AuditInput,
+  writer: AuditWriter = db,
+): Promise<void> {
+  await writer.insert(hbgAuditEvents).values({
     actorUserId: input.actorUserId,
     action: input.action,
     resource: input.resource,

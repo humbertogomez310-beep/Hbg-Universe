@@ -1,0 +1,80 @@
+name: HBG Universe CI
+
+on:
+  push:
+    branches:
+      - replit-agent
+  pull_request:
+    branches:
+      - main
+      - replit-agent
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hbg-universe-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Typecheck, tests, and production builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hbg_universe_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d hbg_universe_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/hbg_universe_test
+      NODE_ENV: test
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Provision isolated test schema
+        run: |
+          pnpm --filter @workspace/db migrate
+          pnpm --filter @workspace/db migrate
+
+      - name: Validate deployment and PWA scripts
+        run: |
+          node --check artifacts/universo-hbg/public/sw.js
+          node -e "JSON.parse(require('node:fs').readFileSync('artifacts/universo-hbg/public/manifest.webmanifest', 'utf8'))"
+          bash -n scripts/post-merge.sh
+
+      - name: Run API server tests
+        run: pnpm --filter @workspace/api-server test
+
+      - name: Run Universo HBG application tests
+        run: pnpm --filter @workspace/universo-hbg test
+
+      - name: Typecheck the workspace
+        run: pnpm typecheck
+
+      - name: Build production workspace
+        run: pnpm build

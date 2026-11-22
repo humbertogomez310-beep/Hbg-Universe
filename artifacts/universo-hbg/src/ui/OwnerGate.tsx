@@ -6,14 +6,12 @@ interface OwnerGateProps {
   onSuccess: () => void;
 }
 
-// Pantalla de verificación. No menciona qué hay detrás. El código entre paréntesis y el botón
-// "Mostrar" son ayudas temporales de diagnóstico y se pueden quitar.
+// Pantalla de verificación del propietario. No expone detalles internos de autenticación.
 export function OwnerGate({ onClose, onSuccess }: OwnerGateProps) {
   const [credential, setCredential] = useState("");
   const [visible, setVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
-  const [detail, setDetail] = useState("");
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -27,7 +25,6 @@ export function OwnerGate({ onClose, onSuccess }: OwnerGateProps) {
     if (submitting || credential.length === 0) return;
     setSubmitting(true);
     setMessage("");
-    setDetail("");
     const attempt = credential;
     const result = await ownerSession.login(attempt);
     if (!mounted.current) return;
@@ -39,7 +36,6 @@ export function OwnerGate({ onClose, onSuccess }: OwnerGateProps) {
       return;
     }
     setMessage(result.reason === "limited" ? "Intenta más tarde." : "No se pudo verificar.");
-    setDetail(result.detail);
   };
 
   return (
@@ -116,11 +112,7 @@ export function OwnerGate({ onClose, onSuccess }: OwnerGateProps) {
         {message && (
           <div role="alert" style={{ marginBottom: 10 }}>
             <div style={{ fontFamily: "var(--font-ui)", fontSize: 13, color: "#ff4d6d" }}>{message}</div>
-            {detail && (
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginTop: 2 }}>
-                ({detail})
-              </div>
-            )}
+
           </div>
         )}
         <div style={{ display: "flex", gap: 8 }}>

@@ -1,8 +1,8 @@
-import { HBGContextStore } from "./context";
-import { HBGError } from "./errors";
-import { getHBGCoreIdentity } from "./identity";
-import { HBGMemoryStore } from "./memory";
-import { HBGRequestProcessor } from "./requestProcessor";
+import { HBGContextStore } from "./context.ts";
+import { HBGError } from "./errors.ts";
+import { getHBGCoreIdentity } from "./identity.ts";
+import { HBGMemoryStore } from "./memory.ts";
+import { HBGRequestProcessor } from "./requestProcessor.ts";
 import type {
   HBGActionHandler,
   HBGActionName,
@@ -154,6 +154,10 @@ export class HBGCore implements HBGActionRouter {
     return this.requestProcessor.getRegisteredActions();
   }
 
+  subscribeActions(subscriber: (actions: HBGActionName[]) => void): () => void {
+    return this.requestProcessor.subscribeActions(subscriber);
+  }
+
   getPendingRequests(): HBGPendingRequest[] {
     return this.requestProcessor.getPendingRequests();
   }
@@ -212,6 +216,10 @@ export class HBGCore implements HBGActionRouter {
 
   getMemorySnapshot(): Record<string, unknown> {
     return this.memory.snapshot();
+  }
+
+  isMemoryPersistenceAvailable(): boolean {
+    return this.memory.isPersistenceAvailable();
   }
 
   subscribeMemory(subscriber: HBGMemorySubscriber): () => void {

@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { hbgCore, MODULES, type ModuleId } from "../core/hbgCore";
 import { UniversoScreen } from "../components/UniversoScreen";
+import { parseIntent } from "../voice/intentParser";
+import { executeVoiceAction } from "../voice/actionExecutor";
 
 type ViewMode = "core" | "memoria" | "mood" | "recomendaciones" | "nodos" | "sincronizacion" | "universo";
 
-type MoodState = "relajado" | "feliz" | "nostalgico" | "triste" | "energia" | "enfocado" | "neutral";
+type MoodState = "relajado" | "feliz" | "nostalgico" | "triste" | "energia" | "enfocado" | "creativo" | "neutral";
 
 interface ChatMessage {
   from: "user" | "core";
@@ -12,12 +14,6 @@ interface ChatMessage {
   time: string;
 }
 
-interface MemoryEntry {
-  key: string;
-  value: string;
-  color: string;
-  updatedAt: string;
-}
 
 const MOOD_PROFILES: Record<MoodState, { label: string; color: string; icon: string; bpm: string; palette: string }> = {
   relajado: { label: "RELAJADO", color: "var(--neon-green)", icon: "◉", bpm: "50–75", palette: "verde frío" },
@@ -26,137 +22,287 @@ const MOOD_PROFILES: Record<MoodState, { label: string; color: string; icon: str
   triste: { label: "TRISTE", color: "#42a5f5", icon: "◑", bpm: "45–70", palette: "azul profundo" },
   energia: { label: "ENERGÍA", color: "var(--neon-pink)", icon: "⚡", bpm: "120–160", palette: "rosa eléctrico" },
   enfocado: { label: "ENFOCADO", color: "var(--neon-cyan)", icon: "◎", bpm: "60–90", palette: "cian frío" },
+  creativo: { label: "CREATIVO", color: "#ff9100", icon: "◈", bpm: "80–110", palette: "ámbar creativo" },
   neutral: { label: "NEUTRAL", color: "var(--neon-purple)", icon: "◆", bpm: "90–120", palette: "purpura equilibrado" },
 };
 
-const CORE_RESPONSES: Record<string, string[]> = {
-  hola: ["Hola. Estoy aquí, siempre activo.", "Bienvenido de nuevo al universo HBG.", "Sistema en línea. ¿Cómo estás hoy?"],
-  música: ["Puedo pedirle a Vibra Pro que cambie el modo de reproducción. ¿Qué ánimo tienes?", "¿Quieres que active el Mood Engine de Vibra Pro?", "Recuerdo que la última vez preferiste tracks de 85-90 BPM para este momento del día."],
-  nota: ["Instinto está listo para recibir tus ideas. ¿Abrimos el bloc?", "Recuerdo 2 proyectos activos en Instinto. ¿Continuamos con La Voz del Lobo?", "¿Quieres que active el modo inspiración?"],
-  sistema: ["El sistema está operando al 87% de salud. El sistema reporta todo estable.", "No hay errores críticos registrados en las últimas 24h.", "Todos los módulos están conectados y respondiendo."],
-  modo: ["¿Qué modo prefieres? Puedo coordinar Vibra y cambiar el ambiente visual de Instinto.", "Activo modo enfoque: Vibra cambiará a 60–90 BPM y Instinto a tema azul.", "¿Modo fiesta o modo trabajo profundo?"],
-  default: [
-    "Entiendo. Procesa eso y dime qué necesitas.",
-    "Memoria registrada. ¿Hay algo más en lo que pueda ayudarte?",
-    "Interesante. Guardo eso en el historial del ecosistema.",
-    "Recibido. Los módulos están atentos a tus cambios de estado.",
-    "El universo HBG está escuchando.",
-  ],
+const MOOD_TO_MUSIC: Record<MoodState, string> = {
+  relajado: "chill",
+  feliz: "happy",
+  nostalgico: "nostalgia",
+  triste: "sad",
+  energia: "party",
+  enfocado: "focus",
+  creativo: "creative",
+  neutral: "normal",
 };
 
-function getCoreResponse(input: string): string {
-  const lower = input.toLowerCase();
-  if (lower.includes("hola") || lower.includes("hey") || lower.includes("buenas")) {
-    const arr = CORE_RESPONSES.hola;
-    return arr[Math.floor(Math.random() * arr.length)];
-  }
-  if (lower.includes("músi") || lower.includes("vibra") || lower.includes("canción") || lower.includes("song")) {
-    const arr = CORE_RESPONSES.música;
-    return arr[Math.floor(Math.random() * arr.length)];
-  }
-  if (lower.includes("nota") || lower.includes("instinto") || lower.includes("letra") || lower.includes("idea")) {
-    const arr = CORE_RESPONSES.nota;
-    return arr[Math.floor(Math.random() * arr.length)];
-  }
-  if (lower.includes("sistema") || lower.includes("terminador") || lower.includes("salud")) {
-    const arr = CORE_RESPONSES.sistema;
-    return arr[Math.floor(Math.random() * arr.length)];
-  }
-  if (lower.includes("modo") || lower.includes("fiest") || lower.includes("enfoque") || lower.includes("relaj")) {
-    const arr = CORE_RESPONSES.modo;
-    return arr[Math.floor(Math.random() * arr.length)];
-  }
-  const arr = CORE_RESPONSES.default;
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
-const RECOMMENDATIONS = [
-  { type: "Canción", text: "Deep Neural Flow — coincide con tu mood actual (Enfocado, 85 BPM)", icon: "♫", color: "var(--neon-pink)" },
-  { type: "Proyecto", text: "Continúa con 'La Voz del Lobo' — lleva 3 días sin actualización", icon: "⬡", color: "var(--neon-cyan)" },
-  { type: "Modo", text: "Activa Modo Focus en Vibra — son las 17:39, hora de alta productividad", icon: "◎", color: "var(--neon-green)" },
-  { type: "Memoria", text: "Tu patrón creativo es más alto los lunes y miércoles por la tarde", icon: "◈", color: "var(--neon-purple)" },
+const MEMORY_COLORS = [
+  "var(--neon-purple)",
+  "var(--neon-cyan)",
+  "var(--neon-pink)",
+  "var(--neon-green)",
+  "#ff9100",
 ];
-
-const DEFAULT_MEMORY: MemoryEntry[] = [
-  { key: "estado_emocional", value: "Neutral", color: "var(--neon-purple)", updatedAt: "Hace 10min" },
-  { key: "modo_favorito", value: "Enfocado", color: "var(--neon-cyan)", updatedAt: "Ayer" },
-  { key: "cancion_favorita", value: "Deep Neural Flow", color: "var(--neon-pink)", updatedAt: "Hace 2h" },
-  { key: "proyecto_activo", value: "La Voz del Lobo", color: "var(--neon-cyan)", updatedAt: "Hace 3 días" },
-  { key: "hora_pico_creativo", value: "17:00–20:00", color: "#ff9100", updatedAt: "Esta semana" },
-  { key: "genero_favorito", value: "Lofi / Indie", color: "var(--neon-green)", updatedAt: "Siempre" },
-];
-
-const NODE_STATES: Record<ModuleId, { connected: boolean; latency: number }> = {
-  universo: { connected: true, latency: 0 },
-  instinto: { connected: true, latency: 12 },
-  vibra: { connected: true, latency: 8 },
-  terminador: { connected: true, latency: 23 },
-};
 
 export function UniversoModule() {
   const [view, setView] = useState<ViewMode>("core");
-  const [mood, setMood] = useState<MoodState>("enfocado");
+  const [mood, setMood] = useState<MoodState>(() => {
+    const saved = hbgCore.recall<MoodState>("core.mood");
+    return typeof saved === "string" && saved in MOOD_PROFILES ? saved : "enfocado";
+  });
   const [chatInput, setChatInput] = useState("");
+  const [processing, setProcessing] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { from: "core", text: "Sistema HBG CORE activo. Todos los módulos conectados. ¿En qué puedo ayudarte hoy?", time: new Date().toLocaleTimeString("es-ES", { hour12: false, hour: "2-digit", minute: "2-digit" }) },
+    { from: "core", text: "HBG CORE está conectado al enrutador local. Puedo navegar módulos y ejecutar las acciones que estén registradas. No hay un modelo generativo externo configurado.", time: new Date().toLocaleTimeString("es-ES", { hour12: false, hour: "2-digit", minute: "2-digit" }) },
   ]);
-  const [nodes, setNodes] = useState(NODE_STATES);
-  const [token, setToken] = useState<string | null>(null);
+  const [memory, setMemory] = useState<Record<string, unknown>>(() => hbgCore.getMemorySnapshot());
+  const [memoryPersistent, setMemoryPersistent] = useState(() => hbgCore.isMemoryPersistenceAvailable());
+  const [remoteAIStatus, setRemoteAIStatus] = useState<{ available: boolean; model: string }>({
+    available: false,
+    model: "",
+  });
+  const [registeredActions, setRegisteredActions] = useState<string[]>(() => hbgCore.getRegisteredActions());
+  const [activeNode, setActiveNode] = useState<ModuleId>(() => hbgCore.getModule());
+  const [memoryKey, setMemoryKey] = useState("");
+  const [memoryValue, setMemoryValue] = useState("");
   const [syncMsg, setSyncMsg] = useState("");
-  const [memory] = useState<MemoryEntry[]>(DEFAULT_MEMORY);
-  const [voiceActive, setVoiceActive] = useState(false);
+  const memoryFileRef = useRef<HTMLInputElement>(null);
   const chatRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const moodProfile = MOOD_PROFILES[mood];
+  const memoryEntries = Object.entries(memory);
+  const recommendations = [
+    { type: "CAPACIDADES", text: `${registeredActions.length} acciones locales están registradas en este momento.`, icon: "◎", color: "var(--neon-cyan)" },
+    { type: "MEMORIA", text: `${memoryEntries.length} recuerdos están guardados en HBG CORE.`, icon: "◈", color: "var(--neon-purple)" },
+    { type: "MÓDULO ACTIVO", text: `${hbgCore.getModuleConfig(activeNode).label} es el módulo seleccionado.`, icon: "⬡", color: "var(--neon-green)" },
+  ];
 
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
   }, [messages]);
 
   useEffect(() => {
-    const id = setInterval(() => {
-      setNodes((prev) => {
-        const next = { ...prev };
-        (Object.keys(next) as ModuleId[]).forEach((k) => {
-          if (k !== "universo") next[k] = { ...next[k], latency: Math.max(1, next[k].latency + Math.round((Math.random() - 0.45) * 4)) };
+    const controller = new AbortController();
+    void fetch("/api/core/status", {
+      credentials: "include",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return await response.json() as { success?: boolean; available?: boolean; model?: string };
+      })
+      .then((status) => {
+        if (!status?.success) return;
+        setRemoteAIStatus({
+          available: status.available === true,
+          model: typeof status.model === "string" ? status.model : "",
         });
-        return next;
+      })
+      .catch(() => {
+        // Local commands remain available when the authenticated API is unreachable.
       });
-    }, 2500);
-    return () => clearInterval(id);
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    hbgCore.init();
+    const initialMood = hbgCore.recall<MoodState>("core.mood");
+    if (typeof initialMood === "string" && initialMood in MOOD_PROFILES) {
+      setMood(initialMood);
+    }
+    const unsubscribeMemory = hbgCore.subscribeMemory(() => {
+      setMemory(hbgCore.getMemorySnapshot());
+      setMemoryPersistent(hbgCore.isMemoryPersistenceAvailable());
+      const savedMood = hbgCore.recall<MoodState>("core.mood");
+      if (typeof savedMood === "string" && savedMood in MOOD_PROFILES) {
+        setMood(savedMood);
+      }
+    });
+    const unsubscribeActions = hbgCore.subscribeActions(setRegisteredActions);
+    const unsubscribeModule = hbgCore.subscribe(setActiveNode);
+    setMemory(hbgCore.getMemorySnapshot());
+    setMemoryPersistent(hbgCore.isMemoryPersistenceAvailable());
+    setRegisteredActions(hbgCore.getRegisteredActions());
+    setActiveNode(hbgCore.getModule());
+    return () => {
+      unsubscribeMemory();
+      unsubscribeActions();
+      unsubscribeModule();
+    };
   }, []);
 
   const sendMessage = (text?: string) => {
     const input = text ?? chatInput.trim();
-    if (!input) return;
-    const t = new Date().toLocaleTimeString("es-ES", { hour12: false, hour: "2-digit", minute: "2-digit" });
-    setMessages((prev) => [...prev, { from: "user", text: input, time: t }]);
+    if (!input || processing) return;
+    const time = new Date().toLocaleTimeString("es-ES", { hour12: false, hour: "2-digit", minute: "2-digit" });
+    setMessages((prev) => [...prev, { from: "user", text: input, time }]);
     setChatInput("");
-    setTimeout(() => {
-      const resp = getCoreResponse(input);
-      setMessages((prev) => [...prev, { from: "core", text: resp, time: new Date().toLocaleTimeString("es-ES", { hour12: false, hour: "2-digit", minute: "2-digit" }) }]);
-    }, 700 + Math.random() * 400);
+    setProcessing(true);
+
+    void (async () => {
+      let response = "";
+      try {
+        const action = parseIntent(input);
+        switch (action.type) {
+          case "GREETING":
+            response = "Hola. Estoy listo para navegar el Universo HBG y ejecutar las capacidades locales conectadas.";
+            break;
+          case "CAPABILITIES":
+            response = `Módulos públicos: ${MODULES.filter((module) => module.id !== "terminador").map((module) => module.label).join(", ")}. Acciones registradas ahora: ${registeredActions.length ? registeredActions.join(", ") : "ninguna"}.`;
+            break;
+          case "APP_INFO": {
+            const module = hbgCore.getModuleConfig(action.module);
+            response = `${module.label}: ${module.description}.`;
+            break;
+          }
+          case "NAVIGATE":
+            response = `Abriendo ${hbgCore.getModuleConfig(action.module).label}.`;
+            break;
+          case "CREATE_SONG":
+            response = `Abriendo INSTINTO. La letra "${action.title}" no se ha creado todavía; entra en LETRAS para crearla y guardarla.`;
+            break;
+          case "BLOCKED_DEVELOPMENT":
+            response = "Esa operación requiere una sesión de desarrollo autorizada. El chat de uso normal no puede modificar código, permisos ni despliegues.";
+            break;
+          case "UNKNOWN": {
+            if (!remoteAIStatus.available) {
+              response = "La IA remota no está configurada. Puedo interpretar comandos locales compatibles, mostrar capacidades y ejecutar acciones registradas; prueba «capacidades», «abre Instinto», «pausa» o «activa modo fiesta».";
+              break;
+            }
+            const conversation = [
+              ...messages,
+              { from: "user" as const, text: input, time },
+            ].slice(-12);
+            const apiResponse = await fetch("/api/core/chat", {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                messages: conversation.map((message) => ({
+                  role: message.from === "user" ? "user" : "assistant",
+                  content: message.text,
+                })),
+              }),
+            });
+            const result: unknown = await apiResponse.json().catch(() => null);
+            if (
+              !apiResponse.ok ||
+              typeof result !== "object" ||
+              result === null ||
+              !("success" in result) ||
+              result.success !== true ||
+              !("text" in result) ||
+              typeof result.text !== "string"
+            ) {
+              const message =
+                typeof result === "object" && result !== null && "error" in result && typeof result.error === "string"
+                  ? result.error
+                  : "No se pudo completar la respuesta de HBG CORE.";
+              throw new Error(message);
+            }
+            response = result.text;
+            break;
+          }
+          default:
+            if (action.type === "SET_MOOD") {
+              const matched = (Object.entries(MOOD_TO_MUSIC) as [MoodState, string][]).find(([, value]) => value === action.mood)?.[0];
+              if (matched) {
+                setMood(matched);
+                hbgCore.remember("core.mood", matched);
+              }
+            }
+            response = await executeVoiceAction(action);
+        }
+      } catch (cause) {
+        response = cause instanceof Error ? cause.message : "No se pudo procesar la solicitud.";
+      }
+
+      const responseTime = new Date().toLocaleTimeString("es-ES", { hour12: false, hour: "2-digit", minute: "2-digit" });
+      setMessages((prev) => [...prev, { from: "core", text: response, time: responseTime }]);
+      setProcessing(false);
+
+      const navigationAction = parseIntent(input);
+      if (navigationAction.type === "NAVIGATE") hbgCore.setModule(navigationAction.module);
+      if (navigationAction.type === "CREATE_SONG") hbgCore.setModule("instinto");
+    })();
   };
 
-  const generateToken = () => {
-    const t = "HBG-" + Math.random().toString(36).substring(2, 10).toUpperCase();
-    setToken(t); setSyncMsg("Token generado — comparte para vincular dispositivo");
-    setTimeout(() => setSyncMsg(""), 4000);
+  const saveMemory = () => {
+    const key = memoryKey.trim();
+    const value = memoryValue.trim();
+    if (!key || !value || key.length > 100) return;
+    hbgCore.remember(key, value);
+    setMemoryKey("");
+    setMemoryValue("");
   };
 
-  const exportUniverse = () => {
-    const data = { version: "1.0.0", timestamp: new Date().toISOString(), preferences: { estado_emocional: mood, tema: "cyberpunk" }, modulos_instalados: ["universo", "instinto", "vibra"], historial: { notas: 3, canciones: 6, proyectos: 2 } };
+  const exportCoreBackup = () => {
+    const data = {
+      format: "hbg-core-memory-v1",
+      exportedAt: new Date().toISOString(),
+      activeModule: hbgCore.getModule(),
+      memory: hbgCore.getMemorySnapshot(),
+    };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = "universo_hbg.json"; a.click();
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "hbg-core-memory.json";
+    anchor.click();
     URL.revokeObjectURL(url);
-    setSyncMsg("universo_hbg.json exportado");
-    setTimeout(() => setSyncMsg(""), 4000);
+    setSyncMsg("Respaldo de memoria HBG CORE exportado.");
   };
 
-  const QUICK_CMDS = ["reproduce música relajante", "abre Instinto", "¿cómo está el sistema?", "activa modo fiesta"];
+  const restoreCoreBackup = async (file?: File) => {
+    if (!file) return;
+    try {
+      const parsed: unknown = JSON.parse(await file.text());
+      if (
+        typeof parsed !== "object" ||
+        parsed === null ||
+        Array.isArray(parsed) ||
+        !("format" in parsed) ||
+        parsed.format !== "hbg-core-memory-v1" ||
+        !("memory" in parsed) ||
+        typeof parsed.memory !== "object" ||
+        parsed.memory === null ||
+        Array.isArray(parsed.memory)
+      ) {
+        throw new Error("El archivo no es un respaldo válido de HBG CORE.");
+      }
+      const entries = Object.entries(parsed.memory);
+      if (entries.length > 500 || entries.some(([key]) => !key.trim() || key.length > 100)) {
+        throw new Error("El respaldo supera los límites permitidos.");
+      }
+      if (!window.confirm("¿Reemplazar la memoria local de HBG CORE con este respaldo?")) return;
+      hbgCore.clearMemory();
+      entries.forEach(([key, value]) => hbgCore.remember(key, value));
+      setSyncMsg(`Memoria restaurada: ${entries.length} registros.`);
+    } catch (cause) {
+      setSyncMsg(cause instanceof Error ? cause.message : "No se pudo restaurar la memoria.");
+    } finally {
+      if (memoryFileRef.current) memoryFileRef.current.value = "";
+    }
+  };
+
+  const applyMood = async (nextMood: MoodState) => {
+    setMood(nextMood);
+    hbgCore.remember("core.mood", nextMood);
+    const result = await hbgCore.dispatchAction(
+      "music.mood",
+      { mode: MOOD_TO_MUSIC[nextMood] },
+      { timeoutMs: 3000 },
+    );
+    setSyncMsg(
+      result.success
+        ? `Modo ${MOOD_PROFILES[nextMood].label} aplicado en VIBRA.`
+        : `Modo guardado en CORE; VIBRA no confirmó el cambio: ${result.error ?? "sin respuesta"}.`,
+    );
+  };
+
+  const QUICK_CMDS = ["reproduce música relajante", "abre Instinto", "capacidades", "activa modo fiesta"];
 
   const NAV_ITEMS: { id: ViewMode; label: string; icon: string }[] = [
     { id: "core", label: "CORE IA", icon: "◈" },
@@ -174,16 +320,9 @@ export function UniversoModule() {
         <span className="mod-icon">◈</span>
         <div className="mod-title-group">
           <div className="mod-title">HBG CORE</div>
-          <div className="mod-subtitle">// conciencia del ecosistema — personalidad activa</div>
+          <div className="mod-subtitle">// orquestación local — comandos, memoria y módulos conectados</div>
         </div>
         <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-          <button
-            className="hbg-btn"
-            style={{ background: voiceActive ? "rgba(255,64,129,0.2)" : "rgba(124,77,255,0.08)", borderColor: voiceActive ? "var(--neon-pink)" : "rgba(124,77,255,0.3)", color: voiceActive ? "var(--neon-pink)" : "var(--neon-purple)", boxShadow: voiceActive ? "0 0 20px rgba(255,64,129,0.4)" : "none" }}
-            onClick={() => setVoiceActive((v) => !v)}
-          >
-            {voiceActive ? "🎙 ESCUCHANDO..." : "🎙 VOZ"}
-          </button>
           <span className="hbg-badge" style={{ background: `${moodProfile.color}15`, borderColor: `${moodProfile.color}50`, color: moodProfile.color }}>
             {moodProfile.icon} {moodProfile.label}
           </span>
@@ -203,6 +342,14 @@ export function UniversoModule() {
       {/* CORE IA — Chat */}
       {view === "core" && (
         <div>
+          <div className="section-title">
+            // HBG CORE — {remoteAIStatus.available ? `IA REMOTA · ${remoteAIStatus.model}` : "MODO LOCAL"}
+          </div>
+          {remoteAIStatus.available && (
+            <div role="status" className="hbg-card" style={{ marginBottom: 10, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>
+              Las consultas conversacionales no reconocidas se envían a OpenAI desde el servidor. Los comandos locales siguen pasando por HBG Authority.
+            </div>
+          )}
           <div
             ref={chatRef}
             style={{ height: 300, overflowY: "auto", display: "flex", flexDirection: "column", gap: 12, padding: "12px 0", marginBottom: 14 }}
@@ -249,7 +396,7 @@ export function UniversoModule() {
               onKeyDown={(e) => e.key === "Enter" && sendMessage()}
               style={{ flex: 1 }}
             />
-            <button className="hbg-btn hbg-btn-primary" onClick={() => sendMessage()} disabled={!chatInput.trim()}>ENVIAR</button>
+            <button className="hbg-btn hbg-btn-primary" onClick={() => sendMessage()} disabled={!chatInput.trim() || processing}>{processing ? "PROCESANDO..." : "ENVIAR"}</button>
           </div>
         </div>
       )}
@@ -257,21 +404,57 @@ export function UniversoModule() {
       {/* MEMORIA */}
       {view === "memoria" && (
         <div>
-          <div className="section-title">// memory core — historial del ecosistema</div>
-          <div className="hbg-list" style={{ gap: 8 }}>
-            {memory.map((entry) => (
-              <div key={entry.key} className="hbg-card" style={{ padding: "12px 16px", borderColor: `${entry.color}20` }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>{entry.key}</span>
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>{entry.updatedAt}</span>
-                </div>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: 13, fontWeight: 700, color: entry.color, marginTop: 4, letterSpacing: "0.06em" }}>{entry.value}</div>
-              </div>
-            ))}
+          <div className="section-title">// memory core — recuerdos locales reales</div>
+          <div role="status" className="hbg-card" style={{ marginBottom: 12, fontFamily: "var(--font-mono)", fontSize: 10, color: memoryPersistent ? "var(--neon-green)" : "var(--neon-pink)" }}>
+            {memoryPersistent
+              ? "Persistencia local disponible en este navegador."
+              : "Almacenamiento persistente no disponible; los recuerdos solo duran esta sesión."}
           </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-            <button className="hbg-btn hbg-btn-ghost" style={{ flex: 1, justifyContent: "center" }}>↓ EXPORTAR MEMORIA</button>
-            <button className="hbg-btn hbg-btn-ghost" style={{ flex: 1, justifyContent: "center" }}>♻ RESTAURAR BACKUP</button>
+          <div className="hbg-card" style={{ marginBottom: 12 }}>
+            <input
+              className="hbg-input"
+              placeholder="Clave del recuerdo..."
+              value={memoryKey}
+              maxLength={100}
+              onChange={(event) => setMemoryKey(event.target.value)}
+              style={{ marginBottom: 8 }}
+            />
+            <textarea
+              className="hbg-input hbg-textarea"
+              placeholder="Contenido del recuerdo..."
+              value={memoryValue}
+              maxLength={4000}
+              rows={3}
+              onChange={(event) => setMemoryValue(event.target.value)}
+              style={{ marginBottom: 8 }}
+            />
+            <button className="hbg-btn hbg-btn-primary" disabled={!memoryKey.trim() || !memoryValue.trim()} onClick={saveMemory}>
+              + GUARDAR RECUERDO
+            </button>
+          </div>
+          {memoryEntries.length === 0 ? (
+            <div className="hbg-card" style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 10 }}>
+              // La memoria está vacía. Los datos aparecerán aquí cuando los guardes.
+            </div>
+          ) : (
+            <div className="hbg-list" style={{ gap: 8 }}>
+              {memoryEntries.map(([key, value], index) => (
+                <div key={key} className="hbg-card" style={{ padding: "12px 16px", borderColor: `${MEMORY_COLORS[index % MEMORY_COLORS.length]}20` }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>{key}</span>
+                    <button className="hbg-btn hbg-btn-danger" style={{ padding: "3px 7px", fontSize: 8 }} onClick={() => hbgCore.forgetMemory(key)}>OLVIDAR</button>
+                  </div>
+                  <div style={{ fontFamily: "var(--font-ui)", fontSize: 13, color: MEMORY_COLORS[index % MEMORY_COLORS.length], marginTop: 4, overflowWrap: "anywhere" }}>
+                    {typeof value === "string" ? value : JSON.stringify(value)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+            <button className="hbg-btn hbg-btn-ghost" style={{ flex: 1, justifyContent: "center" }} onClick={exportCoreBackup}>↓ EXPORTAR MEMORIA</button>
+            <button className="hbg-btn hbg-btn-ghost" style={{ flex: 1, justifyContent: "center" }} onClick={() => memoryFileRef.current?.click()}>♻ RESTAURAR BACKUP</button>
+            <input ref={memoryFileRef} type="file" accept=".json,application/json" style={{ display: "none" }} onChange={(event) => void restoreCoreBackup(event.target.files?.[0])} />
           </div>
         </div>
       )}
@@ -286,7 +469,7 @@ export function UniversoModule() {
                 key={key}
                 className="hbg-card"
                 style={{ cursor: "pointer", textAlign: "left", padding: "12px 14px", border: `1px solid ${mood === key ? p.color : "var(--border-dim)"}`, background: mood === key ? `${p.color}10` : "var(--bg-card)", boxShadow: mood === key ? `0 0 16px ${p.color}25` : "none" }}
-                onClick={() => setMood(key)}
+                onClick={() => void applyMood(key)}
               >
                 <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
                   <span style={{ fontSize: 16, color: p.color, filter: mood === key ? `drop-shadow(0 0 6px ${p.color})` : "none" }}>{p.icon}</span>
@@ -306,8 +489,8 @@ export function UniversoModule() {
               </div>
             </div>
             <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-              <button className="hbg-btn hbg-btn-ghost" onClick={() => hbgCore.setModule("vibra")}>◉ APLICAR EN VIBRA</button>
-              <button className="hbg-btn hbg-btn-ghost" onClick={() => hbgCore.setModule("instinto")}>⬡ APLICAR EN INSTINTO</button>
+              <button className="hbg-btn hbg-btn-ghost" onClick={() => void applyMood(mood)}>◉ APLICAR EN VIBRA</button>
+              <button className="hbg-btn hbg-btn-ghost" onClick={() => hbgCore.setModule("instinto")}>⬡ ABRIR INSTINTO</button>
             </div>
           </div>
         </div>
@@ -316,9 +499,9 @@ export function UniversoModule() {
       {/* RECOMENDACIONES */}
       {view === "recomendaciones" && (
         <div>
-          <div className="section-title">// recommendation core — basado en tu historial</div>
+          <div className="section-title">// estado real de capacidades y memoria</div>
           <div className="hbg-list" style={{ gap: 10 }}>
-            {RECOMMENDATIONS.map((rec, i) => (
+            {recommendations.map((rec, i) => (
               <div key={i} className="hbg-card hbg-card-accent" style={{ "--card-color": rec.color } as React.CSSProperties}>
                 <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
                   <span style={{ fontSize: 22, color: rec.color, filter: `drop-shadow(0 0 8px ${rec.color})`, flexShrink: 0 }}>{rec.icon}</span>
@@ -326,7 +509,7 @@ export function UniversoModule() {
                     <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: rec.color, marginBottom: 4, letterSpacing: "0.1em" }}>{rec.type.toUpperCase()}</div>
                     <div style={{ fontFamily: "var(--font-ui)", fontSize: 13, color: "var(--text-primary)", lineHeight: 1.5 }}>{rec.text}</div>
                   </div>
-                  <button className="hbg-btn hbg-btn-ghost" style={{ padding: "5px 10px", fontSize: 9, flexShrink: 0 }}>APLICAR</button>
+                  <button className="hbg-btn hbg-btn-ghost" style={{ padding: "5px 10px", fontSize: 9, flexShrink: 0 }} onClick={() => setView(rec.type === "MEMORIA" ? "memoria" : "nodos")}>VER</button>
                 </div>
               </div>
             ))}
@@ -337,31 +520,40 @@ export function UniversoModule() {
       {/* NODOS */}
       {view === "nodos" && (
         <div>
-          <div className="section-title">// node manager — red en tiempo real</div>
+          <div className="section-title">// estado de módulos — bus local</div>
           <div className="hbg-grid hbg-grid-4" style={{ gap: 10, marginBottom: 20 }}>
-            {MODULES.filter((mod) => mod.id !== "terminador").map((mod) => {
-              const node = nodes[mod.id];
+            {MODULES.filter((module) => module.id !== "terminador").map((module) => {
+              const active = activeNode === module.id;
+              const actionCount = module.id === "vibra"
+                ? registeredActions.filter((name) => name.startsWith("music.")).length
+                : 0;
+              const detail = module.id === "vibra"
+                ? `${actionCount} acciones musicales registradas`
+                : active
+                  ? "Módulo seleccionado"
+                  : "Disponible; sin telemetría propia";
               return (
-                <div key={mod.id} className="hbg-card hbg-card-accent" style={{ "--card-color": node.connected ? mod.color : "var(--text-muted)", cursor: mod.id !== "universo" ? "pointer" : "default" } as React.CSSProperties} onClick={() => mod.id !== "universo" && hbgCore.setModule(mod.id)}>
+                <button
+                  key={module.id}
+                  className="hbg-card hbg-card-accent"
+                  style={{ "--card-color": active ? module.color : "var(--text-muted)", textAlign: "left", cursor: "pointer" } as React.CSSProperties}
+                  onClick={() => hbgCore.setModule(module.id)}
+                >
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: node.connected ? mod.color : "var(--text-muted)", boxShadow: node.connected ? `0 0 8px ${mod.color}` : "none", animation: node.connected ? "pulse-dot 2s infinite" : "none" }} />
-                    <span style={{ fontFamily: "var(--font-display)", fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", color: node.connected ? mod.color : "var(--text-muted)" }}>{mod.label}</span>
+                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: active ? module.color : "var(--text-muted)" }} />
+                    <span style={{ fontFamily: "var(--font-display)", fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", color: active ? module.color : "var(--text-muted)" }}>{module.label}</span>
                   </div>
-                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>
-                    {node.connected ? (mod.id === "universo" ? "LOCAL • HOST" : `${node.latency}ms • ONLINE`) : "⚫ OFFLINE"}
-                  </div>
-                  <span className="hbg-badge" style={{ marginTop: 8, display: "inline-flex", background: node.connected ? `${mod.color}12` : "rgba(255,255,255,0.04)", borderColor: node.connected ? `${mod.color}40` : "var(--border-dim)", color: node.connected ? mod.color : "var(--text-muted)" }}>
-                    {node.connected ? "🟢 ONLINE" : "⚫ OFFLINE"}
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>{detail}</div>
+                  <span className="hbg-badge" style={{ marginTop: 8, display: "inline-flex", background: active ? `${module.color}12` : "rgba(255,255,255,0.04)", borderColor: active ? `${module.color}40` : "var(--border-dim)", color: active ? module.color : "var(--text-muted)" }}>
+                    {active ? "SELECCIONADO" : "DISPONIBLE"}
                   </span>
-                </div>
+                </button>
               );
             })}
           </div>
-          <div className="hbg-card" style={{ fontFamily: "var(--font-mono)", fontSize: 11, lineHeight: 2 }}>
-            <div style={{ display: "flex", gap: 12 }}><span style={{ color: "var(--text-muted)", minWidth: 44 }}>[NET]</span><span style={{ color: "var(--neon-green)" }}>Share Engine: bus de mensajes activo</span></div>
-            <div style={{ display: "flex", gap: 12 }}><span style={{ color: "var(--text-muted)", minWidth: 44 }}>[NODE]</span><span style={{ color: "var(--neon-pink)" }}>VIBRA PRO → {nodes.vibra.latency}ms → ONLINE</span></div>
-            <div style={{ display: "flex", gap: 12 }}><span style={{ color: "var(--text-muted)", minWidth: 44 }}>[NODE]</span><span style={{ color: "var(--neon-cyan)" }}>INSTINTO → {nodes.instinto.latency}ms → ONLINE</span></div>
-            <div style={{ display: "flex", gap: 12 }}><span style={{ color: "var(--text-muted)", minWidth: 44 }}>[NODE]</span><span style={{ color: "var(--neon-green)" }}>HBG CORE → LOCAL → ONLINE</span></div>
+          <div className="hbg-card" style={{ fontFamily: "var(--font-mono)", fontSize: 10, lineHeight: 1.9, overflowWrap: "anywhere" }}>
+            <div style={{ color: "var(--text-muted)", marginBottom: 4 }}>ACCIONES REGISTRADAS EN HBG CORE</div>
+            {registeredActions.length ? registeredActions.join(" · ") : "Ninguna acción registrada en este momento."}
           </div>
         </div>
       )}
@@ -369,24 +561,24 @@ export function UniversoModule() {
       {/* SINCRONIZACIÓN */}
       {view === "sincronizacion" && (
         <div>
-          <div className="section-title">// sync core — conexión y respaldo</div>
+          <div className="section-title">// respaldo de memoria HBG CORE</div>
           <div className="hbg-grid hbg-grid-2" style={{ gap: 12 }}>
             <div className="hbg-card" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <button className="hbg-btn hbg-btn-primary w-full" onClick={generateToken}>⬡ GENERAR TOKEN</button>
-              <button className="hbg-btn hbg-btn-ghost w-full">🔗 VINCULAR DISPOSITIVO</button>
-              <button className="hbg-btn hbg-btn-ghost w-full">♻ RESTAURAR ECOSISTEMA</button>
-              <button className="hbg-btn hbg-btn-success w-full" onClick={exportUniverse}>↓ EXPORTAR UNIVERSO</button>
+              <button className="hbg-btn hbg-btn-success w-full" onClick={exportCoreBackup}>↓ EXPORTAR MEMORIA CORE</button>
+              <button className="hbg-btn hbg-btn-ghost w-full" onClick={() => memoryFileRef.current?.click()}>♻ RESTAURAR MEMORIA CORE</button>
+              <input ref={memoryFileRef} type="file" accept=".json,application/json" style={{ display: "none" }} onChange={(event) => void restoreCoreBackup(event.target.files?.[0])} />
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>
+                La sincronización remota y la vinculación entre dispositivos aún no están conectadas. Este respaldo contiene solo la memoria local de HBG CORE.
+              </div>
             </div>
             <div className="hbg-card">
-              {token && (
-                <div>
-                  <div className="section-title">// token generado</div>
-                  <div style={{ padding: "10px", background: "var(--bg-deep)", border: "1px solid var(--neon-purple)", borderRadius: 3, fontFamily: "var(--font-mono)", fontSize: 14, color: "var(--neon-purple)", letterSpacing: "0.1em", textAlign: "center" }}>{token}</div>
-                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginTop: 8 }}>Válido por 24 horas</div>
-                </div>
-              )}
-              {syncMsg && <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--neon-green)", marginTop: 8 }}>✓ {syncMsg}</div>}
-              {!token && !syncMsg && <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)" }}>// genera un token para vincular dispositivos</div>}
+              <div className="section-title">// estado del respaldo</div>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-secondary)" }}>
+                Registros de memoria: {memoryEntries.length}
+                {"\n"}Módulo activo: {hbgCore.getModuleConfig(activeNode).label}
+                {"\n"}Acciones registradas: {registeredActions.length}
+              </div>
+              {syncMsg && <div role="status" style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: syncMsg.startsWith("No se pudo") || syncMsg.startsWith("El archivo") ? "var(--neon-pink)" : "var(--neon-green)", marginTop: 8 }}>{syncMsg}</div>}
             </div>
           </div>
         </div>
