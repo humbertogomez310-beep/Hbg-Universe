@@ -18,7 +18,7 @@ import { executeTerminadorPlanWithHBG } from "./terminadorExecution";
 import { TerminadorMemory } from "./terminadorMemory";
 
 type ViewMode = "dashboard" | "recursos" | "automatizaciones" | "cronjobs" | "logs" | "salud" | "universo";
-type HealthLevel = "excellent" | "warning" | "critical";
+type HealthLevel = "unavailable" | "excellent" | "warning" | "critical";
 type Priority = "alta" | "media" | "baja";
 
 interface ActionHistory {
@@ -110,35 +110,57 @@ const HISTORY_KEY = "hbg_terminador_history";
 const TASKS_KEY = "hbg_terminador_tasks";
 const CRONS_KEY = "hbg_terminador_crons";
 
-function loadHistory(): ActionHistory[] {
-  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]"); } catch { return []; }
+function loadLocalArray<T>(key: string): T[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(key) ?? "[]");
+    return Array.isArray(parsed) ? parsed as T[] : [];
+  } catch {
+    return [];
+  }
 }
 
-const DEFAULT_TASKS: AutoTask[] = [
-  { id: "1", name: "Respaldo diario", trigger: "Todos los días a las 23:00", action: "Exportar universo_hbg.json", active: true, priority: "alta", lastRun: "Hoy 23:00", runCount: 14 },
-  { id: "2", name: "Limpieza semanal", trigger: "Domingos a las 08:00", action: "Eliminar archivos temporales", active: true, priority: "media", lastRun: "Domingo pasado", runCount: 3 },
-  { id: "3", name: "Sync al iniciar", trigger: "Al abrir el sistema", action: "Sincronizar todos los nodos", active: false, priority: "baja", lastRun: "Hoy 17:33", runCount: 42 },
-];
+function persistLocalArray<T>(key: string, value: T[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Local history/configuration remains usable in memory if storage is unavailable.
+  }
+}
 
-const DEFAULT_CRONS: CronJob[] = [
-  { id: "c1", name: "Respaldo automático", schedule: "0 23 * * *", action: "backup_ecosystem()", nextRun: "Hoy 23:00", active: true, frequency: "diaria" },
-  { id: "c2", name: "Compactar logs", schedule: "0 3 * * 1", action: "compact_logs()", nextRun: "Lunes 03:00", active: true, frequency: "semanal" },
-  { id: "c3", name: "Optimizar caché", schedule: "0 4 * * *", action: "clear_cache()", nextRun: "Mañana 04:00", active: false, frequency: "diaria" },
-  { id: "c4", name: "Informe mensual", schedule: "0 9 1 * *", action: "generate_report()", nextRun: "1 de Julio", active: true, frequency: "mensual" },
-];
+function loadHistory(): ActionHistory[] {
+  return loadLocalArray<ActionHistory>(HISTORY_KEY);
+}
 
 const PRIORITY_COLORS: Record<Priority, string> = { alta: "var(--neon-pink)", media: "#ffd740", baja: "var(--neon-green)" };
 
 function getHealth(metrics: Metric[]): HealthLevel {
-  for (const m of metrics) { if ((m.value / m.max) * 100 >= m.critical) return "critical"; }
-  for (const m of metrics) { if ((m.value / m.max) * 100 >= m.warning) return "warning"; }
+  if (metrics.length === 0) return "unavailable";
+  for (const metric of metrics) {
+    if ((metric.value / metric.max) * 100 >= metric.critical) return "critical";
+  }
+  for (const metric of metrics) {
+    if ((metric.value / metric.max) * 100 >= metric.warning) return "warning";
+  }
   return "excellent";
 }
 
-const HEALTH_CONFIG = {
-  excellent: { label: "🟢 EXCELENTE", color: "var(--neon-green)", score: 87, desc: "Indicador de demostración; no hay telemetría real conectada." },
-  warning: { label: "🟡 ATENCIÓN", color: "#ffd740", score: 62, desc: "Indicador de demostración; no hay telemetría real conectada." },
-  critical: { label: "🔴 CRÍTICO", color: "var(--neon-pink)", score: 31, desc: "Indicador de demostración; no hay telemetría real conectada." },
+const HEALTH_CONFIG: Record<HealthLevel, {
+  label: string;
+  color: string;
+  score: number | null;
+  desc: string;
+}> = {
+  unavailable: {
+    label: "SIN TELEMETRÍA",
+    color: "var(--text-muted)",
+    score: null,
+    desc: "No hay fuentes de telemetría conectadas; no se inventa una puntuación de salud.",
+  },
+  excellent: { label: "EXCELENTE", color: "var(--neon-green)", score: null, desc: "Estado calculado a partir de métricas conectadas." },
+  warning: { label: "ATENCIÓN", color: "#ffd740", score: null, desc: "Estado calculado a partir de métricas conectadas." },
+  critical: { label: "CRÍTICO", color: "var(--neon-pink)", score: null, desc: "Estado calculado a partir de métricas conectadas." },
 };
 
 function getMetricColor(m: Metric): string {
@@ -152,18 +174,11 @@ const levelColor: Record<string, string> = { INFO: "var(--neon-cyan)", WARN: "#f
 
 export function TerminadorModule() {
   const [view, setView] = useState<ViewMode>("dashboard");
-  const [metrics] = useState<Metric[]>([
-    { label: "CPU", value: 23, max: 100, unit: "%", color: "var(--neon-cyan)", critical: 90, warning: 70 },
-    { label: "RAM", value: 4.2, max: 16, unit: "GB", color: "var(--neon-purple)", critical: 90, warning: 75 },
-    { label: "DISCO", value: 62, max: 100, unit: "%", color: "var(--neon-green)", critical: 95, warning: 80 },
-    { label: "RED", value: 12, max: 100, unit: "MB/s", color: "#ff9100", critical: 90, warning: 70 },
-    { label: "TEMP", value: 52, max: 100, unit: "°C", color: "var(--neon-pink)", critical: 85, warning: 70 },
-    { label: "PROCESOS", value: 124, max: 500, unit: "", color: "#b388ff", critical: 90, warning: 70 },
-  ]);
+  const [metrics] = useState<Metric[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [history, setHistory] = useState<ActionHistory[]>(loadHistory);
-  const [tasks, setTasks] = useState<AutoTask[]>(() => { try { return JSON.parse(localStorage.getItem(TASKS_KEY) ?? "null") ?? DEFAULT_TASKS; } catch { return DEFAULT_TASKS; } });
-  const [crons, setCrons] = useState<CronJob[]>(() => { try { return JSON.parse(localStorage.getItem(CRONS_KEY) ?? "null") ?? DEFAULT_CRONS; } catch { return DEFAULT_CRONS; } });
+  const [tasks, setTasks] = useState<AutoTask[]>(() => loadLocalArray<AutoTask>(TASKS_KEY));
+  const [crons, setCrons] = useState<CronJob[]>(() => loadLocalArray<CronJob>(CRONS_KEY));
   const [uptime, setUptime] = useState(0);
   const [newTaskName, setNewTaskName] = useState("");
   const [newTaskTrigger, setNewTaskTrigger] = useState("");
@@ -224,9 +239,9 @@ export function TerminadorModule() {
 
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [logs]);
 
-  useEffect(() => { localStorage.setItem(TASKS_KEY, JSON.stringify(tasks)); }, [tasks]);
-  useEffect(() => { localStorage.setItem(CRONS_KEY, JSON.stringify(crons)); }, [crons]);
-  useEffect(() => { localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(-50))); }, [history]);
+  useEffect(() => { persistLocalArray(TASKS_KEY, tasks); }, [tasks]);
+  useEffect(() => { persistLocalArray(CRONS_KEY, crons); }, [crons]);
+  useEffect(() => { persistLocalArray(HISTORY_KEY, history.slice(-50)); }, [history]);
 
   const addLog = (entry: Omit<LogEntry, "time">) => {
     const time = new Date().toLocaleTimeString("es-ES", { hour12: false });
@@ -509,7 +524,7 @@ export function TerminadorModule() {
           <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 8, padding: "6px 8px" }} onClick={runScan}>◎ SCAN</button>
           <button className="hbg-btn hbg-btn-success" style={{ fontSize: 8, padding: "6px 8px" }} onClick={runOptimize}>⚙ OPTIM</button>
           <span className="hbg-badge" style={{ background: `${healthCfg.color}15`, borderColor: `${healthCfg.color}40`, color: healthCfg.color }}>
-            {healthCfg.label.split(" ")[0]} {healthCfg.score}/100
+            {healthCfg.label}
           </span>
         </div>
       </div>
@@ -528,7 +543,7 @@ export function TerminadorModule() {
       {view === "dashboard" && (
         <div>
           <div className="hbg-card" style={{ marginBottom: 12, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>
-            Telemetría y health score de muestra. Las acciones de mantenimiento no están conectadas y se detienen sin ejecutarse.
+            No hay telemetría de CPU, memoria o disco conectada. Las acciones de mantenimiento no están disponibles y no se ejecutan.
           </div>
           <div className="hbg-card hbg-card-accent" style={{ "--card-color": healthCfg.color, marginBottom: 16, padding: "16px 20px" } as React.CSSProperties}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -539,14 +554,18 @@ export function TerminadorModule() {
               </div>
               <div style={{ textAlign: "right" }}>
                 <div className="card-label">HEALTH SCORE</div>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: 30, fontWeight: 900, color: healthCfg.color, textShadow: `0 0 16px ${healthCfg.color}` }}>{healthCfg.score}<span style={{ fontSize: 14 }}>/100</span></div>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>UPTIME: {formatUptime(uptime)}</div>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 900, color: healthCfg.color }}>
+                  {healthCfg.score === null ? "—" : healthCfg.score}
+                  {healthCfg.score !== null && <span style={{ fontSize: 14 }}>/100</span>}
+                </div>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>SESIÓN: {formatUptime(uptime)}</div>
               </div>
             </div>
           </div>
 
-          <div className="hbg-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 16 }}>
-            {metrics.slice(0, 3).map((m) => {
+          {metrics.length > 0 ? (
+            <div className="hbg-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 16 }}>
+              {metrics.slice(0, 3).map((m) => {
               const color = getMetricColor(m);
               const pct = Math.min((m.value / m.max) * 100, 100);
               return (
@@ -558,8 +577,13 @@ export function TerminadorModule() {
                   <div className="hbg-progress"><div className="hbg-progress-bar" style={{ "--bar-color": color, width: `${pct}%` } as React.CSSProperties} /></div>
                 </div>
               );
-            })}
-          </div>
+              })}
+            </div>
+          ) : (
+            <div className="hbg-card" style={{ marginBottom: 16, color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 10 }}>
+              // Sin métricas disponibles. No se muestran valores simulados.
+            </div>
+          )}
 
           {/* HBG CORE command bridge */}
           <div className="hbg-card hbg-card-accent" style={{ "--card-color": "var(--neon-green)", marginBottom: 16 } as React.CSSProperties}>
@@ -754,7 +778,7 @@ export function TerminadorModule() {
       {view === "automatizaciones" && (
         <div>
           <div className="hbg-card" style={{ marginBottom: 12, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>
-            Datos locales de muestra. No hay scheduler conectado: estos cambios no programan ni ejecutan tareas.
+            Borradores locales de automatización. No existe un scheduler conectado: marcar una tarea no la programa ni la ejecuta.
           </div>
           <div className="hbg-grid hbg-grid-2" style={{ gap: 12 }}>
             <div>
@@ -775,7 +799,7 @@ export function TerminadorModule() {
                     <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", lineHeight: 1.8 }}>
                       <div>⚡ {task.trigger}</div>
                       <div>▶ {task.action}</div>
-                      <div style={{ color: "var(--neon-cyan)" }}>Historial de muestra: {task.runCount}x · {task.lastRun}</div>
+                      <div style={{ color: "var(--neon-cyan)" }}>Ejecuciones confirmadas: {task.runCount} · última: {task.lastRun}</div>
                     </div>
                   </div>
                 ))}
@@ -791,7 +815,7 @@ export function TerminadorModule() {
                   <button key={p} className="hbg-badge" style={{ cursor: "pointer", background: newTaskPriority === p ? `${PRIORITY_COLORS[p]}18` : undefined, borderColor: newTaskPriority === p ? PRIORITY_COLORS[p] : "var(--border-dim)", color: newTaskPriority === p ? PRIORITY_COLORS[p] : "var(--text-muted)" }} onClick={() => setNewTaskPriority(p)}>{p.toUpperCase()}</button>
                 ))}
               </div>
-              <button className="hbg-btn hbg-btn-primary w-full" disabled={!newTaskName.trim()} onClick={() => { setTasks((prev) => [...prev, { id: Date.now().toString(), name: newTaskName, trigger: newTaskTrigger || "Manual", action: newTaskAction || "Ejecutar acción", active: true, priority: newTaskPriority, lastRun: "Nunca", runCount: 0 }]); setNewTaskName(""); setNewTaskTrigger(""); setNewTaskAction(""); }}>
+              <button className="hbg-btn hbg-btn-primary w-full" disabled={!newTaskName.trim()} onClick={() => { setTasks((prev) => [...prev, { id: Date.now().toString(), name: newTaskName, trigger: newTaskTrigger || "Manual", action: newTaskAction || "Ejecutar acción", active: false, priority: newTaskPriority, lastRun: "Nunca", runCount: 0 }]); setNewTaskName(""); setNewTaskTrigger(""); setNewTaskAction(""); }}>
                 + PROGRAMAR TAREA
               </button>
             </div>
@@ -803,7 +827,7 @@ export function TerminadorModule() {
       {view === "cronjobs" && (
         <div>
           <div className="hbg-card" style={{ marginBottom: 12, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>
-            Datos locales de muestra. No hay scheduler conectado y ningún cron se ejecuta.
+            No hay servicio cron conectado. Las entradas guardadas aquí no se ejecutan ni generan próximas ejecuciones.
           </div>
           <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
             {(["todas", "diaria", "semanal", "mensual"] as const).map((f) => (
@@ -876,7 +900,7 @@ export function TerminadorModule() {
       {view === "salud" && (
         <div>
           <div className="hbg-card" style={{ marginBottom: 12, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>
-            Estado y métricas de muestra; no son comprobaciones ni telemetría de los módulos.
+            No hay conectores de salud activos. Los estados no verificados se muestran como no disponibles.
           </div>
           <div className="hbg-card hbg-card-accent" style={{ "--card-color": healthCfg.color, marginBottom: 16, padding: "20px 24px" } as React.CSSProperties}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
@@ -885,8 +909,8 @@ export function TerminadorModule() {
                 <div style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 900, color: healthCfg.color, textShadow: `0 0 20px ${healthCfg.color}`, letterSpacing: "0.1em" }}>{healthCfg.label}</div>
               </div>
               <div style={{ textAlign: "right" }}>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: 48, fontWeight: 900, color: healthCfg.color, textShadow: `0 0 24px ${healthCfg.color}`, lineHeight: 1 }}>{healthCfg.score}</div>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)" }}>/ 100</div>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: 48, fontWeight: 900, color: healthCfg.color, textShadow: `0 0 24px ${healthCfg.color}`, lineHeight: 1 }}>{healthCfg.score ?? "—"}</div>
+                {healthCfg.score !== null && <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)" }}>/ 100</div>}
               </div>
             </div>
             <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-secondary)" }}>{healthCfg.desc}</div>
@@ -895,11 +919,11 @@ export function TerminadorModule() {
           <div className="section-title">// indicadores por módulo</div>
           <div className="hbg-list" style={{ gap: 8, marginBottom: 16 }}>
             {[
-              { name: "HBG CORE", status: "excellent" as HealthLevel, detail: "Memoria activa · 5 registros · latencia 0ms" },
-              { name: "VIBRA PRO", status: "excellent" as HealthLevel, detail: "PlayerEngine activo · 8ms latencia · 6 favs" },
-              { name: "INSTINTO", status: "excellent" as HealthLevel, detail: "2 notas · 1 letra · autosave activo" },
-              { name: "TERMINADOR IA", status: health, detail: "Estado ilustrativo; sin telemetría ni scheduler conectados" },
-              { name: "SHARE ENGINE", status: "excellent" as HealthLevel, detail: "Bus de mensajes activo · 4 nodos conectados" },
+              { name: "HBG CORE", status: "unavailable" as HealthLevel, detail: "Sin comprobación de salud publicada." },
+              { name: "VIBRA PRO", status: "unavailable" as HealthLevel, detail: "Sin telemetría de reproducción publicada." },
+              { name: "INSTINTO", status: "unavailable" as HealthLevel, detail: `${notes.filter((note) => !note.deleted).length} notas · ${lyrics.length} letras · almacenamiento local` },
+              { name: "TERMINADOR IA", status: health, detail: "Scheduler y telemetría del host no conectados." },
+              { name: "SHARE ENGINE", status: "unavailable" as HealthLevel, detail: "Sin telemetría del bus de mensajes." },
             ].map((mod) => {
               const cfg = HEALTH_CONFIG[mod.status];
               return (
