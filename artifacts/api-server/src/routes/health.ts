@@ -15,12 +15,17 @@ router.get("/healthz", async (_req, res) => {
         to_regclass('public.hbg_audit_events') IS NOT NULL AS audit_events,
         to_regclass('public.hbg_terminador_authorizations') IS NOT NULL AS terminador_authorizations,
         to_regclass('public.hbg_permission_grants') IS NOT NULL AS permission_grants,
-        to_regclass('public.hbg_applications') IS NOT NULL AS applications
+        to_regclass('public.hbg_applications') IS NOT NULL AS applications,
+        (
+          SELECT count(*) >= 6
+          FROM hbg_applications
+          WHERE id IN ('hbg-core', 'hbg-auth', 'universo', 'instinto', 'vibra', 'terminador')
+        ) AS registry_seeded
     `);
     const schemaRow = result.rows[0];
     const schemaReady =
       Boolean(schemaRow) &&
-      Object.values(schemaRow).length === 7 &&
+      Object.values(schemaRow).length === 8 &&
       Object.values(schemaRow).every((value) => value === true);
     if (!schemaReady) {
       res.status(503).json({ status: "unavailable", code: "DATABASE_SCHEMA_NOT_READY" });
