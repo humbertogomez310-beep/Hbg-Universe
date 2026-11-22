@@ -28,4 +28,7 @@ test("VIBRA handles empty queues and single-track repeat modes", () => {
   assert.equal(selectNextPlaybackId([], null, true, "all"), null);
   assert.equal(selectNextPlaybackId(["solo"], "solo", true, "off"), null);
   assert.equal(selectNextPlaybackId(["solo"], "solo", true, "all"), "solo");
+  assert.equal(selectPreviousPlaybackId(["solo"], "solo", true, "off"), null);
+  assert.equal(selectPreviousPlaybackId(["solo"], "solo", true, "one"), "solo");
+  assert.equal(selectPreviousPlaybackId(["solo"], "solo", true, "all"), "solo");
 });
