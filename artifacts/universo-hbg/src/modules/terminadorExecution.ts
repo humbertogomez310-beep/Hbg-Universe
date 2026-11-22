@@ -91,6 +91,38 @@ async function dispatchMusicAction(
   return core.dispatchAction(request.name, request.payload, { timeoutMs: 5_000 });
 }
 
+function normalizeTrackQuery(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\\u0300-\\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/\\s+/g, " ");
+}
+
+function selectVerifiedTrack(
+  results: unknown[],
+  query: string,
+): { id: string; title: string } | null {
+  const candidates = results.filter(
+    (value): value is { id: string; title: string } =>
+      typeof value === "object" &&
+      value !== null &&
+      "id" in value &&
+      typeof value.id === "string" &&
+      value.id.trim().length > 0 &&
+      "title" in value &&
+      typeof value.title === "string" &&
+      value.title.trim().length > 0,
+  );
+  if (candidates.length === 1) return candidates[0];
+  const normalizedQuery = normalizeTrackQuery(query);
+  const exactMatches = candidates.filter(
+    (track) => normalizeTrackQuery(track.title) === normalizedQuery,
+  );
+  return exactMatches.length === 1 ? exactMatches[0] : null;
+}
+
 function assertSuccessful(result: HBGActionResult, fallback: string): HBGActionResult {
   if (!result.success) throw new Error(result.error ?? fallback);
   return result;
@@ -163,7 +195,13 @@ export async function executeTerminadorPlanWithHBG(
         if (!Array.isArray(results) || results.length === 0) {
           throw new TerminadorTaskBlockedError("No se encontró una canción para reproducir.");
         }
-        return { search, firstResult: results[0] };
+        const selected = selectVerifiedTrack(results, task.operation.query);
+        if (!selected) {
+          throw new TerminadorTaskBlockedError(
+            "La búsqueda devolvió varias coincidencias o resultados incompletos. Indica el título exacto para evitar reproducir una pista equivocada.",
+          );
+        }
+        return { search, firstResult: selected };
       }
       if (task.operation.type === "music") {
         if (task.operation.action.type === "NOW_PLAYING") {
