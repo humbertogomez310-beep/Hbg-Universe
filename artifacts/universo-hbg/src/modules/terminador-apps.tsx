@@ -37,8 +37,6 @@ export function TerminadorApps() {
   const [apps, setApps] = useState<ManagedApp[]>([]);
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [confirmId, setConfirmId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
 
   const refresh = useCallback(async () => {
@@ -60,26 +58,12 @@ export function TerminadorApps() {
     void refresh();
   }, [refresh]);
 
-  const changeStatus = async (app: ManagedApp, status: "active" | "disabled") => {
-    if (busyId) return;
-    setBusyId(app.id);
-    setConfirmId(null);
-    const result = await api<{ changed: boolean }>(
-      `/terminador/apps/${encodeURIComponent(app.id)}/status`,
-      { method: "POST", body: JSON.stringify({ status }) },
-    );
-    setBusyId(null);
-    if (!result.ok) {
-      setMessage(describeError(result.status, result.code));
-      return;
-    }
-    await refresh();
-    setMessage(`${app.name}: estado del registro actualizado; no se controla el proceso de la app.`);
-  };
-
   return (
     <div>
-      <div className="section-title">// apps del ecosistema (datos reales)</div>
+      <div className="section-title">// apps del ecosistema (registro real)</div>
+      <div className="hbg-card" style={{ marginBottom: 10, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>
+        Este panel consulta el registro. Los cambios se proponen y ejecutan con autorización individual desde el dashboard de TERMINADOR; modificar el registro no detiene el proceso ni el deployment de una app.
+      </div>
       {message && (
         <div className="hbg-card" role="status" style={{ marginBottom: 10, fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--neon-cyan)" }}>
           {message}
@@ -106,25 +90,8 @@ export function TerminadorApps() {
                   </div>
                   {app.protected ? (
                     <span className="hbg-badge hbg-badge-purple">PROTEGIDA</span>
-                  ) : active ? (
-                    confirmId === app.id ? (
-                      <div style={{ display: "flex", gap: 4 }}>
-                        <button className="hbg-btn hbg-btn-danger" style={{ padding: "4px 8px", fontSize: 9 }} disabled={busyId !== null} onClick={() => void changeStatus(app, "disabled")}>
-                          CONFIRMAR CAMBIO
-                        </button>
-                        <button className="hbg-btn hbg-btn-ghost" style={{ padding: "4px 8px", fontSize: 9 }} onClick={() => setConfirmId(null)}>
-                          NO
-                        </button>
-                      </div>
-                    ) : (
-                      <button className="hbg-btn hbg-btn-danger" style={{ padding: "4px 10px", fontSize: 9 }} disabled={busyId !== null} onClick={() => setConfirmId(app.id)}>
-                        MARCAR APAGADA
-                      </button>
-                    )
                   ) : (
-                    <button className="hbg-btn hbg-btn-success" style={{ padding: "4px 10px", fontSize: 9 }} disabled={busyId !== null} onClick={() => void changeStatus(app, "active")}>
-                      MARCAR ACTIVA
-                    </button>
+                    <span className="hbg-badge">SOLO AUTHORITY</span>
                   )}
                 </div>
               </div>
