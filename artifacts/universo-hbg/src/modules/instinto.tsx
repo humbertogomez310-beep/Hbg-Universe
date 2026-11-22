@@ -156,6 +156,8 @@ export function InstintoModule() {
   const [showTrash, setShowTrash] = useState(false);
   const [activeLyric, setActiveLyric] = useState<Lyric | null>(null);
   const [newLyricTitle, setNewLyricTitle] = useState("");
+  const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectDescription, setNewProjectDescription] = useState("");
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [inspirationLines, setInspirationLines] = useState<string[]>([]);
   const [autoSaved, setAutoSaved] = useState(false);
@@ -176,6 +178,22 @@ export function InstintoModule() {
   const saveProjects = (next: Project[]) => {
     setProjects(next);
     setStorageWarning(persistValue(PROJECT_KEY, next) ? "" : "No se pudieron guardar los proyectos en este dispositivo.");
+  };
+
+  const addProject = () => {
+    const name = newProjectName.trim();
+    if (!name) return;
+    const project: Project = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name,
+      description: newProjectDescription.trim(),
+      status: "borrador",
+      color: "var(--neon-cyan)",
+      createdAt: new Date().toISOString(),
+    };
+    saveProjects([project, ...projects]);
+    setNewProjectName("");
+    setNewProjectDescription("");
   };
 
   useEffect(() => {
@@ -600,22 +618,52 @@ export function InstintoModule() {
       {/* PROYECTOS */}
       {view === "proyectos" && (
         <div>
-          <div className="section-title">// proyectos activos</div>
-          <div className="hbg-list" style={{ gap: 10, marginBottom: 16 }}>
-            {projects.map((p) => (
-              <div key={p.id} className="hbg-card hbg-card-accent" style={{ "--card-color": p.color } as React.CSSProperties}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                  <div style={{ fontFamily: "var(--font-display)", fontSize: 13, fontWeight: 700, letterSpacing: "0.08em", color: p.color }}>{p.name}</div>
-                  <span className="hbg-badge" style={{ background: `${STATUS_COLORS[p.status]}12`, borderColor: `${STATUS_COLORS[p.status]}40`, color: STATUS_COLORS[p.status] }}>{STATUS_LABEL[p.status]}</span>
-                </div>
-                <div style={{ fontFamily: "var(--font-ui)", fontSize: 13, color: "var(--text-secondary)" }}>{p.description}</div>
-                <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-                  <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 9, padding: "4px 8px" }} onClick={() => saveProjects(projects.map(pr => pr.id === p.id ? { ...pr, status: "en_progreso" } : pr))}>EN PROGRESO</button>
-                  <button className="hbg-btn hbg-btn-success" style={{ fontSize: 9, padding: "4px 8px" }} onClick={() => saveProjects(projects.map(pr => pr.id === p.id ? { ...pr, status: "completado" } : pr))}>COMPLETAR</button>
-                </div>
-              </div>
-            ))}
+          <div className="hbg-card" style={{ marginBottom: 14 }}>
+            <div className="section-title">// nuevo proyecto</div>
+            <input
+              className="hbg-input"
+              placeholder="Nombre del proyecto..."
+              value={newProjectName}
+              onChange={(event) => setNewProjectName(event.target.value)}
+              maxLength={100}
+              style={{ marginBottom: 8 }}
+            />
+            <textarea
+              className="hbg-input hbg-textarea"
+              placeholder="Descripción (opcional)..."
+              value={newProjectDescription}
+              onChange={(event) => setNewProjectDescription(event.target.value)}
+              maxLength={1000}
+              rows={3}
+              style={{ marginBottom: 8 }}
+            />
+            <button className="hbg-btn hbg-btn-primary" disabled={!newProjectName.trim()} onClick={addProject}>
+              + CREAR PROYECTO
+            </button>
           </div>
+          <div className="section-title">// proyectos guardados</div>
+          {projects.length === 0 ? (
+            <div className="hbg-card" style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 10 }}>
+              // Aún no hay proyectos. Crea el primero arriba.
+            </div>
+          ) : (
+            <div className="hbg-list" style={{ gap: 10, marginBottom: 16 }}>
+              {projects.map((p) => (
+                <div key={p.id} className="hbg-card hbg-card-accent" style={{ "--card-color": p.color } as React.CSSProperties}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                    <div style={{ fontFamily: "var(--font-display)", fontSize: 13, fontWeight: 700, letterSpacing: "0.08em", color: p.color }}>{p.name}</div>
+                    <span className="hbg-badge" style={{ background: `${STATUS_COLORS[p.status]}12`, borderColor: `${STATUS_COLORS[p.status]}40`, color: STATUS_COLORS[p.status] }}>{STATUS_LABEL[p.status]}</span>
+                  </div>
+                  <div style={{ fontFamily: "var(--font-ui)", fontSize: 13, color: "var(--text-secondary)" }}>{p.description || "Sin descripción."}</div>
+                  <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+                    <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 9, padding: "4px 8px" }} onClick={() => saveProjects(projects.map((pr) => pr.id === p.id ? { ...pr, status: "en_progreso" } : pr))}>EN PROGRESO</button>
+                    <button className="hbg-btn hbg-btn-success" style={{ fontSize: 9, padding: "4px 8px" }} onClick={() => saveProjects(projects.map((pr) => pr.id === p.id ? { ...pr, status: "completado" } : pr))}>COMPLETAR</button>
+                    <button className="hbg-btn hbg-btn-danger" style={{ fontSize: 9, padding: "4px 8px" }} onClick={() => saveProjects(projects.filter((pr) => pr.id !== p.id))}>ELIMINAR</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
