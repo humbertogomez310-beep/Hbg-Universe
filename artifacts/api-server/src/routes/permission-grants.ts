@@ -1,5 +1,4 @@
-
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response } from "express";
 import {
   requireDevelopmentPermission,
 } from "../lib/hbgAuth";
@@ -11,11 +10,19 @@ import {
 
 const router: IRouter = Router();
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value)
+  );
+}
+
 function handleError(
   error: unknown,
-  req: Parameters<Parameters<IRouter["post"]>[2]>[0],
-  res: Parameters<Parameters<IRouter["post"]>[2]>[1],
-) {
+  req: Request,
+  res: Response,
+): void {
   if (error instanceof PermissionGrantError) {
     res.status(error.status).json({
       success: false,
@@ -49,7 +56,34 @@ router.post(
       return;
     }
 
-    const body = (req.body ?? {}) as Record<string, unknown>;
+    if (!isRecord(req.body)) {
+      res.status(400).json({
+        success: false,
+        error: "El cuerpo de la solicitud debe ser un objeto.",
+        code: "INVALID_REQUEST_BODY",
+      });
+      return;
+    }
+
+    const body = req.body;
+    const allowedFields = new Set([
+      "permission",
+      "resourcePath",
+      "reason",
+      "ttlMs",
+    ]);
+    const unexpectedField = Object.keys(body).find(
+      (field) => !allowedFields.has(field),
+    );
+
+    if (unexpectedField) {
+      res.status(400).json({
+        success: false,
+        error: `El campo "${unexpectedField}" no está permitido.`,
+        code: "UNEXPECTED_FIELD",
+      });
+      return;
+    }
 
     if (body.permission !== "universe.code.modify") {
       res.status(400).json({
@@ -60,21 +94,36 @@ router.post(
       return;
     }
 
+    if (
+      typeof body.resourcePath !== "string" ||
+      typeof body.reason !== "string"
+    ) {
+      res.status(400).json({
+        success: false,
+        error: "resourcePath y reason deben ser cadenas de texto.",
+        code: "INVALID_GRANT_INPUT",
+      });
+      return;
+    }
+
+    if (
+      body.ttlMs !== undefined &&
+      (typeof body.ttlMs !== "number" || !Number.isSafeInteger(body.ttlMs))
+    ) {
+      res.status(400).json({
+        success: false,
+        error: "ttlMs debe ser un número entero seguro.",
+        code: "INVALID_TTL",
+      });
+      return;
+    }
+
     try {
       const grant = await createPermissionGrant(context, {
         permission: "universe.code.modify",
-        resourcePath:
-          typeof body.resourcePath === "string"
-            ? body.resourcePath
-            : "",
-        reason:
-          typeof body.reason === "string"
-            ? body.reason
-            : "",
-        ttlMs:
-          typeof body.ttlMs === "number"
-            ? body.ttlMs
-            : undefined,
+        resourcePath: body.resourcePath,
+        reason: body.reason,
+        ttlMs: body.ttlMs as number | undefined,
       });
 
       res.status(201).json({
