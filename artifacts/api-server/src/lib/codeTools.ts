@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { constants, existsSync, readFileSync } from "node:fs";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { HBGAuthContext } from "./hbgAuth";
@@ -103,6 +103,19 @@ function isNotFound(error: unknown): boolean {
   );
 }
 
+async function safeParentDirectory(root: string, target: string): Promise<string> {
+  const expectedParent = path.dirname(target);
+  const parent = await fs.realpath(expectedParent);
+  if (parent !== expectedParent || !isWithinWorkspace(root, parent)) {
+    throw new Error("La carpeta de destino cambió o sale del workspace.");
+  }
+  const stat = await fs.lstat(parent);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw new Error("La carpeta de destino no es un directorio regular.");
+  }
+  return parent;
+}
+
 async function safeAbsolutePath(
   relativePath: string,
   allowMissingLeaf = false,
@@ -154,16 +167,25 @@ async function assertWriteGrant(
 
 export async function inspectFile(relativePath: string) {
   const filename = await safeAbsolutePath(relativePath);
-  const stat = await fs.lstat(filename);
-  if (!stat.isFile()) throw new Error("El recurso no es un archivo.");
-  if (stat.size > MAX_READ_BYTES) {
-    throw new Error("El archivo excede el límite de lectura.");
+  const root = await fs.realpath(WORKSPACE_ROOT);
+  await safeParentDirectory(root, filename);
+
+  // O_NOFOLLOW prevents a last-moment symlink swap between path validation and open.
+  const handle = await fs.open(filename, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile()) throw new Error("El recurso no es un archivo regular.");
+    if (stat.size > MAX_READ_BYTES) {
+      throw new Error("El archivo excede el límite de lectura.");
+    }
+    return {
+      path: normalizedRelativePath(relativePath),
+      size: stat.size,
+      content: await handle.readFile("utf8"),
+    };
+  } finally {
+    await handle.close();
   }
-  return {
-    path: normalizedRelativePath(relativePath),
-    size: stat.size,
-    content: await fs.readFile(filename, "utf8"),
-  };
 }
 
 export async function listFiles(relativePath = ".") {
@@ -171,8 +193,15 @@ export async function listFiles(relativePath = ".") {
     relativePath === "."
       ? await fs.realpath(WORKSPACE_ROOT)
       : await safeAbsolutePath(relativePath);
+  const root = await fs.realpath(WORKSPACE_ROOT);
+  const canonicalDirectory = await fs.realpath(directory);
+  if (canonicalDirectory !== directory || !isWithinWorkspace(root, canonicalDirectory)) {
+    throw new Error("La carpeta cambió o sale del workspace.");
+  }
   const directoryStat = await fs.lstat(directory);
-  if (!directoryStat.isDirectory()) throw new Error("El recurso no es una carpeta.");
+  if (directoryStat.isSymbolicLink() || !directoryStat.isDirectory()) {
+    throw new Error("El recurso no es una carpeta regular.");
+  }
   const entries = await fs.readdir(directory, { withFileTypes: true });
   return entries
     .filter((entry) =>
@@ -202,10 +231,7 @@ export async function writeFile(
   await assertWriteGrant(context, normalized);
   const target = await safeAbsolutePath(normalized, true);
   const root = await fs.realpath(WORKSPACE_ROOT);
-  const parent = await fs.realpath(path.dirname(target));
-  if (!isWithinWorkspace(root, parent)) {
-    throw new Error("La carpeta de destino sale del workspace.");
-  }
+  const parent = await safeParentDirectory(root, target);
 
   const destination = path.join(parent, path.basename(target));
   let mode = 0o600;
@@ -243,10 +269,7 @@ export async function deleteFile(
   await assertWriteGrant(context, normalized);
   const target = await safeAbsolutePath(normalized);
   const root = await fs.realpath(WORKSPACE_ROOT);
-  const parent = await fs.realpath(path.dirname(target));
-  if (!isWithinWorkspace(root, parent)) {
-    throw new Error("La carpeta del recurso sale del workspace.");
-  }
+  const parent = await safeParentDirectory(root, target);
 
   const destination = path.join(parent, path.basename(target));
   const stat = await fs.lstat(destination);
