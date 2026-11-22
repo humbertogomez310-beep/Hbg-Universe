@@ -12,10 +12,13 @@ function createWorkerHarness(fetchImpl) {
   let skippedWaiting = false;
   let claimed = false;
 
+  const cacheKey = (request) => {
+    const value = typeof request === "string" ? request : request.url;
+    return new URL(value, "https://hbg.test").href;
+  };
   const cache = {
     async put(request, response) {
-      const key = typeof request === "string" ? request : request.url;
-      stored.set(key, response.clone());
+      stored.set(cacheKey(request), response.clone());
     },
     async addAll(requests) {
       for (const request of requests) {
@@ -25,8 +28,7 @@ function createWorkerHarness(fetchImpl) {
       }
     },
     async match(request) {
-      const key = typeof request === "string" ? request : request.url;
-      return stored.get(key)?.clone();
+      return stored.get(cacheKey(request))?.clone();
     },
   };
 
@@ -77,7 +79,7 @@ test("PWA installation caches the shell, manifest, and built JavaScript/CSS asse
   await installPromise;
 
   assert.equal(harness.skippedWaiting, true);
-  assert.ok(harness.stored.has("/"));
+  assert.ok(harness.stored.has("https://hbg.test/"));
   assert.ok(harness.stored.has("https://hbg.test/manifest.webmanifest"));
   assert.ok(harness.stored.has("https://hbg.test/assets/app-123.js"));
   assert.ok(harness.stored.has("https://hbg.test/assets/app-123.css"));
