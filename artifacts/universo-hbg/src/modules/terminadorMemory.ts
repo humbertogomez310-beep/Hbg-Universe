@@ -39,7 +39,12 @@ function validateEntry(value: unknown): value is TerminadorMemoryEntry {
   if (typeof value !== "object" || value === null) return false;
   const entry = value as Partial<TerminadorMemoryEntry>;
   return typeof entry.key === "string" &&
+    entry.key.trim().length > 0 &&
+    entry.key.length <= 100 &&
     typeof entry.value === "string" &&
+    entry.value.length <= MAX_VALUE_LENGTH &&
+    !SENSITIVE.test(entry.key) &&
+    !SENSITIVE.test(entry.value) &&
     (entry.kind === "preference" || entry.kind === "decision") &&
     (entry.scope === "session" || entry.scope === "persistent") &&
     typeof entry.createdAt === "string" &&
@@ -100,6 +105,9 @@ export class TerminadorMemory {
     }
     const id = `${scope}:${cleanKey}`;
     const previous = this.entries.get(id);
+    if (!previous && this.entries.size >= MAX_ENTRIES) {
+      throw new Error("La memoria admite un máximo de " + MAX_ENTRIES + " recuerdos.");
+    }
     const now = new Date().toISOString();
     const entry: TerminadorMemoryEntry = {
       key: cleanKey,
@@ -140,11 +148,19 @@ export class TerminadorMemory {
 
   forget(key: string, scope?: TerminadorMemoryScope): boolean {
     const scopes: TerminadorMemoryScope[] = scope ? [scope] : ["persistent", "session"];
+    const previous = new Map(this.entries);
     const removed = scopes.reduce<number>((count, itemScope) => {
       return count + Number(this.entries.delete(`${itemScope}:${key}`));
     }, 0);
-    if (removed) this.persist();
-    return removed > 0;
+    if (!removed) return false;
+    try {
+      this.persist();
+      return true;
+    } catch (error) {
+      this.entries.clear();
+      previous.forEach((entry, id) => this.entries.set(id, entry));
+      throw error;
+    }
   }
 
   list(scope?: TerminadorMemoryScope): TerminadorMemoryEntry[] {
@@ -196,10 +212,17 @@ export class TerminadorMemory {
   }
 
   clear(scope?: TerminadorMemoryScope): void {
+    const previous = new Map(this.entries);
     for (const [id, entry] of this.entries) {
       if (!scope || entry.scope === scope) this.entries.delete(id);
     }
-    this.persist();
+    try {
+      this.persist();
+    } catch (error) {
+      this.entries.clear();
+      previous.forEach((entry, id) => this.entries.set(id, entry));
+      throw error;
+    }
   }
 
   private persist(): void {
