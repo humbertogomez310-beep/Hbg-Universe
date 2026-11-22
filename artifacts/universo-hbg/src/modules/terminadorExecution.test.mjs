@@ -89,7 +89,50 @@ test("Terminador blocks playback when the search result has no valid track ID", 
     core,
   });
 
-  assert.equal(result.tasks[0].state, "completed");
+  assert.equal(result.tasks[0].state, "blocked");
   assert.equal(result.tasks[1].state, "blocked");
-  assert.match(result.tasks[1].reason, /ID de pista válido/i);
+  assert.match(result.tasks[0].reason, /resultados incompletos/i);
+});
+
+
+test("Terminador blocks ambiguous search results instead of choosing the first track", async () => {
+  const core = {
+    getRegisteredActions: () => ["music.search", "music.playTrack"],
+    setModule: () => undefined,
+    getContext: () => undefined,
+    dispatchAction: async (name) => name === "music.search"
+      ? {
+          success: true,
+          data: {
+            results: [
+              { id: "track-live", title: "Coincidence Live" },
+              { id: "track-remix", title: "Coincidence Remix" },
+            ],
+          },
+        }
+      : { success: true },
+  };
+  const plan = createTerminadorPlan({
+    providerId: "test",
+    originalText: "reproduce Coincidence",
+    normalizedText: "reproduce coincidence",
+    operations: [{
+      type: "music",
+      action: { type: "PLAY_TRACK", query: "Coincidence" },
+    }],
+    module: "vibra",
+    entities: [],
+    confidence: 1,
+    requiresClarification: false,
+    explanation: "Ambiguous local search",
+  });
+
+  const result = await executeTerminadorPlanWithHBG(plan, {
+    request: async () => ({ ok: false, status: 500 }),
+    core,
+  });
+
+  assert.equal(result.tasks[0].state, "blocked");
+  assert.equal(result.tasks[1].state, "blocked");
+  assert.match(result.tasks[0].reason, /varias coincidencias/i);
 });
