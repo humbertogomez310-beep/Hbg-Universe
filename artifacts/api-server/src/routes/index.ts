@@ -4,6 +4,7 @@ import authRouter from "./auth";
 import auditRouter from "./audit";
 import registryRouter from "./registry";
 import terminadorRouter from "./terminador";
+import toolsRouter from "./tools";
 import permissionGrantsRouter from "./permission-grants";
 
 const router: IRouter = Router();
@@ -14,8 +15,8 @@ router.use(auditRouter);
 router.use(registryRouter);
 router.use(terminadorRouter);
 router.use(permissionGrantsRouter);
+router.use(toolsRouter);
 
-// Code Tools remain deliberately unmounted until path-scoped grants,
-// filesystem protections, and execution isolation are operationally verified.
+// Filesystem mutations are path-grant protected; command execution remains blocked.
 
 export default router;
