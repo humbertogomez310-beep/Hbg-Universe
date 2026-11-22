@@ -136,11 +136,23 @@ test(
       assert.equal(concurrent.filter((result) => result.status === "fulfilled").length, 1);
       assert.equal(concurrent.filter((result) => result.status === "rejected").length, 1);
       assert.equal((await getAuthorization(context, proposal.id)).state, "consumed");
-      const [unchangedApplication] = await db
+      const [executedApplication] = await db
         .select({ status: hbgApplications.status })
         .from(hbgApplications)
         .where(eq(hbgApplications.id, appIds[0]));
-      assert.equal(unchangedApplication.status, "active");
+      assert.equal(executedApplication.status, "disabled");
+
+      const [executionAudit] = await db
+        .select({ action: hbgAuditEvents.action, result: hbgAuditEvents.result })
+        .from(hbgAuditEvents)
+        .where(
+          and(
+            eq(hbgAuditEvents.actorUserId, user.id),
+            eq(hbgAuditEvents.action, "terminador.app.status.changed"),
+          ),
+        )
+        .limit(1);
+      assert.equal(executionAudit?.result, "success");
       await assert.rejects(
         consumeAuthorization(context, proposal.id),
         (error) => error instanceof AuthorizationError && error.code === "AUTHORIZATION_REUSED",
