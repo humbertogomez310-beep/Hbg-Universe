@@ -177,6 +177,17 @@ export function approveTerminadorAuthorization(
   );
 }
 
+export function executeTerminadorAuthorization(
+  id: string,
+  request: TerminadorApiRequest = requestTerminadorApi,
+): Promise<TerminadorApiResult<TerminadorAuthorization>> {
+  return authorizationRequest(
+    `/terminador/authorizations/${encodeURIComponent(id)}/execute`,
+    { method: "POST" },
+    request,
+  );
+}
+
 export function revokeTerminadorAuthorization(
   id: string,
   request: TerminadorApiRequest = requestTerminadorApi,
