@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { UniversoScreen } from "../components/UniversoScreen";
 
 type Category = "notas" | "letras" | "ideas" | "reflexiones";
@@ -44,35 +44,82 @@ interface Project {
 const NOTE_KEY = "hbg_instinto_notes_v2";
 const LYRIC_KEY = "hbg_instinto_lyrics_v2";
 const PROJECT_KEY = "hbg_instinto_projects";
+const DRAFT_KEY = "hbg_instinto_draft_v1";
 
-function loadNotes(): Note[] {
-  try { return JSON.parse(localStorage.getItem(NOTE_KEY) ?? "null") ?? getDefaultNotes(); } catch { return getDefaultNotes(); }
+interface NoteDraft {
+  title: string;
+  content: string;
+  category: Category;
+  tags: string[];
 }
-function getDefaultNotes(): Note[] {
-  const now = new Date().toISOString();
-  return [
-    { id: "1", title: "Ritmo y productividad", content: "El ritmo es la base de la productividad creativa. Cuando el flow llega, nada lo detiene — cada beat una acción, cada pausa una decisión.", category: "reflexiones", createdAt: now, updatedAt: now, pinned: true, favorite: true, tags: ["flow", "ritmo"], deleted: false },
-    { id: "2", title: "Plataforma gamificada", content: "App de productividad gamificada con ritmo — cada tarea completada genera un beat. Los hábitos se convierten en frecuencias.", category: "ideas", createdAt: now, updatedAt: now, pinned: false, favorite: false, tags: ["app", "idea"], deleted: false },
-  ];
+
+function browserStorage(): Storage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
 }
-function loadLyrics(): Lyric[] {
-  try { return JSON.parse(localStorage.getItem(LYRIC_KEY) ?? "null") ?? getDefaultLyrics(); } catch { return getDefaultLyrics(); }
+
+function loadCollection<T>(key: string): T[] {
+  const storage = browserStorage();
+  if (!storage) return [];
+  try {
+    const parsed: unknown = JSON.parse(storage.getItem(key) ?? "[]");
+    return Array.isArray(parsed) ? parsed as T[] : [];
+  } catch {
+    return [];
+  }
 }
-function getDefaultLyrics(): Lyric[] {
-  const now = new Date().toISOString();
-  return [{ id: "1", title: "La Voz del Lobo", album: "Universo Musical HBG", sections: [{ id: "v1", type: "verso", content: "En las sombras neon del concreto\nel lobo camina solo pero completo" }, { id: "c1", type: "coro", content: "La voz del lobo retumba\nen cada ciudad que se derrumba\nfuego en la sangre, hielo en la mente\nel universo HBG presente" }, { id: "p1", type: "puente", content: "No hay barrera que detenga\nlo que el instinto sostiene" }], createdAt: now, updatedAt: now }];
+
+function loadDraft(): NoteDraft {
+  const fallback: NoteDraft = { title: "", content: "", category: "notas", tags: [] };
+  const storage = browserStorage();
+  if (!storage) return fallback;
+  try {
+    const parsed: unknown = JSON.parse(storage.getItem(DRAFT_KEY) ?? "null");
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return fallback;
+    const value = parsed as Record<string, unknown>;
+    const category = value.category;
+    return {
+      title: typeof value.title === "string" ? value.title : "",
+      content: typeof value.content === "string" ? value.content : "",
+      category: category === "notas" || category === "letras" || category === "ideas" || category === "reflexiones"
+        ? category
+        : "notas",
+      tags: Array.isArray(value.tags) ? value.tags.filter((tag): tag is string => typeof tag === "string").slice(0, 30) : [],
+    };
+  } catch {
+    return fallback;
+  }
 }
-function loadProjects(): Project[] {
-  try { return JSON.parse(localStorage.getItem(PROJECT_KEY) ?? "null") ?? getDefaultProjects(); } catch { return getDefaultProjects(); }
+
+function persistValue(key: string, value: unknown): boolean {
+  const storage = browserStorage();
+  if (!storage) return false;
+  try {
+    storage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch {
+    return false;
+  }
 }
-function getDefaultProjects(): Project[] {
-  const now = new Date().toISOString();
-  return [
-    { id: "1", name: "La Voz del Lobo", description: "Álbum conceptual del Universo Musical HBG", status: "en_progreso", color: "var(--neon-pink)", createdAt: now },
-    { id: "2", name: "Universo Musical HBG", description: "Identidad artística del ecosistema", status: "en_progreso", color: "var(--neon-cyan)", createdAt: now },
-    { id: "3", name: "Branding HBG", description: "Identidad visual completa", status: "borrador", color: "#ff9100", createdAt: now },
-  ];
+
+function removeStoredValue(key: string): boolean {
+  const storage = browserStorage();
+  if (!storage) return false;
+  try {
+    storage.removeItem(key);
+    return true;
+  } catch {
+    return false;
+  }
 }
+
+function loadNotes(): Note[] { return loadCollection<Note>(NOTE_KEY); }
+function loadLyrics(): Lyric[] { return loadCollection<Lyric>(LYRIC_KEY); }
+function loadProjects(): Project[] { return loadCollection<Project>(PROJECT_KEY); }
 
 const CAT_COLORS: Record<Category, string> = {
   notas: "var(--neon-cyan)", letras: "var(--neon-pink)", ideas: "#ff9100", reflexiones: "var(--neon-purple)",
@@ -97,12 +144,13 @@ export function InstintoModule() {
   const [notes, setNotes] = useState<Note[]>(loadNotes);
   const [lyrics, setLyrics] = useState<Lyric[]>(loadLyrics);
   const [projects, setProjects] = useState<Project[]>(loadProjects);
+  const [draft] = useState<NoteDraft>(loadDraft);
   const [view, setView] = useState<ViewMode>("inicio");
-  const [newTitle, setNewTitle] = useState("");
-  const [newContent, setNewContent] = useState("");
-  const [newCategory, setNewCategory] = useState<Category>("notas");
+  const [newTitle, setNewTitle] = useState(draft.title);
+  const [newContent, setNewContent] = useState(draft.content);
+  const [newCategory, setNewCategory] = useState<Category>(draft.category);
   const [newTag, setNewTag] = useState("");
-  const [activeTags, setActiveTags] = useState<string[]>([]);
+  const [activeTags, setActiveTags] = useState<string[]>(draft.tags);
   const [search, setSearch] = useState("");
   const [showFavsOnly, setShowFavsOnly] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
@@ -112,30 +160,57 @@ export function InstintoModule() {
   const [inspirationLines, setInspirationLines] = useState<string[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
   const [autoSaved, setAutoSaved] = useState(false);
+  const [storageWarning, setStorageWarning] = useState("");
   const textRef = useRef<HTMLTextAreaElement>(null);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { if (lyrics.length > 0 && !activeLyric) setActiveLyric(lyrics[0]); }, []);
 
-  const saveNotes = useCallback((n: Note[]) => { setNotes(n); localStorage.setItem(NOTE_KEY, JSON.stringify(n)); }, []);
-  const saveLyrics = useCallback((l: Lyric[]) => { setLyrics(l); localStorage.setItem(LYRIC_KEY, JSON.stringify(l)); }, []);
-  const saveProjects = useCallback((p: Project[]) => { setProjects(p); localStorage.setItem(PROJECT_KEY, JSON.stringify(p)); }, []);
+  const saveNotes = (next: Note[]) => {
+    setNotes(next);
+    setStorageWarning(persistValue(NOTE_KEY, next) ? "" : "No se pudieron guardar las notas en este dispositivo.");
+  };
+  const saveLyrics = (next: Lyric[]) => {
+    setLyrics(next);
+    setStorageWarning(persistValue(LYRIC_KEY, next) ? "" : "No se pudieron guardar las letras en este dispositivo.");
+  };
+  const saveProjects = (next: Project[]) => {
+    setProjects(next);
+    setStorageWarning(persistValue(PROJECT_KEY, next) ? "" : "No se pudieron guardar los proyectos en este dispositivo.");
+  };
 
-  // Autosave content changes with debounce
-  const triggerAutoSave = useCallback((content: string) => {
+  useEffect(() => {
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    if (!newTitle.trim() && !newContent.trim() && activeTags.length === 0) {
+      removeStoredValue(DRAFT_KEY);
+      setAutoSaved(false);
+      return;
+    }
+
+    setAutoSaved(false);
     autoSaveTimerRef.current = setTimeout(() => {
-      setAutoSaved(true);
-      setTimeout(() => setAutoSaved(false), 2000);
-    }, 1200);
-    setNewContent(content);
-  }, []);
+      const saved = persistValue(DRAFT_KEY, {
+        title: newTitle,
+        content: newContent,
+        category: newCategory,
+        tags: activeTags,
+      });
+      setAutoSaved(saved);
+      setStorageWarning(saved ? "" : "No se pudo guardar el borrador; revisa el almacenamiento del navegador.");
+    }, 800);
+
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+  }, [newTitle, newContent, newCategory, activeTags]);
 
   const addNote = () => {
     if (!newContent.trim()) return;
     const now = new Date().toISOString();
     const note: Note = { id: Date.now().toString(), title: newTitle || "Sin título", content: newContent.trim(), category: newCategory, createdAt: now, updatedAt: now, pinned: false, favorite: false, tags: activeTags, deleted: false };
     saveNotes([note, ...notes]);
+    removeStoredValue(DRAFT_KEY);
+    setAutoSaved(false);
     setNewContent(""); setNewTitle(""); setActiveTags([]);
   };
 
@@ -239,7 +314,8 @@ export function InstintoModule() {
           <div className="mod-subtitle">// estudio creativo · notas · letras · ideas</div>
         </div>
         <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-          {autoSaved && <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--neon-green)", alignSelf: "center" }}>✓ guardado</span>}
+          {autoSaved && <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--neon-green)", alignSelf: "center" }}>✓ borrador guardado</span>}
+          {storageWarning && <span role="status" style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--neon-pink)", alignSelf: "center" }}>{storageWarning}</span>}
           <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 9 }} onClick={() => { setNewContent(RHYME_HOOKS[Math.floor(Math.random() * RHYME_HOOKS.length)]); setView("bloc"); setTimeout(() => textRef.current?.focus(), 100); }}>♪ RIMA</button>
           <button className="hbg-btn hbg-btn-primary" style={{ fontSize: 9 }} onClick={() => { setView("bloc"); setTimeout(() => textRef.current?.focus(), 100); }}>+ NUEVA NOTA</button>
         </div>
@@ -309,7 +385,7 @@ export function InstintoModule() {
                 </button>
               ))}
             </div>
-            <textarea ref={textRef} className="hbg-input hbg-textarea" placeholder="Escribe tu nota..." value={newContent} onChange={(e) => triggerAutoSave(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && e.ctrlKey) addNote(); }} />
+            <textarea ref={textRef} className="hbg-input hbg-textarea" placeholder="Escribe tu nota..." value={newContent} onChange={(e) => setNewContent(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && e.ctrlKey) addNote(); }} />
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
               <div style={{ display: "flex", gap: 12, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>
                 <span>{countWords(newContent)} palabras</span>
