@@ -218,6 +218,10 @@ export class HBGCore implements HBGActionRouter {
     return this.memory.snapshot();
   }
 
+  isMemoryPersistenceAvailable(): boolean {
+    return this.memory.isPersistenceAvailable();
+  }
+
   subscribeMemory(subscriber: HBGMemorySubscriber): () => void {
     return this.memory.subscribe(subscriber);
   }
