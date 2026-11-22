@@ -47,7 +47,7 @@ export function UniversoModule() {
   const [view, setView] = useState<ViewMode>("core");
   const [mood, setMood] = useState<MoodState>(() => {
     const saved = hbgCore.recall<MoodState>("core.mood");
-    return saved && saved in MOOD_PROFILES ? saved : "enfocado";
+    return typeof saved === "string" && saved in MOOD_PROFILES ? saved : "enfocado";
   });
   const [chatInput, setChatInput] = useState("");
   const [processing, setProcessing] = useState(false);
@@ -110,7 +110,7 @@ export function UniversoModule() {
             response = "Hola. Estoy listo para navegar el Universo HBG y ejecutar las capacidades locales conectadas.";
             break;
           case "CAPABILITIES":
-            response = `Módulos: ${MODULES.map((module) => module.label).join(", ")}. Acciones registradas ahora: ${registeredActions.length ? registeredActions.join(", ") : "ninguna"}.`;
+            response = `Módulos públicos: ${MODULES.filter((module) => module.id !== "terminador").map((module) => module.label).join(", ")}. Acciones registradas ahora: ${registeredActions.length ? registeredActions.join(", ") : "ninguna"}.`;
             break;
           case "APP_INFO": {
             const module = hbgCore.getModuleConfig(action.module);
@@ -244,7 +244,7 @@ export function UniversoModule() {
         <span className="mod-icon">◈</span>
         <div className="mod-title-group">
           <div className="mod-title">HBG CORE</div>
-          <div className="mod-subtitle">// conciencia del ecosistema — personalidad activa</div>
+          <div className="mod-subtitle">// orquestación local — comandos, memoria y módulos conectados</div>
         </div>
         <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
           <span className="hbg-badge" style={{ background: `${moodProfile.color}15`, borderColor: `${moodProfile.color}50`, color: moodProfile.color }}>
