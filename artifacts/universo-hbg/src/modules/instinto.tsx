@@ -158,7 +158,6 @@ export function InstintoModule() {
   const [newLyricTitle, setNewLyricTitle] = useState("");
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [inspirationLines, setInspirationLines] = useState<string[]>([]);
-  const [analyzing, setAnalyzing] = useState(false);
   const [autoSaved, setAutoSaved] = useState(false);
   const [storageWarning, setStorageWarning] = useState("");
   const textRef = useRef<HTMLTextAreaElement>(null);
@@ -252,22 +251,35 @@ export function InstintoModule() {
     saveLyrics(lyrics.map((l) => l.id === updated.id ? updated : l));
   };
 
-  const runInspiration = async () => {
-    setAnalyzing(true); setInspirationLines([]);
-    const ANALYSIS = [
-      "Analizando estructura rítmica...",
-      "Patrón detectado: ABAB — rima consonante cruzada",
-      "Métrica: 9–10 sílabas por verso — flujo estable",
-      "Densidad emocional: alta — 3 metáforas identificadas",
-      "Palabras de alto impacto: lobo, neon, universo",
-      "Sugerencia: añadir un puente en tono contrastante para generar tensión",
-      "Hook potencial detectado en versos 2–3 del coro",
-    ];
-    for (const line of ANALYSIS) {
-      await new Promise((r) => setTimeout(r, 450 + Math.random() * 300));
-      setInspirationLines((prev) => [...prev, line]);
-    }
-    setAnalyzing(false);
+  const runInspiration = () => {
+    if (!activeLyric) return;
+    const lines = activeLyric.sections
+      .flatMap((section) => section.content.split("\n"))
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const words = lines.flatMap((line) => line.split(/\s+/));
+    const endings = lines
+      .map((line) => line.split(/\s+/).at(-1)?.replace(/[^\p{L}\p{N}]/gu, "").toLocaleLowerCase("es"))
+      .filter((word): word is string => Boolean(word));
+    const endingCounts = new Map<string, number>();
+    endings.forEach((word) => endingCounts.set(word, (endingCounts.get(word) ?? 0) + 1));
+    const repeatedEndings = [...endingCounts]
+      .filter(([, count]) => count > 1)
+      .map(([word, count]) => `${word} (${count})`);
+    const longestSection = [...activeLyric.sections]
+      .sort((left, right) => countWords(right.content) - countWords(left.content))[0];
+
+    setInspirationLines([
+      "Análisis local del texto; no utiliza IA externa ni inventa métricas.",
+      `Secciones: ${activeLyric.sections.length} · versos: ${lines.length} · palabras: ${words.length}`,
+      `Promedio: ${lines.length ? (words.length / lines.length).toFixed(1) : "0"} palabras por verso.`,
+      repeatedEndings.length
+        ? `Palabras finales repetidas exactamente: ${repeatedEndings.join(", ")}.`
+        : "No se detectaron palabras finales repetidas exactamente.",
+      longestSection && countWords(longestSection.content) > 0
+        ? `Sección más extensa: ${longestSection.type.toUpperCase()} (${countWords(longestSection.content)} palabras).`
+        : "Añade texto a una sección para obtener un análisis.",
+    ]);
   };
 
   const exportTxt = () => {
@@ -494,7 +506,7 @@ export function InstintoModule() {
                   <div style={{ display: "flex", gap: 4 }}>
                     <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 9, padding: "4px 8px" }} onClick={exportTxt}>TXT</button>
                     <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 9, padding: "4px 8px" }} onClick={() => exportJson(activeLyric, `${activeLyric.title.replace(/ /g, "_")}.json`)}>JSON</button>
-                    <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 9, padding: "4px 8px" }} onClick={runInspiration}>◈ IA</button>
+                    <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 9, padding: "4px 8px" }} onClick={runInspiration}>◈ ANALIZAR</button>
                   </div>
                 </div>
 
@@ -534,7 +546,6 @@ export function InstintoModule() {
                         <span style={{ color: "var(--text-primary)" }}>{line}</span>
                       </div>
                     ))}
-                    {analyzing && <span style={{ color: "var(--neon-cyan)" }}>▌</span>}
                   </div>
                 )}
               </div>
