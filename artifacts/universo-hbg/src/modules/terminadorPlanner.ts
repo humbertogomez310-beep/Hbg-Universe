@@ -83,7 +83,7 @@ function taskFor(
     return {
       id,
       idempotencyKey,
-      title: `Solicitar marcar ${operation.target} como ${operation.status}`,
+      title: `Solicitar cambiar el estado del registro de ${operation.target} a ${operation.status}`,
       operation,
       scope: "authority",
       requiredPermission: "terminador.manage",
