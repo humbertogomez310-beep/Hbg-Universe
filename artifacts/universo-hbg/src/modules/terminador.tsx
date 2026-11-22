@@ -509,7 +509,7 @@ export function TerminadorModule() {
 
   const NAV_ITEMS: { id: ViewMode; label: string }[] = [
     { id: "dashboard", label: "DASHBOARD" }, { id: "recursos", label: "RECURSOS" },
-    { id: "automatizaciones", label: "AUTOMATIZACIONES" }, { id: "cronjobs", label: "CRON JOBS" },
+    { id: "automatizaciones", label: "BORRADORES" }, { id: "cronjobs", label: "CRON BORRADORES" },
     { id: "logs", label: "LOGS" }, { id: "salud", label: "SALUD" }, { id: "universo", label: "UNIVERSO HBG" },
   ];
 
@@ -783,7 +783,7 @@ export function TerminadorModule() {
           </div>
           <div className="hbg-grid hbg-grid-2" style={{ gap: 12 }}>
             <div>
-              <div className="section-title">// tareas automatizadas</div>
+              <div className="section-title">// borradores de automatización</div>
               <div className="hbg-list" style={{ gap: 8, marginBottom: 12 }}>
                 {tasks.map((task) => (
                   <div key={task.id} className="hbg-card" style={{ padding: "12px 14px" }}>
@@ -807,10 +807,10 @@ export function TerminadorModule() {
               </div>
             </div>
             <div className="hbg-card">
-              <div className="section-title">// nueva tarea</div>
+              <div className="section-title">// nuevo borrador</div>
               <input className="hbg-input" placeholder="Nombre de la tarea..." value={newTaskName} onChange={(e) => setNewTaskName(e.target.value)} style={{ marginBottom: 6 }} />
               <input className="hbg-input" placeholder="Disparador (ej: Todos los días 23:00)..." value={newTaskTrigger} onChange={(e) => setNewTaskTrigger(e.target.value)} style={{ marginBottom: 6 }} />
-              <input className="hbg-input" placeholder="Acción a ejecutar..." value={newTaskAction} onChange={(e) => setNewTaskAction(e.target.value)} style={{ marginBottom: 8 }} />
+              <input className="hbg-input" placeholder="Acción prevista (no se ejecuta)..." value={newTaskAction} onChange={(e) => setNewTaskAction(e.target.value)} style={{ marginBottom: 8 }} />
               <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
                 {(["alta", "media", "baja"] as Priority[]).map((p) => (
                   <button key={p} className="hbg-badge" style={{ cursor: "pointer", background: newTaskPriority === p ? `${PRIORITY_COLORS[p]}18` : undefined, borderColor: newTaskPriority === p ? PRIORITY_COLORS[p] : "var(--border-dim)", color: newTaskPriority === p ? PRIORITY_COLORS[p] : "var(--text-muted)" }} onClick={() => setNewTaskPriority(p)}>{p.toUpperCase()}</button>
