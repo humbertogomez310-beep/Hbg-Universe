@@ -38,6 +38,14 @@ test("Code Tools block traversal, protected files, symlink escapes, and unauthen
       inspectFile("artifacts/api-server/src/routes/terminador.ts"),
       /protegido/i,
     );
+    await assert.rejects(
+      writeWorkspaceFile("artifacts/api-server/src/lib/terminadorAuthorization.ts", "tampered"),
+      /protegido/i,
+    );
+    await assert.rejects(
+      deleteFile("artifacts/api-server/src/lib/hbgAuth.ts"),
+      /protegido/i,
+    );
     await assert.rejects(inspectFile(`${fixtureName}/outside-link/outside.txt`), /simbólicos/i);
     await assert.rejects(inspectFile(`${fixtureName}/file-link`), /simbólicos/i);
     await assert.rejects(inspectFile(`${fixtureName}/internal-link/internal.txt`), /simbólicos/i);
