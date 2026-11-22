@@ -35,6 +35,8 @@ test("Code Tools block traversal, protected files, symlink escapes, and unauthen
       ".pypirc",
       ".netrc",
       ".aws/credentials",
+      ".AWS/credentials",
+      ".ENV.production",
       ".docker/config.json",
       ".kube/config",
       ".config/gh/hosts.yml",
