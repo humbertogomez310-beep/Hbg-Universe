@@ -11,7 +11,7 @@ import {
   writeFile as writeWorkspaceFile,
 } from "./codeTools.ts";
 
-test("Code Tools block traversal, protected files, symlink escapes, and all writes", async () => {
+test("Code Tools block traversal, protected files, symlink escapes, and unauthenticated writes", async () => {
   const workspaceRoot = path.resolve(process.cwd(), "../..");
   const fixtureName = `.terminador-code-tools-test-${process.pid}-${Date.now()}`;
   const fixturePath = path.join(workspaceRoot, fixtureName);
@@ -39,16 +39,16 @@ test("Code Tools block traversal, protected files, symlink escapes, and all writ
     await assert.rejects(inspectFile(`${fixtureName}/file-link`), /simbólicos/i);
     await assert.rejects(
       writeWorkspaceFile(`${fixtureName}/file-link`, "changed"),
-      /modificaciones.*bloqueadas/i,
+      /contexto autenticado/i,
     );
-    await assert.rejects(deleteFile(`${fixtureName}/file-link`), /modificaciones.*bloqueadas/i);
+    await assert.rejects(deleteFile(`${fixtureName}/file-link`), /contexto autenticado/i);
     await assert.rejects(
       writeWorkspaceFile(`${fixtureName}/created.txt`, "inside"),
-      /modificaciones.*bloqueadas/i,
+      /contexto autenticado/i,
     );
     await assert.rejects(
       deleteFile(`${fixtureName}/inside.txt`),
-      /modificaciones.*bloqueadas/i,
+      /contexto autenticado/i,
     );
 
     const listed = await listFiles(fixtureName);
@@ -71,3 +71,84 @@ test("Code Tools never executes mutable workspace package scripts", async () => 
     /ejecución de comandos.*bloqueada/i,
   );
 });
+
+
+test(
+  "Code Tools writes and deletes only with a live owner development session and an exact path grant",
+  { skip: !process.env.DATABASE_URL },
+  async () => {
+    const { randomUUID } = await import("node:crypto");
+    const { eq } = await import("drizzle-orm");
+    const {
+      db,
+      hbgDevelopmentSessions,
+      hbgPermissionGrants,
+      hbgSessions,
+      hbgUsers,
+      pool,
+    } = await import("@workspace/db");
+    const { hashSecret, permissionsFor } = await import("./hbgAuth.ts");
+    const { createPermissionGrant } = await import("./permissionGrants.ts");
+
+    const username = `code_tools_test_${randomUUID().replaceAll("-", "")}`;
+    const [owner] = await db
+      .insert(hbgUsers)
+      .values({ username, role: "owner" })
+      .returning();
+    assert.ok(owner);
+
+    const sessionTokenHash = hashSecret(randomUUID());
+    const developmentSessionTokenHash = hashSecret(randomUUID());
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    const resourcePath = `.code-tools-authorized-${randomUUID()}.txt`;
+    const workspaceRoot = path.resolve(process.cwd(), "../..");
+    const absolutePath = path.join(workspaceRoot, resourcePath);
+    const context = {
+      user: owner,
+      role: "owner",
+      permissions: permissionsFor(owner),
+      isDevelopment: true,
+      sessionTokenHash,
+      sessionExpiresAt: expiresAt,
+      developmentSessionTokenHash,
+      developmentSessionExpiresAt: expiresAt,
+    };
+
+    try {
+      await db.insert(hbgSessions).values({
+        tokenHash: sessionTokenHash,
+        userId: owner.id,
+        expiresAt,
+      });
+      await db.insert(hbgDevelopmentSessions).values({
+        tokenHash: developmentSessionTokenHash,
+        userId: owner.id,
+        purpose: "Code Tools integration test",
+        expiresAt,
+      });
+
+      await assert.rejects(
+        writeWorkspaceFile(resourcePath, "must not be written", context),
+        (error) => error?.code === "PERMISSION_GRANT_REQUIRED",
+      );
+
+      await createPermissionGrant(context, {
+        permission: "universe.code.modify",
+        resourcePath,
+        reason: "Integration test: exact-path write and delete.",
+      });
+      await writeWorkspaceFile(resourcePath, "authorized content", context);
+      assert.equal(await readFile(absolutePath, "utf8"), "authorized content");
+
+      await deleteFile(resourcePath, context);
+      await assert.rejects(readFile(absolutePath, "utf8"), { code: "ENOENT" });
+    } finally {
+      await rm(absolutePath, { force: true });
+      await db.delete(hbgPermissionGrants).where(eq(hbgPermissionGrants.ownerUserId, owner.id));
+      await db.delete(hbgSessions).where(eq(hbgSessions.userId, owner.id));
+      await db.delete(hbgDevelopmentSessions).where(eq(hbgDevelopmentSessions.userId, owner.id));
+      await db.delete(hbgUsers).where(eq(hbgUsers.id, owner.id));
+      await pool.end();
+    }
+  },
+);
