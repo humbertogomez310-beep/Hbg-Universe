@@ -54,11 +54,20 @@ export async function executeVoiceAction(action: VoiceAction): Promise<string> {
       return res.success ? "Canción anterior." : res.error ?? "No hay una canción anterior.";
     }
 
-    case "SET_SHUFFLE":
-      return "El modo aleatorio no está disponible todavía en VIBRA PRO.";
+    case "SET_SHUFFLE": {
+      const res = await hbgCore.dispatchAction("music.shuffle", { enabled: action.value });
+      return res.success
+        ? `Modo aleatorio ${action.value ? "activado" : "desactivado"}.`
+        : res.error ?? "No se pudo cambiar el modo aleatorio.";
+    }
 
-    case "SET_REPEAT":
-      return "La repetición no está disponible todavía en VIBRA PRO.";
+    case "SET_REPEAT": {
+      const mode = action.value ? "all" : "off";
+      const res = await hbgCore.dispatchAction("music.repeat", { mode });
+      return res.success
+        ? `Repetición ${action.value ? "activada para toda la cola" : "desactivada"}.`
+        : res.error ?? "No se pudo cambiar la repetición.";
+    }
 
     case "SET_MOOD": {
       const res = await hbgCore.dispatchAction("music.mood", { mode: action.mood });
