@@ -80,6 +80,10 @@ export function UniversoModule() {
     hbgCore.init();
     const unsubscribeMemory = hbgCore.subscribeMemory(() => {
       setMemory(hbgCore.getMemorySnapshot());
+      const savedMood = hbgCore.recall<MoodState>("core.mood");
+      if (typeof savedMood === "string" && savedMood in MOOD_PROFILES) {
+        setMood(savedMood);
+      }
     });
     const unsubscribeActions = hbgCore.subscribeActions(setRegisteredActions);
     const unsubscribeModule = hbgCore.subscribe(setActiveNode);
