@@ -1,4 +1,4 @@
-import { HBGError, toActionError } from "./errors";
+import { HBGError, toActionError } from "./errors.ts";
 import type {
   HBGActionHandler,
   HBGActionName,
