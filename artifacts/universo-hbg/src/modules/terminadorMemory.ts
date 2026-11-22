@@ -96,6 +96,7 @@ export class TerminadorMemory {
     const cleanValue = value.trim();
     const scope = options.scope ?? "persistent";
     if (!cleanKey || !cleanValue) throw new Error("La clave y el valor de memoria son obligatorios.");
+    if (cleanKey.length > 100) throw new Error("La clave de memoria supera 100 caracteres.");
     if (cleanValue.length > MAX_VALUE_LENGTH) throw new Error(`El valor supera ${MAX_VALUE_LENGTH} caracteres.`);
     if (SENSITIVE.test(cleanKey) || SENSITIVE.test(cleanValue)) {
       throw new Error("No se almacenan secretos, credenciales ni tokens en memoria.");
