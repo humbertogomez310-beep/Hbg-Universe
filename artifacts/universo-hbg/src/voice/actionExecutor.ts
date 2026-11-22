@@ -23,6 +23,38 @@ const CORE_MOOD_KEYS: Record<string, string> = {
   normal: "neutral",
 };
 
+function normalizeTrackQuery(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\\u0300-\\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/\\s+/g, " ");
+}
+
+function selectVerifiedTrack(
+  results: unknown[],
+  query: string,
+): { id: string; title: string } | null {
+  const candidates = results.filter(
+    (value): value is { id: string; title: string } =>
+      typeof value === "object" &&
+      value !== null &&
+      "id" in value &&
+      typeof value.id === "string" &&
+      value.id.trim().length > 0 &&
+      "title" in value &&
+      typeof value.title === "string" &&
+      value.title.trim().length > 0,
+  );
+  if (candidates.length === 1) return candidates[0];
+  const normalizedQuery = normalizeTrackQuery(query);
+  const exactMatches = candidates.filter(
+    (track) => normalizeTrackQuery(track.title) === normalizedQuery,
+  );
+  return exactMatches.length === 1 ? exactMatches[0] : null;
+}
+
 export async function executeVoiceAction(action: VoiceAction): Promise<string> {
   switch (action.type) {
     case "UNKNOWN":
@@ -174,15 +206,31 @@ export async function executeVoiceAction(action: VoiceAction): Promise<string> {
     }
 
     case "PLAY_TRACK": {
-      const searchRes = await hbgCore.dispatchAction("music.search", { query: action.query });
+      const registered = hbgCore.getRegisteredActions();
+      if (!registered.includes("music.search") || !registered.includes("music.playTrack")) {
+        hbgCore.setModule("vibra");
+      }
+      const searchRes = await hbgCore.dispatchAction(
+        "music.search",
+        { query: action.query },
+        { timeoutMs: 5_000 },
+      );
       const results = (searchRes.data as { results?: unknown[] } | undefined)?.results ?? [];
       if (!searchRes.success || results.length === 0) {
         return `No encontré ninguna canción que coincida con ${action.query}.`;
       }
-      const playRes = await hbgCore.dispatchAction("music.playTrack", { index: 1 });
+      const selected = selectVerifiedTrack(results, action.query);
+      if (!selected) {
+        return "Encontré varias coincidencias o resultados incompletos. Indica el título exacto de la canción para evitar reproducir una pista equivocada.";
+      }
+      const playRes = await hbgCore.dispatchAction(
+        "music.playTrack",
+        { id: selected.id },
+        { timeoutMs: 5_000 },
+      );
       if (playRes.success) {
         const track = (playRes.data as { track?: { title?: string } } | undefined)?.track;
-        return `Reproduciendo ${track?.title ?? action.query}.`;
+        return `Reproduciendo ${track?.title ?? selected.title}.`;
       }
       return playRes.error ?? "No se pudo reproducir esa canción.";
     }
