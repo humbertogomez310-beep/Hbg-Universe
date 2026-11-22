@@ -13,10 +13,6 @@ import { recordAudit } from "../lib/audit";
 
 const router: IRouter = Router();
 
-function actionResource(req: Parameters<IRouter["post"]>[0] extends never ? never : any) {
-  return String(req.path);
-}
-
 router.post(
   "/tools/fs/list",
   requireDevelopmentPermission("universe.code.inspect"),
@@ -74,12 +70,12 @@ router.post(
 
 router.post(
   "/tools/fs/write",
-  requireDevelopmentPermission("universe.code.modify"),
+  requireDevelopmentPermission("terminador.manage"),
   async (req, res) => {
     const relativePath = typeof req.body?.path === "string" ? req.body.path : "";
     const content = typeof req.body?.content === "string" ? req.body.content : "";
     try {
-      const result = await writeFile(relativePath, content);
+      const result = await writeFile(relativePath, content, req.hbgAuth!);
       await recordAudit({
         actorUserId: req.hbgAuth!.user.id,
         action: "tools.fs.write",
@@ -103,11 +99,11 @@ router.post(
 
 router.post(
   "/tools/fs/delete",
-  requireDevelopmentPermission("universe.code.modify"),
+  requireDevelopmentPermission("terminador.manage"),
   async (req, res) => {
     const relativePath = typeof req.body?.path === "string" ? req.body.path : "";
     try {
-      const result = await deleteFile(relativePath);
+      const result = await deleteFile(relativePath, req.hbgAuth!);
       await recordAudit({
         actorUserId: req.hbgAuth!.user.id,
         action: "tools.fs.delete",
