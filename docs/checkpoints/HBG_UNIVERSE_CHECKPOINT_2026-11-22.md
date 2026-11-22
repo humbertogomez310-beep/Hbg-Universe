@@ -1,9 +1,9 @@
 # Universo HBG — checkpoint de continuidad
 Fecha: 2026-11-22
 Rama de trabajo: `replit-agent`
-HEAD validado de este checkpoint: `17e38f3e7a929ca0cfa297f763e30f82198271d5`
+HEAD validado de este checkpoint: `39cef0cc42f0678efb9ae04ba0278f1142c6cb77`
 Base de esta tanda: `6ec70948e69e5b2e82f92564e0fd317484dc9b24`
-Avance desde esa base: 106 commits confirmados en GitHub.
+Avance desde esa base: 117 commits confirmados en GitHub.
 
 ## Orden de trabajo que permanece vigente
 - GitHub es la fuente única de desarrollo y finalización. No adaptar la aplicación a las limitaciones del workspace de Replit.
@@ -21,6 +21,7 @@ Avance desde esa base: 106 commits confirmados en GitHub.
 - Rutas de concesiones de permisos registradas.
 - Code Tools con inspección/listado, escritura y borrado de archivos; validación de rutas, traversal, symlinks, archivos y segmentos protegidos, límites de tamaño, `O_NOFOLLOW`, validación de directorio padre y protección explícita de archivos críticos.
 - Tests de seguridad para alias internos de symlink, traversal, archivos de Authority protegidos y listado de directorios permitidos.
+- Bloqueo de inspección, escritura y borrado de almacenes de credenciales y secretos comunes (por ejemplo `.aws`, `.docker`, `.kube`, `.npmrc`, `.netrc`, claves, tokens, service accounts y archivos Terraform state), con protección insensible a mayúsculas/minúsculas y pruebas negativas.
 - Escritura/borrado requieren contexto HBG Authority y concesión específica de `universe.code.modify`; las operaciones dejan auditoría de intención y resultado.
 - Los scripts de workspace siguen sujetos a la política de ejecución segura y no deben habilitarse por conveniencia.
 - El endpoint de salud comprueba PostgreSQL y la presencia de las tablas esenciales de Authority/Registry; no informa saludable si falta el schema.
@@ -46,13 +47,14 @@ Avance desde esa base: 106 commits confirmados en GitHub.
 ### PWA
 - Service worker con caché de shell y assets estáticos, navegación offline y exclusión explícita de API/autenticación/respuestas dinámicas.
 - Manifest y service worker incluidos en validaciones CI.
+- Pruebas de comportamiento del service worker: precarga del shell/manifest/assets, limpieza selectiva de cachés HBG, fallback offline de navegación y exclusión de endpoints API. Los tests modelan Cache API y fetch; no sustituyen la prueba en navegador/dispositivo real.
 
 ## Estado de verificación al guardar este checkpoint
-- HEAD validado: `17e38f3e7a929ca0cfa297f763e30f82198271d5`.
-- GitHub Actions run `45068744282` terminó `success` sobre exactamente ese HEAD.
+- HEAD validado: `39cef0cc42f0678efb9ae04ba0278f1142c6cb77`.
+- GitHub Actions run `45069214416` terminó `success` sobre exactamente ese HEAD.
 - Node.js 24: instalación congelada, PostgreSQL 16 aislado y provisionamiento de schema correctos.
-- Tests API: aprobados.
-- Tests de aplicación Universo HBG: aprobados, incluidos tests de integración del ejecutor global de voz.
+- Tests API: aprobados, incluidas pruebas de protección de rutas de credenciales, secretos y archivos críticos.
+- Tests de aplicación Universo HBG: aprobados, incluidos tests de integración del ejecutor global de voz y comportamiento offline del service worker.
 - Typecheck del workspace: aprobado.
 - Build de producción del workspace: aprobado.
 - Validación sintáctica de service worker, manifest y script post-merge: aprobada.
