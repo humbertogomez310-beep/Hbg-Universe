@@ -79,7 +79,7 @@ test(
 );
 
 test(
-  "privileged Code Tools routes are absent from the mounted API router",
+  "Code Tools filesystem routes are mounted for server-side Authority enforcement",
   { skip: !process.env.DATABASE_URL },
   async () => {
     const { default: router } = await import("../routes/index.ts");
@@ -98,7 +98,11 @@ test(
     };
     collectRoutes(router);
 
-    assert.equal(routePaths.some((routePath) => routePath.includes("/tools/")), false);
+    assert.ok(routePaths.includes("/tools/fs/list"));
+    assert.ok(routePaths.includes("/tools/fs/read"));
+    assert.ok(routePaths.includes("/tools/fs/write"));
+    assert.ok(routePaths.includes("/tools/fs/delete"));
+    assert.ok(routePaths.includes("/tools/run"));
     assert.ok(routePaths.some((routePath) => routePath.includes("/terminador/apps")));
   },
 );
