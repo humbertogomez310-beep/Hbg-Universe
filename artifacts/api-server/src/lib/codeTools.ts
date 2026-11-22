@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import type { HBGAuthContext } from "./hbgAuth";
 
 function findWorkspaceRoot(startDirectory: string): string {
   let directory = path.resolve(startDirectory);
@@ -27,20 +29,19 @@ function findWorkspaceRoot(startDirectory: string): string {
 
 const WORKSPACE_ROOT = findWorkspaceRoot(process.cwd());
 const MAX_READ_BYTES = 256 * 1024;
-const PROTECTED_SEGMENTS = new Set([
-  ".git",
-  "node_modules",
-  ".ssh",
-]);
+const MAX_WRITE_BYTES = 1024 * 1024;
+const PROTECTED_SEGMENTS = new Set([".git", "node_modules", ".ssh"]);
 const PROTECTED_FILES = new Set([
   "artifacts/api-server/src/lib/hbgAuth.ts",
   "artifacts/api-server/src/lib/audit.ts",
   "artifacts/api-server/src/lib/codeTools.ts",
+  "artifacts/api-server/src/lib/permissionGrants.ts",
   "artifacts/api-server/src/lib/registry.ts",
   "artifacts/api-server/src/lib/terminadorAuthorization.ts",
   "artifacts/api-server/src/routes/auth.ts",
   "artifacts/api-server/src/routes/audit.ts",
   "artifacts/api-server/src/routes/index.ts",
+  "artifacts/api-server/src/routes/permission-grants.ts",
   "artifacts/api-server/src/routes/registry.ts",
   "artifacts/api-server/src/routes/terminador.ts",
   "artifacts/api-server/src/routes/tools.ts",
@@ -59,45 +60,96 @@ function normalizedRelativePath(relativePath: string): string {
   ) {
     throw new Error("Ruta no válida.");
   }
+
   const portablePath = relativePath.replaceAll("\\", "/");
-  if (portablePath.split("/").some((segment) => segment === "..")) {
+  if (
+    portablePath.startsWith("/") ||
+    /^[a-zA-Z]:/.test(portablePath) ||
+    portablePath.split("/").some((segment) => !segment || segment === "." || segment === "..")
+  ) {
     throw new Error("Path traversal bloqueado.");
   }
-  const normalized = path.posix.normalize(portablePath);
-  const segments = normalized.split("/");
+
+  const segments = portablePath.split("/");
   if (
-    normalized === "." ||
-    segments.some((segment) => PROTECTED_SEGMENTS.has(segment) || segment.startsWith(".env")) ||
-    /\.(?:pem|key|secret)$/i.test(normalized) ||
-    PROTECTED_FILES.has(normalized)
+    segments.some((segment) =>
+      PROTECTED_SEGMENTS.has(segment) || segment.startsWith(".env")
+    ) ||
+    /\.(?:pem|key|secret)$/i.test(portablePath) ||
+    PROTECTED_FILES.has(portablePath) ||
+    !segments.every((segment) => /^[a-zA-Z0-9_.@-]+$/.test(segment))
   ) {
-    throw new Error("Recurso protegido.");
+    throw new Error("Recurso protegido o ruta no permitida.");
   }
-  return normalized;
+
+  return portablePath;
+}
+
+function isWithinWorkspace(root: string, target: string): boolean {
+  const relative = path.relative(root, target);
+  return (
+    relative !== ".." &&
+    !relative.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relative)
+  );
+}
+
+function isNotFound(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "ENOENT"
+  );
 }
 
 async function safeAbsolutePath(
   relativePath: string,
+  allowMissingLeaf = false,
 ): Promise<string> {
   const normalized = normalizedRelativePath(relativePath);
   const root = await fs.realpath(WORKSPACE_ROOT);
-  const target = path.resolve(root, normalized);
-  const relative = path.relative(root, target);
-  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+  const target = path.resolve(root, ...normalized.split("/"));
+  if (!isWithinWorkspace(root, target)) {
     throw new Error("La ruta sale del workspace.");
   }
 
-  const segments = relative.split(path.sep).filter(Boolean);
+  const segments = path.relative(root, target).split(path.sep).filter(Boolean);
   let current = root;
   for (let index = 0; index < segments.length; index += 1) {
     current = path.join(current, segments[index]);
-    const stat = await fs.lstat(current);
-    if (stat.isSymbolicLink()) throw new Error("No se permiten enlaces simbólicos.");
+    let stat;
+    try {
+      stat = await fs.lstat(current);
+    } catch (error) {
+      if (allowMissingLeaf && index === segments.length - 1 && isNotFound(error)) {
+        return target;
+      }
+      throw error;
+    }
+
+    if (stat.isSymbolicLink()) {
+      throw new Error("No se permiten enlaces simbólicos.");
+    }
     if (index < segments.length - 1 && !stat.isDirectory()) {
       throw new Error("Un componente de la ruta no es una carpeta.");
     }
+    if (index === segments.length - 1 && !stat.isFile() && !stat.isDirectory()) {
+      throw new Error("El recurso no es un archivo ni una carpeta regular.");
+    }
   }
   return target;
+}
+
+async function assertWriteGrant(
+  context: HBGAuthContext | undefined,
+  resourcePath: string,
+): Promise<void> {
+  if (!context) {
+    throw new Error("Se requiere un contexto autenticado de HBG Authority.");
+  }
+  const { assertPermissionGrant } = await import("./permissionGrants");
+  await assertPermissionGrant(context, resourcePath);
 }
 
 export async function inspectFile(relativePath: string) {
@@ -115,7 +167,10 @@ export async function inspectFile(relativePath: string) {
 }
 
 export async function listFiles(relativePath = ".") {
-  const directory = relativePath === "." ? await fs.realpath(WORKSPACE_ROOT) : await safeAbsolutePath(relativePath);
+  const directory =
+    relativePath === "."
+      ? await fs.realpath(WORKSPACE_ROOT)
+      : await safeAbsolutePath(relativePath);
   const directoryStat = await fs.lstat(directory);
   if (!directoryStat.isDirectory()) throw new Error("El recurso no es una carpeta.");
   const entries = await fs.readdir(directory, { withFileTypes: true });
@@ -135,19 +190,71 @@ export async function listFiles(relativePath = ".") {
 export async function writeFile(
   relativePath: string,
   content: string,
+  context?: HBGAuthContext,
 ): Promise<{ path: string; bytes: number }> {
-  void relativePath;
-  void content;
-  throw new Error(
-    "Las modificaciones de Code Tools están bloqueadas hasta implementar autorización individual server-side.",
-  );
+  const normalized = normalizedRelativePath(relativePath);
+  if (typeof content !== "string") throw new Error("El contenido debe ser texto.");
+  const bytes = Buffer.byteLength(content, "utf8");
+  if (bytes > MAX_WRITE_BYTES) {
+    throw new Error("El contenido excede el límite de escritura.");
+  }
+
+  await assertWriteGrant(context, normalized);
+  const target = await safeAbsolutePath(normalized, true);
+  const root = await fs.realpath(WORKSPACE_ROOT);
+  const parent = await fs.realpath(path.dirname(target));
+  if (!isWithinWorkspace(root, parent)) {
+    throw new Error("La carpeta de destino sale del workspace.");
+  }
+
+  const destination = path.join(parent, path.basename(target));
+  let mode = 0o600;
+  try {
+    const existing = await fs.lstat(destination);
+    if (existing.isSymbolicLink() || !existing.isFile()) {
+      throw new Error("Solo se pueden reemplazar archivos regulares.");
+    }
+    mode = existing.mode & 0o777;
+  } catch (error) {
+    if (!isNotFound(error)) throw error;
+  }
+
+  const temporary = path.join(parent, `.hbg-write-${randomUUID()}.tmp`);
+  const handle = await fs.open(temporary, "wx", mode);
+  try {
+    await handle.writeFile(content, "utf8");
+    await handle.sync();
+    await handle.close();
+    await fs.rename(temporary, destination);
+  } catch (error) {
+    await handle.close().catch(() => undefined);
+    await fs.unlink(temporary).catch(() => undefined);
+    throw error;
+  }
+
+  return { path: normalized, bytes };
 }
 
-export async function deleteFile(relativePath: string): Promise<{ path: string }> {
-  void relativePath;
-  throw new Error(
-    "Las modificaciones de Code Tools están bloqueadas hasta implementar autorización individual server-side.",
-  );
+export async function deleteFile(
+  relativePath: string,
+  context?: HBGAuthContext,
+): Promise<{ path: string }> {
+  const normalized = normalizedRelativePath(relativePath);
+  await assertWriteGrant(context, normalized);
+  const target = await safeAbsolutePath(normalized);
+  const root = await fs.realpath(WORKSPACE_ROOT);
+  const parent = await fs.realpath(path.dirname(target));
+  if (!isWithinWorkspace(root, parent)) {
+    throw new Error("La carpeta del recurso sale del workspace.");
+  }
+
+  const destination = path.join(parent, path.basename(target));
+  const stat = await fs.lstat(destination);
+  if (stat.isSymbolicLink() || !stat.isFile()) {
+    throw new Error("Solo se pueden eliminar archivos regulares.");
+  }
+  await fs.unlink(destination);
+  return { path: normalized };
 }
 
 export async function runSafeWorkspaceScript(
@@ -157,6 +264,6 @@ export async function runSafeWorkspaceScript(
   void packageName;
   void script;
   throw new Error(
-    "La ejecución de comandos de Code Tools está bloqueada hasta verificar aislamiento y autorización individual.",
+    "La ejecución de comandos de Code Tools permanece bloqueada hasta verificar aislamiento de procesos.",
   );
 }
