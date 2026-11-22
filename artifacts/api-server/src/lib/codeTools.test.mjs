@@ -42,6 +42,8 @@ test("Code Tools block traversal, protected files, symlink escapes, and unauthen
       ".config/gh/hosts.yml",
       "id_ed25519",
       "service-account.json",
+      "secret.json",
+      "access-token.txt",
       "terraform.tfstate",
     ]) {
       await assert.rejects(inspectFile(protectedPath), /protegido/i);
