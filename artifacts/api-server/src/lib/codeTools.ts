@@ -65,6 +65,7 @@ function isProtectedEntryName(name: string): boolean {
     PROTECTED_SEGMENTS.has(normalized) ||
     normalized.startsWith(".env") ||
     PROTECTED_FILE_NAMES.has(normalized) ||
+    /^(?:credentials?|secrets?|tokens?|access[-_]?token|refresh[-_]?token|service[-_]?account)(?:[._-].*)?$/.test(normalized) ||
     /\.(?:pem|key|secret|p12|pfx|jks|keystore|tfstate|tfstate\.backup)$/i.test(normalized)
   );
 }
