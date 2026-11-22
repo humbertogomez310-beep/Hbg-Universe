@@ -15,6 +15,7 @@ import {
   approveAuthorization,
   AuthorizationError,
   createAuthorizationProposal,
+  consumeAuthorization,
   denyAuthorization,
   getAuthorization,
   listAuthorizations,
@@ -272,6 +273,22 @@ router.post("/terminador/authorizations/:id/approve", async (req, res) => {
         throw new AuthorizationError("Identificador de propuesta no válido.", 400, "INVALID_PROPOSAL_ID");
       }
       return approveAuthorization(req.hbgAuth!, id);
+    },
+  );
+});
+
+router.post("/terminador/authorizations/:id/execute", async (req, res) => {
+  await runAuthorizationRoute(
+    req,
+    res,
+    "terminador.authorization.execution.denied",
+    String(req.params.id ?? "terminador.authorizations"),
+    () => {
+      const id = String(req.params.id ?? "");
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+        throw new AuthorizationError("Identificador de propuesta no válido.", 400, "INVALID_PROPOSAL_ID");
+      }
+      return consumeAuthorization(req.hbgAuth!, id);
     },
   );
 });
