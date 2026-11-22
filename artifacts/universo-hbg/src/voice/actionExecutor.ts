@@ -28,6 +28,33 @@ export async function executeVoiceAction(action: VoiceAction): Promise<string> {
     case "UNKNOWN":
       return "No entendí el comando.";
 
+    case "GREETING":
+      return "Hola. Estoy listo para ayudarte a navegar y controlar las funciones locales del Universo HBG.";
+
+    case "CAPABILITIES": {
+      const modules = (["universo", "instinto", "vibra"] as const)
+        .map((moduleId) => hbgCore.getModuleConfig(moduleId).label);
+      const actions = hbgCore.getRegisteredActions();
+      return `Módulos disponibles: ${modules.join(", ")}. Acciones conectadas: ${actions.length ? actions.join(", ") : "ninguna en este momento"}.`;
+    }
+
+    case "APP_INFO": {
+      const module = hbgCore.getModuleConfig(action.module);
+      return `${module.label}: ${module.description}.`;
+    }
+
+    case "NAVIGATE": {
+      hbgCore.setModule(action.module);
+      return `Abriendo ${hbgCore.getModuleConfig(action.module).label}.`;
+    }
+
+    case "CREATE_SONG":
+      hbgCore.setModule("instinto");
+      return `Abriendo INSTINTO. La letra "${action.title}" todavía no se ha creado; entra en LETRAS para escribirla y guardarla.`;
+
+    case "BLOCKED_DEVELOPMENT":
+      return "Esa operación requiere una sesión de desarrollo autorizada. El modo de uso no puede modificar código, permisos ni despliegues.";
+
     case "PLAY":
     case "RESUME": {
       const playing = hbgCore.getContext<boolean>("music.isPlaying");
