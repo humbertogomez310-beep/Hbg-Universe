@@ -60,11 +60,12 @@ const PROTECTED_FILES = new Set([
 ]);
 
 function isProtectedEntryName(name: string): boolean {
+  const normalized = name.toLowerCase();
   return (
-    PROTECTED_SEGMENTS.has(name) ||
-    name.startsWith(".env") ||
-    PROTECTED_FILE_NAMES.has(name.toLowerCase()) ||
-    /\.(?:pem|key|secret|p12|pfx|jks|keystore|tfstate|tfstate\.backup)$/i.test(name)
+    PROTECTED_SEGMENTS.has(normalized) ||
+    normalized.startsWith(".env") ||
+    PROTECTED_FILE_NAMES.has(normalized) ||
+    /\.(?:pem|key|secret|p12|pfx|jks|keystore|tfstate|tfstate\.backup)$/i.test(normalized)
   );
 }
 
