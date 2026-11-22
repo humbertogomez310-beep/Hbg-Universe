@@ -17,7 +17,11 @@ router.get("/healthz", async (_req, res) => {
         to_regclass('public.hbg_permission_grants') IS NOT NULL AS permission_grants,
         to_regclass('public.hbg_applications') IS NOT NULL AS applications
     `);
-    const schemaReady = Object.values(result.rows[0] ?? {}).every((value) => value === true);
+    const schemaRow = result.rows[0];
+    const schemaReady =
+      Boolean(schemaRow) &&
+      Object.values(schemaRow).length === 7 &&
+      Object.values(schemaRow).every((value) => value === true);
     if (!schemaReady) {
       res.status(503).json({ status: "unavailable", code: "DATABASE_SCHEMA_NOT_READY" });
       return;
