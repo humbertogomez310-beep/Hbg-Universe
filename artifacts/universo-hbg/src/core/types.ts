@@ -5,6 +5,8 @@ export type HBGActionName =
   | "music.pause"
   | "music.next"
   | "music.previous"
+  | "music.shuffle"
+  | "music.repeat"
   | "music.search"
   | "music.mood"
   | "music.playTrack"
