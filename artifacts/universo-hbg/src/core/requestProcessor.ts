@@ -21,7 +21,10 @@ function requestId(): string {
 }
 
 export class HBGRequestProcessor {
-  constructor(private readonly defaultTimeoutMs = 15_000) {
+  private readonly defaultTimeoutMs: number;
+
+  constructor(defaultTimeoutMs = 15_000) {
+    this.defaultTimeoutMs = defaultTimeoutMs;
     if (!Number.isInteger(defaultTimeoutMs) || defaultTimeoutMs < 0) {
       throw new HBGError("INVALID_TIMEOUT", "El tiempo de espera predeterminado no es válido.");
     }
