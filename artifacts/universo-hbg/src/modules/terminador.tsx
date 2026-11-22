@@ -488,6 +488,21 @@ export function TerminadorModule() {
     }
   };
 
+  const exportLogs = () => {
+    const data = {
+      format: "terminador-session-logs-v1",
+      exportedAt: new Date().toISOString(),
+      logs,
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `terminador-logs-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
   const formatUptime = (s: number) => `${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
   const filteredCrons = crons.filter((c) => cronFilter === "todas" || c.frequency === cronFilter);
@@ -855,7 +870,7 @@ export function TerminadorModule() {
             <div className="section-title" style={{ marginBottom: 0 }}>// terminal de operaciones</div>
             <div style={{ display: "flex", gap: 6 }}>
               <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 9, padding: "5px 10px" }} onClick={() => setLogs([])}>LIMPIAR</button>
-              <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 9, padding: "5px 10px" }}>↓ EXPORTAR LOGS</button>
+              <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 9, padding: "5px 10px" }} onClick={exportLogs} disabled={logs.length === 0}>↓ EXPORTAR LOGS</button>
             </div>
           </div>
           <div ref={logRef} className="hbg-card" style={{ background: "var(--bg-deep)", height: 300, overflowY: "auto", fontFamily: "var(--font-mono)", fontSize: 11, lineHeight: 1.9, borderColor: "var(--border-dim)" }}>
