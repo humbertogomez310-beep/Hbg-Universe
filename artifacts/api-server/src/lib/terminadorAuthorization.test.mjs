@@ -28,6 +28,7 @@ test(
       return;
     }
     const { hashSecret, permissionsFor } = await import("./hbgAuth.ts");
+    const { proposalDigest } = await import("./terminadorAuthorization.ts");
     const {
       approveAuthorization,
       AuthorizationError,
@@ -170,9 +171,18 @@ test(
         reason: "Integration test: expire.",
       });
       await approveAuthorization(context, expired.id);
+      const [expiredRow] = await db
+        .select()
+        .from(hbgTerminadorAuthorizations)
+        .where(eq(hbgTerminadorAuthorizations.id, expired.id));
+      assert.ok(expiredRow);
+      const expiredAt = new Date(Date.now() - 1_000);
       await db
         .update(hbgTerminadorAuthorizations)
-        .set({ expiresAt: new Date(Date.now() - 1_000) })
+        .set({
+          expiresAt: expiredAt,
+          proposalHash: proposalDigest({ ...expiredRow, expiresAt: expiredAt }),
+        })
         .where(eq(hbgTerminadorAuthorizations.id, expired.id));
       await assert.rejects(
         consumeAuthorization(context, expired.id),
