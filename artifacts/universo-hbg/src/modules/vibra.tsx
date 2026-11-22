@@ -650,8 +650,8 @@ export function VibraModule() {
             if (selectionGeneration !== manualSelectionGenerationRef.current) return;
             setCurrentId(next.id);
             setRecentTrackIds((prev) => [
-              ...(currentTrackId ? [currentTrackId] : []),
-              ...prev.filter((id) => id !== currentTrackId),
+              next.id,
+              ...prev.filter((id) => id !== next.id),
             ].slice(0, 20));
             hbgCore.setContext("music.currentTrack", next);
             return;
@@ -688,7 +688,10 @@ export function VibraModule() {
     }
     const activeSequence = activeSequenceRef.current;
     const queue = activeSequence ?? tracks.map((track) => track.id);
-    const previousId = selectPreviousPlaybackId(
+    const previousFromHistory = shuffleEnabled
+      ? recentTrackIds.find((id, index) => index > 0 && id !== currentId && queue.includes(id))
+      : undefined;
+    const previousId = previousFromHistory ?? selectPreviousPlaybackId(
       queue,
       currentId,
       shuffleEnabled,
