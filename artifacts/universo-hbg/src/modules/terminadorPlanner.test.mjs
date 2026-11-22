@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   createTerminadorPlan,
   executeTerminadorPlan,
+  musicActionNameForPlan,
 } from "./terminadorPlanner.ts";
 
 test("a client confirmation flag cannot authorize an app state change", async () => {
@@ -34,4 +35,10 @@ test("a client confirmation flag cannot authorize an app state change", async ()
   assert.equal(result.tasks[0].state, "blocked");
   assert.match(result.tasks[0].reason, /autorización individual server-side/i);
   assert.equal(executions, 0);
+});
+
+
+test("Terminador maps VIBRA shuffle and repeat intents to registered actions", () => {
+  assert.equal(musicActionNameForPlan({ type: "SET_SHUFFLE", value: true }), "music.shuffle");
+  assert.equal(musicActionNameForPlan({ type: "SET_REPEAT", value: false }), "music.repeat");
 });
