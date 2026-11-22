@@ -41,6 +41,7 @@ const STORAGE_KEYS = {
   recentTrackIds: "hbg_vibra_recent_tracks",
   autoDj: "hbg_vibra_auto_dj",
   partyMode: "hbg_vibra_party_mode",
+  equalizer: "hbg_vibra_equalizer_v1",
 };
 
 function browserStorage(): Storage | null {
@@ -142,19 +143,37 @@ const MOODS: { mode: MoodMode; label: string; color: string; bpm: [number, numbe
 
 const EQ_BANDS = ["60Hz", "170Hz", "310Hz", "600Hz", "1kHz", "3kHz", "6kHz", "12kHz", "14kHz", "16kHz"];
 
-function VisualizerBars({ active, color }: { active: boolean; color: string }) {
+function VisualizerBars({ active, color, analyser }: { active: boolean; color: string; analyser: AnalyserNode | null }) {
   const [heights, setHeights] = useState<number[]>(() => Array(24).fill(4));
   useEffect(() => {
-    if (!active) { setHeights(Array(24).fill(4)); return; }
-    const id = setInterval(() => {
-      setHeights(Array.from({ length: 24 }, () => Math.random() * 50 + 4));
-    }, 90);
-    return () => clearInterval(id);
-  }, [active]);
+    if (!active || !analyser) {
+      setHeights(Array(24).fill(4));
+      return;
+    }
+
+    const values = new Uint8Array(analyser.frequencyBinCount);
+    let frame = 0;
+    const draw = () => {
+      analyser.getByteFrequencyData(values);
+      const next = Array.from({ length: 24 }, (_, index) => {
+        const bin = Math.min(values.length - 1, Math.floor((index / 24) * values.length));
+        return 4 + (values[bin] / 255) * 50;
+      });
+      setHeights(next);
+      frame = window.requestAnimationFrame(draw);
+    };
+    frame = window.requestAnimationFrame(draw);
+    return () => window.cancelAnimationFrame(frame);
+  }, [active, analyser]);
+
   return (
-    <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 56, padding: "0 4px" }}>
-      {heights.map((h, i) => (
-        <div key={i} style={{ flex: 1, height: `${h}px`, background: color, borderRadius: "1px 1px 0 0", boxShadow: active ? `0 0 4px ${color}` : "none", transition: "height 0.09s ease", opacity: 0.75 }} />
+    <div
+      role="img"
+      aria-label={analyser ? (active ? "Visualizador de frecuencias de audio en tiempo real" : "Visualizador de audio inactivo") : "Visualizador de frecuencias no disponible en este navegador"}
+      style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 56, padding: "0 4px" }}
+    >
+      {heights.map((height, index) => (
+        <div key={index} style={{ flex: 1, height: `${height}px`, background: color, borderRadius: "1px 1px 0 0", boxShadow: active && analyser ? `0 0 4px ${color}` : "none", transition: "height 0.06s linear", opacity: 0.75 }} />
       ))}
     </div>
   );
@@ -184,12 +203,28 @@ export function VibraModule() {
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [searchQ, setSearchQ] = useState("");
-  const [eqValues, setEqValues] = useState<Record<string, number>>(() => Object.fromEntries(EQ_BANDS.map((b) => [b, 50])));
+  const [eqValues, setEqValues] = useState<Record<string, number>>(() => {
+    try {
+      const parsed: unknown = JSON.parse(readStoredValue(STORAGE_KEYS.equalizer) ?? "null");
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+        return Object.fromEntries(EQ_BANDS.map((band) => {
+          const value = (parsed as Record<string, unknown>)[band];
+          return [band, typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 50];
+        }));
+      }
+    } catch {
+      // Corrupt EQ preferences fall back to a flat response.
+    }
+    return Object.fromEntries(EQ_BANDS.map((band) => [band, 50]));
+  });
   const [newPlaylistName, setNewPlaylistName] = useState("");
   const [filterFavs, setFilterFavs] = useState(false);
   const [directionInput, setDirectionInput] = useState(() => musicDirection.goal);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const equalizerFiltersRef = useRef<BiquadFilterNode[]>([]);
+  const [audioAnalyser, setAudioAnalyser] = useState<AnalyserNode | null>(null);
   const currentUrlRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const progressRafRef = useRef<number | null>(null);
@@ -254,6 +289,17 @@ export function VibraModule() {
     if (!saved) setError("No se pudieron guardar las preferencias de sesión musical.");
   }, [autoDjEnabled, musicDirection, partyMode, recentTrackIds]);
 
+  useEffect(() => {
+    if (!writeStoredValue(STORAGE_KEYS.equalizer, JSON.stringify(eqValues))) {
+      setError("No se pudo guardar la configuración del ecualizador.");
+    }
+    equalizerFiltersRef.current.forEach((filter, index) => {
+      const band = EQ_BANDS[index];
+      const value = eqValues[band] ?? 50;
+      filter.gain.value = ((value - 50) / 50) * 12;
+    });
+  }, [eqValues]);
+
   // Load audio from IndexedDB and play
   const loadTrack = useCallback(async (id: string, autoPlay = false, startTime = 0): Promise<boolean> => {
     const requestId = ++loadGenerationRef.current;
@@ -307,6 +353,7 @@ export function VibraModule() {
       if (startTime > 0 && isFinite(startTime)) audio.currentTime = startTime;
 
       if (autoPlay) {
+        await audioContextRef.current?.resume();
         await audio.play();
         if (requestId !== loadGenerationRef.current) return false;
         setIsPlaying(true);
@@ -324,11 +371,42 @@ export function VibraModule() {
   }, [volume, voiceCaptureActive]);
   loadTrackRef.current = loadTrack;
 
-  // Setup audio element event listeners
+  // Setup one persistent Web Audio graph for playback, EQ, and the real frequency visualizer.
   useEffect(() => {
     const audio = new Audio();
     audio.preload = "auto";
     audioRef.current = audio;
+
+    let context: AudioContext | null = null;
+    try {
+      context = new AudioContext();
+      const source = context.createMediaElementSource(audio);
+      const filters = EQ_BANDS.map((band, index) => {
+        const filter = context!.createBiquadFilter();
+        filter.frequency.value = Number.parseInt(band, 10);
+        filter.type = index === 0 ? "lowshelf" : index === EQ_BANDS.length - 1 ? "highshelf" : "peaking";
+        filter.Q.value = filter.type === "peaking" ? 1 : 0.7;
+        filter.gain.value = ((eqValues[band] - 50) / 50) * 12;
+        return filter;
+      });
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 64;
+      source.connect(filters[0]);
+      filters.forEach((filter, index) => {
+        if (index < filters.length - 1) filter.connect(filters[index + 1]);
+        else filter.connect(analyser);
+      });
+      analyser.connect(context.destination);
+      audioContextRef.current = context;
+      equalizerFiltersRef.current = filters;
+      setAudioAnalyser(analyser);
+    } catch {
+      // Playback can still work without Web Audio support; EQ and spectrum are then unavailable.
+      if (context) void context.close().catch(() => undefined);
+      audioContextRef.current = null;
+      equalizerFiltersRef.current = [];
+      setAudioAnalyser(null);
+    }
 
     const onTimeUpdate = () => {
       if (audio.duration && isFinite(audio.duration)) {
@@ -367,6 +445,11 @@ export function VibraModule() {
       audio.removeEventListener("pause", onPause);
       if (currentUrlRef.current) URL.revokeObjectURL(currentUrlRef.current);
       audioRef.current = null;
+      equalizerFiltersRef.current = [];
+      setAudioAnalyser(null);
+      const context = audioContextRef.current;
+      audioContextRef.current = null;
+      if (context) void context.close().catch(() => undefined);
     };
   }, []);
 
@@ -1027,7 +1110,7 @@ export function VibraModule() {
           <div className="hbg-card hbg-card-accent" style={{ "--card-color": mood.color } as React.CSSProperties}>
             {/* Visualizer */}
             <div style={{ background: "var(--bg-deep)", borderRadius: 3, marginBottom: 14, overflow: "hidden" }}>
-              <VisualizerBars active={isPlaying} color={mood.color} />
+              <VisualizerBars active={isPlaying} color={mood.color} analyser={audioAnalyser} />
             </div>
 
             {/* Track info */}
@@ -1302,11 +1385,11 @@ export function VibraModule() {
       {view === "eq" && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <div className="section-title" style={{ marginBottom: 0 }}>// ecualizador visual — 10 bandas</div>
+            <div className="section-title" style={{ marginBottom: 0 }}>// ecualizador de audio — 10 bandas</div>
             <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 9 }} onClick={() => setEqValues(Object.fromEntries(EQ_BANDS.map((b) => [b, 50])))}>RESET</button>
           </div>
           <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginBottom: 12 }}>
-            ⓘ Ecualizador visual — en navegador web la reproducción no requiere EQ de software para funcionar correctamente.
+            {audioAnalyser ? "El ecualizador procesa el audio local mediante filtros Web Audio y conserva sus ajustes en este dispositivo." : "Este navegador no habilitó Web Audio; la reproducción sigue disponible, pero el ecualizador y el espectro no están activos."}
           </div>
           <div className="hbg-card" style={{ background: "var(--bg-deep)" }}>
             <div style={{ display: "flex", gap: 12, alignItems: "flex-end", height: 180, padding: "16px 8px 8px" }}>
