@@ -63,7 +63,9 @@ function requestForVoiceAction(action: VoiceAction): {
         },
       };
     case "PLAY_TRACK":
-      return { name: "music.playTrack", payload: { index: 1 } };
+      throw new TerminadorTaskBlockedError(
+        "La reproducción requiere el ID de un resultado de búsqueda verificado.",
+      );
     case "SET_SHUFFLE":
       return { name: "music.shuffle", payload: { enabled: action.value } };
     case "SET_REPEAT":
@@ -171,8 +173,27 @@ export async function executeTerminadorPlanWithHBG(
         }
         if (task.operation.action.type === "PLAY_TRACK") {
           const prior = task.dependsOn.map((id) => priorResults.get(id)).find(Boolean);
-          if (!prior) throw new TerminadorTaskBlockedError("No hay un resultado de búsqueda verificado.");
-          const play = await dispatchMusicAction(task.operation.action, core);
+          if (!prior || typeof prior !== "object" || !("firstResult" in prior)) {
+            throw new TerminadorTaskBlockedError("No hay un resultado de búsqueda verificado.");
+          }
+          const firstResult = prior.firstResult;
+          if (
+            typeof firstResult !== "object" ||
+            firstResult === null ||
+            !("id" in firstResult) ||
+            typeof firstResult.id !== "string" ||
+            !firstResult.id.trim()
+          ) {
+            throw new TerminadorTaskBlockedError("El resultado de búsqueda no contiene un ID de pista válido.");
+          }
+          if (!core.getRegisteredActions().includes("music.playTrack")) {
+            core.setModule("vibra");
+          }
+          const play = await core.dispatchAction(
+            "music.playTrack",
+            { id: firstResult.id },
+            { timeoutMs: 5_000 },
+          );
           assertSuccessful(play, "No se pudo reproducir el resultado encontrado.");
           return play;
         }
