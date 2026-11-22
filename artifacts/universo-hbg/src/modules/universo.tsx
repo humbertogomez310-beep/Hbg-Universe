@@ -6,7 +6,7 @@ import { executeVoiceAction } from "../voice/actionExecutor";
 
 type ViewMode = "core" | "memoria" | "mood" | "recomendaciones" | "nodos" | "sincronizacion" | "universo";
 
-type MoodState = "relajado" | "feliz" | "nostalgico" | "triste" | "energia" | "enfocado" | "neutral";
+type MoodState = "relajado" | "feliz" | "nostalgico" | "triste" | "energia" | "enfocado" | "creativo" | "neutral";
 
 interface ChatMessage {
   from: "user" | "core";
@@ -22,6 +22,7 @@ const MOOD_PROFILES: Record<MoodState, { label: string; color: string; icon: str
   triste: { label: "TRISTE", color: "#42a5f5", icon: "◑", bpm: "45–70", palette: "azul profundo" },
   energia: { label: "ENERGÍA", color: "var(--neon-pink)", icon: "⚡", bpm: "120–160", palette: "rosa eléctrico" },
   enfocado: { label: "ENFOCADO", color: "var(--neon-cyan)", icon: "◎", bpm: "60–90", palette: "cian frío" },
+  creativo: { label: "CREATIVO", color: "#ff9100", icon: "◈", bpm: "80–110", palette: "ámbar creativo" },
   neutral: { label: "NEUTRAL", color: "var(--neon-purple)", icon: "◆", bpm: "90–120", palette: "purpura equilibrado" },
 };
 
@@ -32,6 +33,7 @@ const MOOD_TO_MUSIC: Record<MoodState, string> = {
   triste: "sad",
   energia: "party",
   enfocado: "focus",
+  creativo: "creative",
   neutral: "normal",
 };
 
