@@ -43,11 +43,6 @@ const MEMORY_COLORS = [
   "#ff9100",
 ];
 
-function actionShouldNavigate(input: string): boolean {
-  const action = parseIntent(input);
-  return action.type === "NAVIGATE" || action.type === "CREATE_SONG";
-}
-
 export function UniversoModule() {
   const [view, setView] = useState<ViewMode>("core");
   const [mood, setMood] = useState<MoodState>(() => {
