@@ -59,10 +59,11 @@ jobs:
       - name: Provision isolated test schema
         run: pnpm --filter @workspace/db push
 
-      - name: Validate PWA worker and manifest
+      - name: Validate deployment and PWA scripts
         run: |
           node --check artifacts/universo-hbg/public/sw.js
           node -e "JSON.parse(require('node:fs').readFileSync('artifacts/universo-hbg/public/manifest.webmanifest', 'utf8'))"
+          bash -n scripts/post-merge.sh
 
       - name: Run API server tests
         run: pnpm --filter @workspace/api-server test
