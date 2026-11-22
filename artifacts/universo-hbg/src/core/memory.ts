@@ -70,7 +70,9 @@ export class HBGMemoryStore {
       );
     }
     try {
-      JSON.stringify(value);
+      if (JSON.stringify(value) === undefined) {
+        throw new Error("El valor no se puede serializar como JSON.");
+      }
     } catch (error) {
       throw new HBGError(
         "MEMORY_SERIALIZATION_FAILED",
