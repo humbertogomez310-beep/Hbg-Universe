@@ -39,9 +39,11 @@ test(
       const [auth] = await db.select().from(hbgApplications).where(eq(hbgApplications.id, "hbg-auth"));
       const [instinto] = await db.select().from(hbgApplications).where(eq(hbgApplications.id, "instinto"));
       const [terminador] = await db.select().from(hbgApplications).where(eq(hbgApplications.id, "terminador"));
+      const [universo] = await db.select().from(hbgApplications).where(eq(hbgApplications.id, "universo"));
       assert.ok(core && isProtectedApplication(core));
       assert.ok(auth && isProtectedApplication(auth));
       assert.ok(terminador && isProtectedApplication(terminador));
+      assert.ok(universo && isProtectedApplication(universo));
       assert.ok(instinto && !isProtectedApplication(instinto));
 
       const auditRows = await db
