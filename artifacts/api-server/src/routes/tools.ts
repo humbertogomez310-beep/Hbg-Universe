@@ -29,16 +29,23 @@ async function auditOrBlock(
   req: Request,
   res: Response,
   input: AuditInput,
+  operationAlreadyCompleted = false,
 ): Promise<boolean> {
   try {
     await recordAudit(input);
     return true;
   } catch (error) {
-    req.log.error({ err: error, action: input.action }, "Code Tools audit write failed");
-    res.status(503).json({
+    req.log.error(
+      { err: error, action: input.action, operationAlreadyCompleted },
+      "Code Tools audit write failed",
+    );
+    res.status(operationAlreadyCompleted ? 500 : 503).json({
       success: false,
-      error: "Auditoría no disponible; la operación permanece bloqueada o requiere verificación.",
-      code: "AUDIT_UNAVAILABLE",
+      error: operationAlreadyCompleted
+        ? "La operación de archivos ya se ejecutó, pero no se pudo registrar su resultado en auditoría. Verifica el recurso antes de reintentar."
+        : "Auditoría no disponible; la operación permanece bloqueada.",
+      code: operationAlreadyCompleted ? "AUDIT_RESULT_UNAVAILABLE" : "AUDIT_UNAVAILABLE",
+      operationMayHaveCompleted: operationAlreadyCompleted,
     });
     return false;
   }
@@ -163,7 +170,7 @@ router.post(
         resource: relativePath,
         result: "success",
         metadata: { bytes: result.bytes },
-      }))) return;
+      }, true))) return;
       res.json({ success: true, ...result });
     } catch (error) {
       const errorCode = operationCode(error, "FS_WRITE_FAILED");
@@ -215,7 +222,7 @@ router.post(
         action: "tools.fs.delete",
         resource: relativePath,
         result: "success",
-      }))) return;
+      }, true))) return;
       res.json({ success: true, ...result });
     } catch (error) {
       const errorCode = operationCode(error, "FS_DELETE_FAILED");
