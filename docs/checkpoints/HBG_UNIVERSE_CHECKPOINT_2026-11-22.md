@@ -1,9 +1,9 @@
 # Universo HBG — checkpoint de continuidad
 Fecha: 2026-11-22
 Rama de trabajo: `replit-agent`
-HEAD al crear este checkpoint: `2302e7765261d1dd5bb47fd891a32a585490c972`
+HEAD validado de este checkpoint: `8a8634e71a49e3ef8b62b1c474e7d8bd1733e908`
 Base de esta tanda: `6ec70948e69e5b2e82f92564e0fd317484dc9b24`
-Avance desde esa base: 82 commits confirmados en GitHub.
+Avance desde esa base: 100 commits confirmados en GitHub.
 
 ## Orden de trabajo que permanece vigente
 - GitHub es la fuente única de desarrollo y finalización. No adaptar la aplicación a las limitaciones del workspace de Replit.
@@ -15,9 +15,12 @@ Avance desde esa base: 82 commits confirmados en GitHub.
 
 ## Trabajo incorporado a GitHub en esta tanda
 ### HBG Authority y Code Tools
-- CI de GitHub Actions añadido en `.github/workflows/hbg-universe-ci.yml`: PostgreSQL 16 de prueba, instalación congelada, provisionamiento de schema, validación del service worker/manifest, tests API y aplicación, typecheck y build.
+- CI de GitHub Actions añadido en `.github/workflows/hbg-universe-ci.yml`: Node.js 24 (alineado con `.replit`), PostgreSQL 16 de prueba, instalación congelada, provisionamiento de schema, validación del service worker/manifest y del script post-merge, tests API y aplicación, typecheck y build.
+- Pool PostgreSQL con límites explícitos de conexión, tiempo de conexión y tiempo de inactividad.
+- Script post-merge con protección para impedir `drizzle push` en entorno marcado como producción; CI valida su sintaxis.
 - Rutas de concesiones de permisos registradas.
-- Code Tools con inspección/listado, escritura y borrado de archivos; validación de rutas, traversal, symlinks, archivos y segmentos protegidos, límites de tamaño y protección de archivos críticos.
+- Code Tools con inspección/listado, escritura y borrado de archivos; validación de rutas, traversal, symlinks, archivos y segmentos protegidos, límites de tamaño, `O_NOFOLLOW`, validación de directorio padre y protección explícita de archivos críticos.
+- Tests de seguridad para alias internos de symlink, traversal, archivos de Authority protegidos y listado de directorios permitidos.
 - Escritura/borrado requieren contexto HBG Authority y concesión específica de `universe.code.modify`; las operaciones dejan auditoría de intención y resultado.
 - Los scripts de workspace siguen sujetos a la política de ejecución segura y no deben habilitarse por conveniencia.
 - El endpoint de salud comprueba PostgreSQL y la presencia de las tablas esenciales de Authority/Registry; no informa saludable si falta el schema.
@@ -31,7 +34,8 @@ Avance desde esa base: 82 commits confirmados en GitHub.
 - La ruta de desarrollo normal sigue separada del modo de uso; acciones de desarrollo no se ejecutan desde TERMINADOR de uso normal.
 
 ### HBG Core, INSTINTO, VIBRA y voz
-- Memoria de HBG Core con persistencia local comprobable, validación de datos, manejo de almacenamiento inaccesible/JSON corrupto y aviso visible cuando solo dura la sesión.
+- Memoria de HBG Core con persistencia local comprobable, validación de datos JSON serializables, manejo de almacenamiento inaccesible/JSON corrupto y aviso visible cuando solo dura la sesión.
+- Memoria de TERMINADOR con validación de claves/valores, límites de entradas y tamaño, rechazo de datos sensibles, rollback en memoria cuando falla la persistencia y tests dedicados.
 - Restauración del estado de ánimo guardado al iniciar Core.
 - INSTINTO con respaldo/exportación e importación local, validación de contenido y pruebas asociadas.
 - VIBRA con selección de reproducción determinista para shuffle/repeat, historial de shuffle alineado con reproducción, casos de pista única y modos repeat; controles y acciones conectados.
@@ -43,11 +47,18 @@ Avance desde esa base: 82 commits confirmados en GitHub.
 - Manifest y service worker incluidos en validaciones CI.
 
 ## Estado de verificación al guardar este checkpoint
-- HEAD consultado: `2302e7765261d1dd5bb47fd891a32a585490c972`.
-- GitHub Actions run `45067905914` para ese HEAD estaba `in_progress`, en inicialización de contenedores. No hay todavía resultado final de tests/typecheck/build en este checkpoint.
-- El run anterior `45067746677` terminó `success`, pero corresponde a un SHA anterior (`3a8e6a59bf33f90c364eb0afd87105b03c75499b`) y no valida el HEAD actual.
+- HEAD validado: `8a8634e71a49e3ef8b62b1c474e7d8bd1733e908`.
+- GitHub Actions run `45068523321` terminó `success` sobre exactamente ese HEAD.
+- Node.js 24: instalación congelada, PostgreSQL 16 aislado y provisionamiento de schema correctos.
+- Tests API: aprobados.
+- Tests de aplicación Universo HBG: aprobados.
+- Typecheck del workspace: aprobado.
+- Build de producción del workspace: aprobado.
+- Validación sintáctica de service worker, manifest y script post-merge: aprobada.
+- El primer intento de esta revisión detectó una aserción desactualizada en el test de listado de Code Tools; se corrigió para aceptar la carpeta interna válida `safe`, manteniendo las pruebas que rechazan symlinks y rutas protegidas. La suite posterior pasó.
+- Esta CI usa una base PostgreSQL temporal; no demuestra que la base de datos de producción esté provisionada ni migrada.
 - No se ha ejecutado una prueba integral de producción en el deployment de Replit.
-- No declarar el producto listo para publicación hasta que CI del HEAD final esté verde, los fallos se corrijan y se verifique DB/migración/configuración del deployment real.
+- No declarar la publicación verificada basándose únicamente en el build de GitHub.
 
 ## Siguientes pasos obligatorios
 1. Esperar y revisar el resultado de CI del HEAD actual; abrir logs de jobs si falla y corregir causas reales.
