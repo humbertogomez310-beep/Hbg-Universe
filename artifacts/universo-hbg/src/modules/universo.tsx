@@ -43,6 +43,11 @@ const MEMORY_COLORS = [
   "#ff9100",
 ];
 
+function actionShouldNavigate(input: string): boolean {
+  const action = parseIntent(input);
+  return action.type === "NAVIGATE" || action.type === "CREATE_SONG";
+}
+
 export function UniversoModule() {
   const [view, setView] = useState<ViewMode>("core");
   const [mood, setMood] = useState<MoodState>(() => {
@@ -147,11 +152,9 @@ export function UniversoModule() {
       setMessages((prev) => [...prev, { from: "core", text: response, time: responseTime }]);
       setProcessing(false);
 
-      if (actionShouldNavigate(input)) {
-        const action = parseIntent(input);
-        if (action.type === "NAVIGATE") hbgCore.setModule(action.module);
-        if (action.type === "CREATE_SONG") hbgCore.setModule("instinto");
-      }
+      const navigationAction = parseIntent(input);
+      if (navigationAction.type === "NAVIGATE") hbgCore.setModule(navigationAction.module);
+      if (navigationAction.type === "CREATE_SONG") hbgCore.setModule("instinto");
     })();
   };
 
@@ -249,13 +252,6 @@ export function UniversoModule() {
           <div className="mod-subtitle">// conciencia del ecosistema — personalidad activa</div>
         </div>
         <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-          <button
-            className="hbg-btn"
-            style={{ background: voiceActive ? "rgba(255,64,129,0.2)" : "rgba(124,77,255,0.08)", borderColor: voiceActive ? "var(--neon-pink)" : "rgba(124,77,255,0.3)", color: voiceActive ? "var(--neon-pink)" : "var(--neon-purple)", boxShadow: voiceActive ? "0 0 20px rgba(255,64,129,0.4)" : "none" }}
-            onClick={() => setVoiceActive((v) => !v)}
-          >
-            {voiceActive ? "🎙 ESCUCHANDO..." : "🎙 VOZ"}
-          </button>
           <span className="hbg-badge" style={{ background: `${moodProfile.color}15`, borderColor: `${moodProfile.color}50`, color: moodProfile.color }}>
             {moodProfile.icon} {moodProfile.label}
           </span>
@@ -321,7 +317,7 @@ export function UniversoModule() {
               onKeyDown={(e) => e.key === "Enter" && sendMessage()}
               style={{ flex: 1 }}
             />
-            <button className="hbg-btn hbg-btn-primary" onClick={() => sendMessage()} disabled={!chatInput.trim()}>ENVIAR</button>
+            <button className="hbg-btn hbg-btn-primary" onClick={() => sendMessage()} disabled={!chatInput.trim() || processing}>{processing ? "PROCESANDO..." : "ENVIAR"}</button>
           </div>
         </div>
       )}
@@ -329,21 +325,52 @@ export function UniversoModule() {
       {/* MEMORIA */}
       {view === "memoria" && (
         <div>
-          <div className="section-title">// memory core — historial del ecosistema</div>
-          <div className="hbg-list" style={{ gap: 8 }}>
-            {memory.map((entry) => (
-              <div key={entry.key} className="hbg-card" style={{ padding: "12px 16px", borderColor: `${entry.color}20` }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>{entry.key}</span>
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>{entry.updatedAt}</span>
-                </div>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: 13, fontWeight: 700, color: entry.color, marginTop: 4, letterSpacing: "0.06em" }}>{entry.value}</div>
-              </div>
-            ))}
+          <div className="section-title">// memory core — recuerdos locales reales</div>
+          <div className="hbg-card" style={{ marginBottom: 12 }}>
+            <input
+              className="hbg-input"
+              placeholder="Clave del recuerdo..."
+              value={memoryKey}
+              maxLength={100}
+              onChange={(event) => setMemoryKey(event.target.value)}
+              style={{ marginBottom: 8 }}
+            />
+            <textarea
+              className="hbg-input hbg-textarea"
+              placeholder="Contenido del recuerdo..."
+              value={memoryValue}
+              maxLength={4000}
+              rows={3}
+              onChange={(event) => setMemoryValue(event.target.value)}
+              style={{ marginBottom: 8 }}
+            />
+            <button className="hbg-btn hbg-btn-primary" disabled={!memoryKey.trim() || !memoryValue.trim()} onClick={saveMemory}>
+              + GUARDAR RECUERDO
+            </button>
           </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-            <button className="hbg-btn hbg-btn-ghost" style={{ flex: 1, justifyContent: "center" }}>↓ EXPORTAR MEMORIA</button>
-            <button className="hbg-btn hbg-btn-ghost" style={{ flex: 1, justifyContent: "center" }}>♻ RESTAURAR BACKUP</button>
+          {memoryEntries.length === 0 ? (
+            <div className="hbg-card" style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 10 }}>
+              // La memoria está vacía. Los datos aparecerán aquí cuando los guardes.
+            </div>
+          ) : (
+            <div className="hbg-list" style={{ gap: 8 }}>
+              {memoryEntries.map(([key, value], index) => (
+                <div key={key} className="hbg-card" style={{ padding: "12px 16px", borderColor: `${MEMORY_COLORS[index % MEMORY_COLORS.length]}20` }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>{key}</span>
+                    <button className="hbg-btn hbg-btn-danger" style={{ padding: "3px 7px", fontSize: 8 }} onClick={() => hbgCore.forget(key)}>OLVIDAR</button>
+                  </div>
+                  <div style={{ fontFamily: "var(--font-ui)", fontSize: 13, color: MEMORY_COLORS[index % MEMORY_COLORS.length], marginTop: 4, overflowWrap: "anywhere" }}>
+                    {typeof value === "string" ? value : JSON.stringify(value)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+            <button className="hbg-btn hbg-btn-ghost" style={{ flex: 1, justifyContent: "center" }} onClick={exportCoreBackup}>↓ EXPORTAR MEMORIA</button>
+            <button className="hbg-btn hbg-btn-ghost" style={{ flex: 1, justifyContent: "center" }} onClick={() => memoryFileRef.current?.click()}>♻ RESTAURAR BACKUP</button>
+            <input ref={memoryFileRef} type="file" accept=".json,application/json" style={{ display: "none" }} onChange={(event) => void restoreCoreBackup(event.target.files?.[0])} />
           </div>
         </div>
       )}
@@ -358,7 +385,7 @@ export function UniversoModule() {
                 key={key}
                 className="hbg-card"
                 style={{ cursor: "pointer", textAlign: "left", padding: "12px 14px", border: `1px solid ${mood === key ? p.color : "var(--border-dim)"}`, background: mood === key ? `${p.color}10` : "var(--bg-card)", boxShadow: mood === key ? `0 0 16px ${p.color}25` : "none" }}
-                onClick={() => setMood(key)}
+                onClick={() => void applyMood(key)}
               >
                 <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
                   <span style={{ fontSize: 16, color: p.color, filter: mood === key ? `drop-shadow(0 0 6px ${p.color})` : "none" }}>{p.icon}</span>
@@ -378,8 +405,8 @@ export function UniversoModule() {
               </div>
             </div>
             <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-              <button className="hbg-btn hbg-btn-ghost" onClick={() => hbgCore.setModule("vibra")}>◉ APLICAR EN VIBRA</button>
-              <button className="hbg-btn hbg-btn-ghost" onClick={() => hbgCore.setModule("instinto")}>⬡ APLICAR EN INSTINTO</button>
+              <button className="hbg-btn hbg-btn-ghost" onClick={() => void applyMood(mood)}>◉ APLICAR EN VIBRA</button>
+              <button className="hbg-btn hbg-btn-ghost" onClick={() => hbgCore.setModule("instinto")}>⬡ ABRIR INSTINTO</button>
             </div>
           </div>
         </div>
@@ -388,9 +415,9 @@ export function UniversoModule() {
       {/* RECOMENDACIONES */}
       {view === "recomendaciones" && (
         <div>
-          <div className="section-title">// recommendation core — basado en tu historial</div>
+          <div className="section-title">// estado real de capacidades y memoria</div>
           <div className="hbg-list" style={{ gap: 10 }}>
-            {RECOMMENDATIONS.map((rec, i) => (
+            {recommendations.map((rec, i) => (
               <div key={i} className="hbg-card hbg-card-accent" style={{ "--card-color": rec.color } as React.CSSProperties}>
                 <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
                   <span style={{ fontSize: 22, color: rec.color, filter: `drop-shadow(0 0 8px ${rec.color})`, flexShrink: 0 }}>{rec.icon}</span>
@@ -398,7 +425,7 @@ export function UniversoModule() {
                     <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: rec.color, marginBottom: 4, letterSpacing: "0.1em" }}>{rec.type.toUpperCase()}</div>
                     <div style={{ fontFamily: "var(--font-ui)", fontSize: 13, color: "var(--text-primary)", lineHeight: 1.5 }}>{rec.text}</div>
                   </div>
-                  <button className="hbg-btn hbg-btn-ghost" style={{ padding: "5px 10px", fontSize: 9, flexShrink: 0 }}>APLICAR</button>
+                  <button className="hbg-btn hbg-btn-ghost" style={{ padding: "5px 10px", fontSize: 9, flexShrink: 0 }} onClick={() => setView(rec.type === "MEMORIA" ? "memoria" : "nodos")}>VER</button>
                 </div>
               </div>
             ))}
@@ -409,31 +436,40 @@ export function UniversoModule() {
       {/* NODOS */}
       {view === "nodos" && (
         <div>
-          <div className="section-title">// node manager — red en tiempo real</div>
+          <div className="section-title">// estado de módulos — bus local</div>
           <div className="hbg-grid hbg-grid-4" style={{ gap: 10, marginBottom: 20 }}>
-            {MODULES.filter((mod) => mod.id !== "terminador").map((mod) => {
-              const node = nodes[mod.id];
+            {MODULES.filter((module) => module.id !== "terminador").map((module) => {
+              const active = activeNode === module.id;
+              const actionCount = module.id === "vibra"
+                ? registeredActions.filter((name) => name.startsWith("music.")).length
+                : 0;
+              const detail = module.id === "vibra"
+                ? `${actionCount} acciones musicales registradas`
+                : active
+                  ? "Módulo seleccionado"
+                  : "Disponible; sin telemetría propia";
               return (
-                <div key={mod.id} className="hbg-card hbg-card-accent" style={{ "--card-color": node.connected ? mod.color : "var(--text-muted)", cursor: mod.id !== "universo" ? "pointer" : "default" } as React.CSSProperties} onClick={() => mod.id !== "universo" && hbgCore.setModule(mod.id)}>
+                <button
+                  key={module.id}
+                  className="hbg-card hbg-card-accent"
+                  style={{ "--card-color": active ? module.color : "var(--text-muted)", textAlign: "left", cursor: "pointer" } as React.CSSProperties}
+                  onClick={() => hbgCore.setModule(module.id)}
+                >
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: node.connected ? mod.color : "var(--text-muted)", boxShadow: node.connected ? `0 0 8px ${mod.color}` : "none", animation: node.connected ? "pulse-dot 2s infinite" : "none" }} />
-                    <span style={{ fontFamily: "var(--font-display)", fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", color: node.connected ? mod.color : "var(--text-muted)" }}>{mod.label}</span>
+                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: active ? module.color : "var(--text-muted)" }} />
+                    <span style={{ fontFamily: "var(--font-display)", fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", color: active ? module.color : "var(--text-muted)" }}>{module.label}</span>
                   </div>
-                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>
-                    {node.connected ? (mod.id === "universo" ? "LOCAL • HOST" : `${node.latency}ms • ONLINE`) : "⚫ OFFLINE"}
-                  </div>
-                  <span className="hbg-badge" style={{ marginTop: 8, display: "inline-flex", background: node.connected ? `${mod.color}12` : "rgba(255,255,255,0.04)", borderColor: node.connected ? `${mod.color}40` : "var(--border-dim)", color: node.connected ? mod.color : "var(--text-muted)" }}>
-                    {node.connected ? "🟢 ONLINE" : "⚫ OFFLINE"}
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>{detail}</div>
+                  <span className="hbg-badge" style={{ marginTop: 8, display: "inline-flex", background: active ? `${module.color}12` : "rgba(255,255,255,0.04)", borderColor: active ? `${module.color}40` : "var(--border-dim)", color: active ? module.color : "var(--text-muted)" }}>
+                    {active ? "SELECCIONADO" : "DISPONIBLE"}
                   </span>
-                </div>
+                </button>
               );
             })}
           </div>
-          <div className="hbg-card" style={{ fontFamily: "var(--font-mono)", fontSize: 11, lineHeight: 2 }}>
-            <div style={{ display: "flex", gap: 12 }}><span style={{ color: "var(--text-muted)", minWidth: 44 }}>[NET]</span><span style={{ color: "var(--neon-green)" }}>Share Engine: bus de mensajes activo</span></div>
-            <div style={{ display: "flex", gap: 12 }}><span style={{ color: "var(--text-muted)", minWidth: 44 }}>[NODE]</span><span style={{ color: "var(--neon-pink)" }}>VIBRA PRO → {nodes.vibra.latency}ms → ONLINE</span></div>
-            <div style={{ display: "flex", gap: 12 }}><span style={{ color: "var(--text-muted)", minWidth: 44 }}>[NODE]</span><span style={{ color: "var(--neon-cyan)" }}>INSTINTO → {nodes.instinto.latency}ms → ONLINE</span></div>
-            <div style={{ display: "flex", gap: 12 }}><span style={{ color: "var(--text-muted)", minWidth: 44 }}>[NODE]</span><span style={{ color: "var(--neon-green)" }}>HBG CORE → LOCAL → ONLINE</span></div>
+          <div className="hbg-card" style={{ fontFamily: "var(--font-mono)", fontSize: 10, lineHeight: 1.9, overflowWrap: "anywhere" }}>
+            <div style={{ color: "var(--text-muted)", marginBottom: 4 }}>ACCIONES REGISTRADAS EN HBG CORE</div>
+            {registeredActions.length ? registeredActions.join(" · ") : "Ninguna acción registrada en este momento."}
           </div>
         </div>
       )}
@@ -441,24 +477,24 @@ export function UniversoModule() {
       {/* SINCRONIZACIÓN */}
       {view === "sincronizacion" && (
         <div>
-          <div className="section-title">// sync core — conexión y respaldo</div>
+          <div className="section-title">// respaldo de memoria HBG CORE</div>
           <div className="hbg-grid hbg-grid-2" style={{ gap: 12 }}>
             <div className="hbg-card" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <button className="hbg-btn hbg-btn-primary w-full" onClick={generateToken}>⬡ GENERAR TOKEN</button>
-              <button className="hbg-btn hbg-btn-ghost w-full">🔗 VINCULAR DISPOSITIVO</button>
-              <button className="hbg-btn hbg-btn-ghost w-full">♻ RESTAURAR ECOSISTEMA</button>
-              <button className="hbg-btn hbg-btn-success w-full" onClick={exportUniverse}>↓ EXPORTAR UNIVERSO</button>
+              <button className="hbg-btn hbg-btn-success w-full" onClick={exportCoreBackup}>↓ EXPORTAR MEMORIA CORE</button>
+              <button className="hbg-btn hbg-btn-ghost w-full" onClick={() => memoryFileRef.current?.click()}>♻ RESTAURAR MEMORIA CORE</button>
+              <input ref={memoryFileRef} type="file" accept=".json,application/json" style={{ display: "none" }} onChange={(event) => void restoreCoreBackup(event.target.files?.[0])} />
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>
+                La sincronización remota y la vinculación entre dispositivos aún no están conectadas. Este respaldo contiene solo la memoria local de HBG CORE.
+              </div>
             </div>
             <div className="hbg-card">
-              {token && (
-                <div>
-                  <div className="section-title">// token generado</div>
-                  <div style={{ padding: "10px", background: "var(--bg-deep)", border: "1px solid var(--neon-purple)", borderRadius: 3, fontFamily: "var(--font-mono)", fontSize: 14, color: "var(--neon-purple)", letterSpacing: "0.1em", textAlign: "center" }}>{token}</div>
-                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginTop: 8 }}>Válido por 24 horas</div>
-                </div>
-              )}
-              {syncMsg && <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--neon-green)", marginTop: 8 }}>✓ {syncMsg}</div>}
-              {!token && !syncMsg && <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)" }}>// genera un token para vincular dispositivos</div>}
+              <div className="section-title">// estado del respaldo</div>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-secondary)" }}>
+                Registros de memoria: {memoryEntries.length}
+                {"\n"}Módulo activo: {hbgCore.getModuleConfig(activeNode).label}
+                {"\n"}Acciones registradas: {registeredActions.length}
+              </div>
+              {syncMsg && <div role="status" style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: syncMsg.startsWith("No se pudo") || syncMsg.startsWith("El archivo") ? "var(--neon-pink)" : "var(--neon-green)", marginTop: 8 }}>{syncMsg}</div>}
             </div>
           </div>
         </div>
