@@ -77,6 +77,11 @@ export function TerminadorApps() {
         <div className="hbg-list" style={{ gap: 8, marginBottom: 16 }}>
           {apps.map((app) => {
             const active = app.status === "active";
+            const statusLabel = app.status === "active"
+              ? "ACTIVO"
+              : app.status === "disabled"
+                ? "DESHABILITADO"
+                : app.status.toUpperCase();
             return (
               <div key={app.id} className="hbg-card" style={{ padding: "12px 14px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
@@ -85,7 +90,7 @@ export function TerminadorApps() {
                       {app.name} <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>v{app.version}</span>
                     </div>
                     <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginTop: 2 }}>
-                      registro: {active ? "ACTIVO" : "DESHABILITADO"} · {formatTime(app.updatedAt)}
+                      registro: {statusLabel} · {formatTime(app.updatedAt)}
                     </div>
                   </div>
                   {app.protected ? (
