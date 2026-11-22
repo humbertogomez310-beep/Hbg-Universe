@@ -58,6 +58,10 @@ export function UniversoModule() {
   ]);
   const [memory, setMemory] = useState<Record<string, unknown>>(() => hbgCore.getMemorySnapshot());
   const [memoryPersistent, setMemoryPersistent] = useState(() => hbgCore.isMemoryPersistenceAvailable());
+  const [remoteAIStatus, setRemoteAIStatus] = useState<{ available: boolean; model: string }>({
+    available: false,
+    model: "",
+  });
   const [registeredActions, setRegisteredActions] = useState<string[]>(() => hbgCore.getRegisteredActions());
   const [activeNode, setActiveNode] = useState<ModuleId>(() => hbgCore.getModule());
   const [memoryKey, setMemoryKey] = useState("");
@@ -78,6 +82,29 @@ export function UniversoModule() {
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
   }, [messages]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch("/api/core/status", {
+      credentials: "include",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return await response.json() as { success?: boolean; available?: boolean; model?: string };
+      })
+      .then((status) => {
+        if (!status?.success) return;
+        setRemoteAIStatus({
+          available: status.available === true,
+          model: typeof status.model === "string" ? status.model : "",
+        });
+      })
+      .catch(() => {
+        // Local commands remain available when the authenticated API is unreachable.
+      });
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     hbgCore.init();
@@ -139,9 +166,45 @@ export function UniversoModule() {
           case "BLOCKED_DEVELOPMENT":
             response = "Esa operación requiere una sesión de desarrollo autorizada. El chat de uso normal no puede modificar código, permisos ni despliegues.";
             break;
-          case "UNKNOWN":
-            response = "No tengo un modelo generativo conectado. Puedo interpretar comandos compatibles, mostrar capacidades y ejecutar acciones registradas; prueba «capacidades», «abre Instinto», «pausa» o «activa modo fiesta».";
+          case "UNKNOWN": {
+            if (!remoteAIStatus.available) {
+              response = "La IA remota no está configurada. Puedo interpretar comandos locales compatibles, mostrar capacidades y ejecutar acciones registradas; prueba «capacidades», «abre Instinto», «pausa» o «activa modo fiesta».";
+              break;
+            }
+            const conversation = [
+              ...messages,
+              { from: "user" as const, text: input, time },
+            ].slice(-12);
+            const apiResponse = await fetch("/api/core/chat", {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                messages: conversation.map((message) => ({
+                  role: message.from === "user" ? "user" : "assistant",
+                  content: message.text,
+                })),
+              }),
+            });
+            const result: unknown = await apiResponse.json().catch(() => null);
+            if (
+              !apiResponse.ok ||
+              typeof result !== "object" ||
+              result === null ||
+              !("success" in result) ||
+              result.success !== true ||
+              !("text" in result) ||
+              typeof result.text !== "string"
+            ) {
+              const message =
+                typeof result === "object" && result !== null && "error" in result && typeof result.error === "string"
+                  ? result.error
+                  : "No se pudo completar la respuesta de HBG CORE.";
+              throw new Error(message);
+            }
+            response = result.text;
             break;
+          }
           default:
             if (action.type === "SET_MOOD") {
               const matched = (Object.entries(MOOD_TO_MUSIC) as [MoodState, string][]).find(([, value]) => value === action.mood)?.[0];
@@ -279,6 +342,14 @@ export function UniversoModule() {
       {/* CORE IA — Chat */}
       {view === "core" && (
         <div>
+          <div className="section-title">
+            // HBG CORE — {remoteAIStatus.available ? `IA REMOTA · ${remoteAIStatus.model}` : "MODO LOCAL"}
+          </div>
+          {remoteAIStatus.available && (
+            <div role="status" className="hbg-card" style={{ marginBottom: 10, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>
+              Las consultas conversacionales no reconocidas se envían a OpenAI desde el servidor. Los comandos locales siguen pasando por HBG Authority.
+            </div>
+          )}
           <div
             ref={chatRef}
             style={{ height: 300, overflowY: "auto", display: "flex", flexDirection: "column", gap: 12, padding: "12px 0", marginBottom: 14 }}
