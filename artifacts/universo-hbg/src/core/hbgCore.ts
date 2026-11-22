@@ -1,8 +1,8 @@
-import { HBGContextStore } from "./context";
-import { HBGError } from "./errors";
-import { getHBGCoreIdentity } from "./identity";
-import { HBGMemoryStore } from "./memory";
-import { HBGRequestProcessor } from "./requestProcessor";
+import { HBGContextStore } from "./context.ts";
+import { HBGError } from "./errors.ts";
+import { getHBGCoreIdentity } from "./identity.ts";
+import { HBGMemoryStore } from "./memory.ts";
+import { HBGRequestProcessor } from "./requestProcessor.ts";
 import type {
   HBGActionHandler,
   HBGActionName,
