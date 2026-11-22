@@ -20,9 +20,12 @@ test("Code Tools block traversal, protected files, symlink escapes, and unauthen
 
   try {
     await mkdir(fixturePath);
+    await mkdir(path.join(fixturePath, "safe"));
     await writeFile(outsideFile, "outside");
+    await writeFile(path.join(fixturePath, "safe", "internal.txt"), "internal");
     await symlink(outsideDirectory, path.join(fixturePath, "outside-link"));
     await symlink(outsideFile, path.join(fixturePath, "file-link"));
+    await symlink(path.join(fixturePath, "safe"), path.join(fixturePath, "internal-link"));
     await writeFile(path.join(fixturePath, "inside.txt"), "inside");
 
     await assert.rejects(inspectFile("../package.json"), /traversal/i);
@@ -37,6 +40,8 @@ test("Code Tools block traversal, protected files, symlink escapes, and unauthen
     );
     await assert.rejects(inspectFile(`${fixtureName}/outside-link/outside.txt`), /simbólicos/i);
     await assert.rejects(inspectFile(`${fixtureName}/file-link`), /simbólicos/i);
+    await assert.rejects(inspectFile(`${fixtureName}/internal-link/internal.txt`), /simbólicos/i);
+    await assert.rejects(listFiles(`${fixtureName}/internal-link`), /simbólicos|cambió/i);
     await assert.rejects(
       writeWorkspaceFile(`${fixtureName}/file-link`, "changed"),
       /contexto autenticado/i,
