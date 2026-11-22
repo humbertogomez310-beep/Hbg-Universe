@@ -4,6 +4,7 @@ import authRouter from "./auth";
 import auditRouter from "./audit";
 import registryRouter from "./registry";
 import terminadorRouter from "./terminador";
+import permissionGrantsRouter from "./permission-grants";
 
 const router: IRouter = Router();
 
@@ -12,7 +13,9 @@ router.use(authRouter);
 router.use(auditRouter);
 router.use(registryRouter);
 router.use(terminadorRouter);
-// Code Tools remain deliberately unmounted until HBG Authority is operationally
-// verified. Do not mount the tools router as part of routine integration work.
+router.use(permissionGrantsRouter);
+
+// Code Tools remain deliberately unmounted until path-scoped grants,
+// filesystem protections, and execution isolation are operationally verified.
 
 export default router;
