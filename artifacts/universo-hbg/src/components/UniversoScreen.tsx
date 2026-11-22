@@ -39,10 +39,10 @@ if (typeof window !== "undefined" && !window.__hbgInstallListenerReady) {
 }
 
 const APP_STATUS: Record<ModuleId, { status: string; statusColor: string }> = {
-  universo: { status: "🟢 CONECTADO", statusColor: "var(--neon-green)" },
-  instinto: { status: "🟢 CONECTADO", statusColor: "var(--neon-green)" },
-  vibra: { status: "🟢 CONECTADO", statusColor: "var(--neon-green)" },
-  terminador: { status: "🟢 CONECTADO", statusColor: "var(--neon-green)" },
+  universo: { status: "DISPONIBLE", statusColor: "var(--neon-cyan)" },
+  instinto: { status: "DISPONIBLE", statusColor: "var(--neon-cyan)" },
+  vibra: { status: "DISPONIBLE", statusColor: "var(--neon-cyan)" },
+  terminador: { status: "SOLO OWNER", statusColor: "var(--neon-purple)" },
 };
 
 function detectIOS(): boolean {
