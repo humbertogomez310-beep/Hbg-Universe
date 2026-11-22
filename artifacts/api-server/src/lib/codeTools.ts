@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { constants, existsSync, readFileSync } from "node:fs";
 import { promises as fs } from "node:fs";
+import type { FileHandle } from "node:fs/promises";
 import path from "node:path";
 import type { HBGAuthContext } from "./hbgAuth";
 
@@ -120,17 +121,46 @@ function isNotFound(error: unknown): boolean {
   );
 }
 
-async function safeParentDirectory(root: string, target: string): Promise<string> {
-  const expectedParent = path.dirname(target);
-  const parent = await fs.realpath(expectedParent);
-  if (parent !== expectedParent || !isWithinWorkspace(root, parent)) {
-    throw new Error("La carpeta de destino cambió o sale del workspace.");
+async function openSafeDirectory(
+  root: string,
+  directory: string,
+): Promise<FileHandle> {
+  if (process.platform !== "linux") {
+    throw new Error("Las operaciones seguras de Code Tools requieren descriptores de directorio en Linux.");
   }
-  const stat = await fs.lstat(parent);
-  if (stat.isSymbolicLink() || !stat.isDirectory()) {
-    throw new Error("La carpeta de destino no es un directorio regular.");
+
+  const expectedDirectory = await fs.realpath(directory);
+  if (
+    expectedDirectory !== directory ||
+    !isWithinWorkspace(root, expectedDirectory)
+  ) {
+    throw new Error("La carpeta cambió o sale del workspace.");
   }
-  return parent;
+
+  const handle = await fs.open(
+    directory,
+    constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+  );
+  try {
+    const descriptorPath = `/proc/self/fd/${handle.fd}`;
+    const openedDirectory = await fs.realpath(descriptorPath);
+    const stat = await handle.stat();
+    if (
+      openedDirectory !== expectedDirectory ||
+      !isWithinWorkspace(root, openedDirectory) ||
+      !stat.isDirectory()
+    ) {
+      throw new Error("El descriptor de carpeta no corresponde al destino validado.");
+    }
+    return handle;
+  } catch (error) {
+    await handle.close().catch(() => undefined);
+    throw error;
+  }
+}
+
+function pathFromDirectoryHandle(handle: FileHandle, name: string): string {
+  return `/proc/self/fd/${handle.fd}/${name}`;
 }
 
 async function safeAbsolutePath(
@@ -185,23 +215,33 @@ async function assertWriteGrant(
 export async function inspectFile(relativePath: string) {
   const filename = await safeAbsolutePath(relativePath);
   const root = await fs.realpath(WORKSPACE_ROOT);
-  await safeParentDirectory(root, filename);
-
-  // O_NOFOLLOW prevents a last-moment symlink swap between path validation and open.
-  const handle = await fs.open(filename, constants.O_RDONLY | constants.O_NOFOLLOW);
+  const directoryHandle = await openSafeDirectory(root, path.dirname(filename));
   try {
-    const stat = await handle.stat();
-    if (!stat.isFile()) throw new Error("El recurso no es un archivo regular.");
-    if (stat.size > MAX_READ_BYTES) {
-      throw new Error("El archivo excede el límite de lectura.");
+    // Resolve the leaf through a pinned directory descriptor to prevent parent-path swaps.
+    const descriptorPath = pathFromDirectoryHandle(
+      directoryHandle,
+      path.basename(filename),
+    );
+    const handle = await fs.open(
+      descriptorPath,
+      constants.O_RDONLY | constants.O_NOFOLLOW,
+    );
+    try {
+      const stat = await handle.stat();
+      if (!stat.isFile()) throw new Error("El recurso no es un archivo regular.");
+      if (stat.size > MAX_READ_BYTES) {
+        throw new Error("El archivo excede el límite de lectura.");
+      }
+      return {
+        path: normalizedRelativePath(relativePath),
+        size: stat.size,
+        content: await handle.readFile("utf8"),
+      };
+    } finally {
+      await handle.close();
     }
-    return {
-      path: normalizedRelativePath(relativePath),
-      size: stat.size,
-      content: await handle.readFile("utf8"),
-    };
   } finally {
-    await handle.close();
+    await directoryHandle.close();
   }
 }
 
@@ -211,25 +251,25 @@ export async function listFiles(relativePath = ".") {
       ? await fs.realpath(WORKSPACE_ROOT)
       : await safeAbsolutePath(relativePath);
   const root = await fs.realpath(WORKSPACE_ROOT);
-  const canonicalDirectory = await fs.realpath(directory);
-  if (canonicalDirectory !== directory || !isWithinWorkspace(root, canonicalDirectory)) {
-    throw new Error("La carpeta cambió o sale del workspace.");
+  const directoryHandle = await openSafeDirectory(root, directory);
+  try {
+    const entries = await fs.readdir(
+      `/proc/self/fd/${directoryHandle.fd}`,
+      { withFileTypes: true },
+    );
+    return entries
+      .filter((entry) =>
+        !entry.isSymbolicLink() &&
+        !isProtectedEntryName(entry.name)
+      )
+      .slice(0, 500)
+      .map((entry) => ({
+        name: entry.name,
+        type: entry.isDirectory() ? "directory" : "file",
+      }));
+  } finally {
+    await directoryHandle.close();
   }
-  const directoryStat = await fs.lstat(directory);
-  if (directoryStat.isSymbolicLink() || !directoryStat.isDirectory()) {
-    throw new Error("El recurso no es una carpeta regular.");
-  }
-  const entries = await fs.readdir(directory, { withFileTypes: true });
-  return entries
-    .filter((entry) =>
-      !entry.isSymbolicLink() &&
-      !isProtectedEntryName(entry.name)
-    )
-    .slice(0, 500)
-    .map((entry) => ({
-      name: entry.name,
-      type: entry.isDirectory() ? "directory" : "file",
-    }));
 }
 
 export async function writeFile(
@@ -247,31 +287,40 @@ export async function writeFile(
   await assertWriteGrant(context, normalized);
   const target = await safeAbsolutePath(normalized, true);
   const root = await fs.realpath(WORKSPACE_ROOT);
-  const parent = await safeParentDirectory(root, target);
-
-  const destination = path.join(parent, path.basename(target));
+  const directoryHandle = await openSafeDirectory(root, path.dirname(target));
+  const destination = pathFromDirectoryHandle(
+    directoryHandle,
+    path.basename(target),
+  );
   let mode = 0o600;
   try {
-    const existing = await fs.lstat(destination);
-    if (existing.isSymbolicLink() || !existing.isFile()) {
-      throw new Error("Solo se pueden reemplazar archivos regulares.");
+    try {
+      const existing = await fs.lstat(destination);
+      if (existing.isSymbolicLink() || !existing.isFile()) {
+        throw new Error("Solo se pueden reemplazar archivos regulares.");
+      }
+      mode = existing.mode & 0o777;
+    } catch (error) {
+      if (!isNotFound(error)) throw error;
     }
-    mode = existing.mode & 0o777;
-  } catch (error) {
-    if (!isNotFound(error)) throw error;
-  }
 
-  const temporary = path.join(parent, `.hbg-write-${randomUUID()}.tmp`);
-  const handle = await fs.open(temporary, "wx", mode);
-  try {
-    await handle.writeFile(content, "utf8");
-    await handle.sync();
-    await handle.close();
-    await fs.rename(temporary, destination);
-  } catch (error) {
-    await handle.close().catch(() => undefined);
-    await fs.unlink(temporary).catch(() => undefined);
-    throw error;
+    const temporary = pathFromDirectoryHandle(
+      directoryHandle,
+      `.hbg-write-${randomUUID()}.tmp`,
+    );
+    const handle = await fs.open(temporary, "wx", mode);
+    try {
+      await handle.writeFile(content, "utf8");
+      await handle.sync();
+      await handle.close();
+      await fs.rename(temporary, destination);
+    } catch (error) {
+      await handle.close().catch(() => undefined);
+      await fs.unlink(temporary).catch(() => undefined);
+      throw error;
+    }
+  } finally {
+    await directoryHandle.close();
   }
 
   return { path: normalized, bytes };
@@ -285,15 +334,21 @@ export async function deleteFile(
   await assertWriteGrant(context, normalized);
   const target = await safeAbsolutePath(normalized);
   const root = await fs.realpath(WORKSPACE_ROOT);
-  const parent = await safeParentDirectory(root, target);
-
-  const destination = path.join(parent, path.basename(target));
-  const stat = await fs.lstat(destination);
-  if (stat.isSymbolicLink() || !stat.isFile()) {
-    throw new Error("Solo se pueden eliminar archivos regulares.");
+  const directoryHandle = await openSafeDirectory(root, path.dirname(target));
+  try {
+    const destination = pathFromDirectoryHandle(
+      directoryHandle,
+      path.basename(target),
+    );
+    const stat = await fs.lstat(destination);
+    if (stat.isSymbolicLink() || !stat.isFile()) {
+      throw new Error("Solo se pueden eliminar archivos regulares.");
+    }
+    await fs.unlink(destination);
+    return { path: normalized };
+  } finally {
+    await directoryHandle.close();
   }
-  await fs.unlink(destination);
-  return { path: normalized };
 }
 
 export async function runSafeWorkspaceScript(
