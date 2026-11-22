@@ -150,6 +150,9 @@ export async function executeTerminadorPlanWithHBG(
         );
       }
       if (task.operation.type === "music.search_for_track") {
+        if (!core.getRegisteredActions().includes("music.search")) {
+          core.setModule("vibra");
+        }
         const search = await core.dispatchAction(
           "music.search",
           { query: task.operation.query },
