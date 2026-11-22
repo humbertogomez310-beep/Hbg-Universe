@@ -5,9 +5,13 @@ import { executeTerminadorPlanWithHBG } from "./terminadorExecution.ts";
 
 test("Terminador plays the exact track ID returned by its verified VIBRA library search", async () => {
   const dispatched = [];
+  let vibraMounted = false;
   const core = {
-    getRegisteredActions: () => ["music.search", "music.playTrack"],
-    setModule: () => undefined,
+    getRegisteredActions: () => vibraMounted ? ["music.search", "music.playTrack"] : [],
+    setModule: (module) => {
+      assert.equal(module, "vibra");
+      vibraMounted = true;
+    },
     getContext: () => undefined,
     dispatchAction: async (name, payload) => {
       dispatched.push({ name, payload });
@@ -48,6 +52,7 @@ test("Terminador plays the exact track ID returned by its verified VIBRA library
   });
 
   assert.equal(result.state, "completed");
+  assert.equal(vibraMounted, true);
   assert.deepEqual(dispatched, [
     { name: "music.search", payload: { query: "Coincidence" } },
     { name: "music.playTrack", payload: { id: "track-verified-42" } },
