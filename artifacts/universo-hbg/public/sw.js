@@ -3,11 +3,21 @@ const CACHE_NAME = `hbg-shell-${SW_VERSION}`;
 const CORE_ASSETS = ["/", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(CORE_ASSETS))
-      .then(() => self.skipWaiting()),
-  );
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    const shellResponse = await fetch("/");
+    if (!shellResponse.ok) throw new Error("No se pudo precargar la aplicación.");
+    await cache.put("/", shellResponse.clone());
+
+    const html = await shellResponse.text();
+    const assetPaths = [...html.matchAll(/(?:src|href)=["']([^"']+\\.(?:js|css)(?:\\?[^"']*)?)["']/g)]
+      .map((match) => new URL(match[1], self.location.origin))
+      .filter((url) => url.origin === self.location.origin)
+      .map((url) => url.href);
+
+    await cache.addAll([...new Set([...CORE_ASSETS, ...assetPaths])]);
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener("activate", (event) => {
