@@ -43,6 +43,92 @@ const STORAGE_KEYS = {
   partyMode: "hbg_vibra_party_mode",
 };
 
+function browserStorage(): Storage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function readStoredValue(key: string): string | null {
+  try {
+    return browserStorage()?.getItem(key) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredValue(key: string, value: string): boolean {
+  try {
+    const storage = browserStorage();
+    if (!storage) return false;
+    storage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function readStoredMode(): MoodMode {
+  const value = readStoredValue(STORAGE_KEYS.mood);
+  return MOODS.some((mood) => mood.mode === value) ? value as MoodMode : "focus";
+}
+
+function readStoredVolume(): number {
+  const raw = readStoredValue(STORAGE_KEYS.volume);
+  if (raw === null) return 80;
+  const value = Number(raw);
+  return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 80;
+}
+
+function readStoredFavorites(): Set<string> {
+  try {
+    const parsed: unknown = JSON.parse(readStoredValue(STORAGE_KEYS.favorites) ?? "[]");
+    return new Set(Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function readStoredPlaylists(): Playlist[] {
+  try {
+    const parsed: unknown = JSON.parse(readStoredValue(STORAGE_KEYS.playlists) ?? "[]");
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((value): value is Playlist =>
+      typeof value === "object" &&
+      value !== null &&
+      typeof value.id === "string" &&
+      typeof value.name === "string" &&
+      Array.isArray(value.trackIds) &&
+      value.trackIds.every((id: unknown) => typeof id === "string") &&
+      typeof value.color === "string"
+    );
+  } catch {
+    return [];
+  }
+}
+
+function readStoredRecentTracks(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(readStoredValue(STORAGE_KEYS.recentTrackIds) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string").slice(0, 50) : [];
+  } catch {
+    return [];
+  }
+}
+
+function readStoredDirection(): MusicDirection {
+  const storage = browserStorage();
+  return storage ? readMusicDirection(storage) : { goal: "", energy: "steady" };
+}
+
+function readStoredTrackId(): string | null {
+  const value = readStoredValue(STORAGE_KEYS.trackId);
+  return value && value.length <= 200 ? value : null;
+}
+
 const MOODS: { mode: MoodMode; label: string; color: string; bpm: [number, number]; icon: string }[] = [
   { mode: "party", label: "PARTY", color: "var(--neon-pink)", bpm: [120, 160], icon: "⚡" },
   { mode: "focus", label: "FOCUS", color: "var(--neon-cyan)", bpm: [60, 90], icon: "◎" },
@@ -75,26 +161,20 @@ function VisualizerBars({ active, color }: { active: boolean; color: string }) {
 }
 
 export function VibraModule() {
-  // Restore persisted values
-  const [activeMode, setActiveMode] = useState<MoodMode>(() => (localStorage.getItem(STORAGE_KEYS.mood) as MoodMode) || "focus");
-  const [volume, setVolume] = useState(() => Number(localStorage.getItem(STORAGE_KEYS.volume) ?? 80));
-  const [favorites, setFavorites] = useState<Set<string>>(() => {
-    try { return new Set(JSON.parse(localStorage.getItem(STORAGE_KEYS.favorites) ?? "[]")); } catch { return new Set(); }
-  });
-  const [playlists, setPlaylists] = useState<Playlist[]>(() => {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.playlists) ?? "[]"); } catch { return []; }
-  });
-  const [musicDirection, setMusicDirection] = useState<MusicDirection>(() => readMusicDirection(localStorage));
-  const [autoDjEnabled, setAutoDjEnabled] = useState(() => localStorage.getItem(STORAGE_KEYS.autoDj) === "true");
-  const [partyMode, setPartyMode] = useState(() => localStorage.getItem(STORAGE_KEYS.partyMode) === "true");
+  // Restore persisted values without allowing blocked/corrupt browser storage to crash VIBRA.
+  const [activeMode, setActiveMode] = useState<MoodMode>(readStoredMode);
+  const [volume, setVolume] = useState<number>(readStoredVolume);
+  const [favorites, setFavorites] = useState<Set<string>>(readStoredFavorites);
+  const [playlists, setPlaylists] = useState<Playlist[]>(readStoredPlaylists);
+  const [musicDirection, setMusicDirection] = useState<MusicDirection>(readStoredDirection);
+  const [autoDjEnabled, setAutoDjEnabled] = useState(() => readStoredValue(STORAGE_KEYS.autoDj) === "true");
+  const [partyMode, setPartyMode] = useState(() => readStoredValue(STORAGE_KEYS.partyMode) === "true");
   const [voiceCaptureActive, setVoiceCaptureActive] = useState(false);
-  const [recentTrackIds, setRecentTrackIds] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.recentTrackIds) ?? "[]"); } catch { return []; }
-  });
+  const [recentTrackIds, setRecentTrackIds] = useState<string[]>(readStoredRecentTracks);
 
   const [view, setView] = useState<ViewMode>("player");
   const [tracks, setTracks] = useState<TrackMeta[]>([]);
-  const [currentId, setCurrentId] = useState<string | null>(() => localStorage.getItem(STORAGE_KEYS.trackId));
+  const [currentId, setCurrentId] = useState<string | null>(readStoredTrackId);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0); // 0–1
   const [currentTime, setCurrentTime] = useState(0);
@@ -148,21 +228,30 @@ export function VibraModule() {
     });
   }, []);
 
-  // Persist config
-  useEffect(() => { localStorage.setItem(STORAGE_KEYS.mood, activeMode); }, [activeMode]);
-  useEffect(() => { localStorage.setItem(STORAGE_KEYS.volume, String(volume)); if (audioRef.current) audioRef.current.volume = (volume / 100) * (voiceCaptureActive ? 0.25 : 1); }, [volume, voiceCaptureActive]);
-  useEffect(() => { localStorage.setItem(STORAGE_KEYS.favorites, JSON.stringify([...favorites])); }, [favorites]);
-  useEffect(() => { localStorage.setItem(STORAGE_KEYS.playlists, JSON.stringify(playlists)); }, [playlists]);
-  useEffect(() => { if (currentId) localStorage.setItem(STORAGE_KEYS.trackId, currentId); }, [currentId]);
+  // Persist config; playback remains usable even when browser storage is unavailable.
   useEffect(() => {
-    try {
-      localStorage.setItem("hbg_vibra_music_direction", JSON.stringify(musicDirection));
-      localStorage.setItem(STORAGE_KEYS.autoDj, String(autoDjEnabled));
-      localStorage.setItem(STORAGE_KEYS.partyMode, String(partyMode));
-      localStorage.setItem(STORAGE_KEYS.recentTrackIds, JSON.stringify(recentTrackIds));
-    } catch {
-      setError("No se pudieron guardar las preferencias de sesión musical.");
-    }
+    if (!writeStoredValue(STORAGE_KEYS.mood, activeMode)) setError("No se pudo guardar el modo musical en este dispositivo.");
+  }, [activeMode]);
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.volume = (volume / 100) * (voiceCaptureActive ? 0.25 : 1);
+    if (!writeStoredValue(STORAGE_KEYS.volume, String(volume))) setError("No se pudo guardar el volumen en este dispositivo.");
+  }, [volume, voiceCaptureActive]);
+  useEffect(() => {
+    if (!writeStoredValue(STORAGE_KEYS.favorites, JSON.stringify([...favorites]))) setError("No se pudieron guardar los favoritos.");
+  }, [favorites]);
+  useEffect(() => {
+    if (!writeStoredValue(STORAGE_KEYS.playlists, JSON.stringify(playlists))) setError("No se pudieron guardar las playlists.");
+  }, [playlists]);
+  useEffect(() => {
+    if (currentId && !writeStoredValue(STORAGE_KEYS.trackId, currentId)) setError("No se pudo guardar la canción seleccionada.");
+  }, [currentId]);
+  useEffect(() => {
+    const saved =
+      writeStoredValue("hbg_vibra_music_direction", JSON.stringify(musicDirection)) &&
+      writeStoredValue(STORAGE_KEYS.autoDj, String(autoDjEnabled)) &&
+      writeStoredValue(STORAGE_KEYS.partyMode, String(partyMode)) &&
+      writeStoredValue(STORAGE_KEYS.recentTrackIds, JSON.stringify(recentTrackIds));
+    if (!saved) setError("No se pudieron guardar las preferencias de sesión musical.");
   }, [autoDjEnabled, musicDirection, partyMode, recentTrackIds]);
 
   // Load audio from IndexedDB and play
@@ -285,7 +374,7 @@ export function VibraModule() {
   const restoredRef = useRef(false);
   useEffect(() => {
     if (restoredRef.current || tracks.length === 0) return;
-    const savedId = localStorage.getItem(STORAGE_KEYS.trackId);
+    const savedId = readStoredTrackId();
     if (savedId && tracks.find((t) => t.id === savedId)) {
       setCurrentId(savedId);
       loadTrack(savedId, false, 0);
