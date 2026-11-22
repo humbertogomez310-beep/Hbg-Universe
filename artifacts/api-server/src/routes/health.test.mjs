@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import test from "node:test";
 import app from "../app.ts";
+import { pool } from "@workspace/db";
 import { ensureDefaultApplications } from "../lib/registry.ts";
 
 test(
@@ -18,9 +19,13 @@ test(
       assert.equal(response.status, 200);
       assert.deepEqual(await response.json(), { status: "ok" });
     } finally {
-      await new Promise((resolve, reject) => {
-        server.close((error) => error ? reject(error) : resolve());
-      });
+      try {
+        await new Promise((resolve, reject) => {
+          server.close((error) => error ? reject(error) : resolve());
+        });
+      } finally {
+        await pool.end();
+      }
     }
   },
 );
