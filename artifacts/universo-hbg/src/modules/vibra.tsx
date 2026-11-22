@@ -20,6 +20,11 @@ import {
   selectNextTrack,
   type MusicDirection,
 } from "./musicDirector";
+import {
+  selectNextPlaybackId,
+  selectPreviousPlaybackId,
+  type RepeatMode,
+} from "./vibraPlayback";
 
 type MoodMode = "party" | "focus" | "creative" | "chill" | "nostalgia" | "sad" | "happy" | "normal";
 type ViewMode = "player" | "library" | "playlists" | "modes" | "eq" | "perfil" | "universo";
@@ -42,6 +47,8 @@ const STORAGE_KEYS = {
   autoDj: "hbg_vibra_auto_dj",
   partyMode: "hbg_vibra_party_mode",
   equalizer: "hbg_vibra_equalizer_v1",
+  shuffle: "hbg_vibra_shuffle",
+  repeat: "hbg_vibra_repeat",
 };
 
 function browserStorage(): Storage | null {
@@ -189,6 +196,11 @@ export function VibraModule() {
   const [musicDirection, setMusicDirection] = useState<MusicDirection>(readStoredDirection);
   const [autoDjEnabled, setAutoDjEnabled] = useState(() => readStoredValue(STORAGE_KEYS.autoDj) === "true");
   const [partyMode, setPartyMode] = useState(() => readStoredValue(STORAGE_KEYS.partyMode) === "true");
+  const [shuffleEnabled, setShuffleEnabled] = useState(() => readStoredValue(STORAGE_KEYS.shuffle) === "true");
+  const [repeatMode, setRepeatMode] = useState<RepeatMode>(() => {
+    const stored = readStoredValue(STORAGE_KEYS.repeat);
+    return stored === "all" || stored === "one" ? stored : "off";
+  });
   const [voiceCaptureActive, setVoiceCaptureActive] = useState(false);
   const [recentTrackIds, setRecentTrackIds] = useState<string[]>(readStoredRecentTracks);
 
@@ -286,9 +298,11 @@ export function VibraModule() {
       writeStoredValue("hbg_vibra_music_direction", JSON.stringify(musicDirection)) &&
       writeStoredValue(STORAGE_KEYS.autoDj, String(autoDjEnabled)) &&
       writeStoredValue(STORAGE_KEYS.partyMode, String(partyMode)) &&
+      writeStoredValue(STORAGE_KEYS.shuffle, String(shuffleEnabled)) &&
+      writeStoredValue(STORAGE_KEYS.repeat, repeatMode) &&
       writeStoredValue(STORAGE_KEYS.recentTrackIds, JSON.stringify(recentTrackIds));
     if (!saved) setError("No se pudieron guardar las preferencias de sesión musical.");
-  }, [autoDjEnabled, musicDirection, partyMode, recentTrackIds]);
+  }, [autoDjEnabled, musicDirection, partyMode, recentTrackIds, repeatMode, shuffleEnabled]);
 
   useEffect(() => {
     if (!writeStoredValue(STORAGE_KEYS.equalizer, JSON.stringify(eqValues))) {
@@ -547,14 +561,29 @@ export function VibraModule() {
     const availableTracks = tracksRef.current;
     const currentTrackId = currentIdRef.current;
     const activeSequence = activeSequenceRef.current;
+
+    if (repeatMode === "one" && currentTrackId) {
+      autoAdvanceInProgressRef.current = true;
+      void playTrack(currentTrackId, true, true).finally(() => {
+        autoAdvanceInProgressRef.current = false;
+      });
+      return;
+    }
+
     if (activeSequence) {
-      const nextSequenceIndex = activeSequence.indexOf(currentTrackId ?? "") + 1;
-      if (nextSequenceIndex < activeSequence.length) {
+      const nextId = selectNextPlaybackId(
+        activeSequence,
+        currentTrackId,
+        shuffleEnabled,
+        repeatMode,
+        recentTrackIds,
+      );
+      if (nextId) {
         autoAdvanceInProgressRef.current = true;
         void (async () => {
           let started = false;
           try {
-            started = await playSequenceFrom(activeSequence, nextSequenceIndex, true);
+            started = await playSequenceFrom(activeSequence, activeSequence.indexOf(nextId), true);
           } catch (cause) {
             setError(cause instanceof Error ? cause.message : "No se pudo continuar la playlist.");
           }
@@ -572,12 +601,20 @@ export function VibraModule() {
       }
       activeSequenceRef.current = null;
     }
+
     if (!autoDjEnabled) {
-      const currentIndex = availableTracks.findIndex((track) => track.id === currentTrackId);
-      const next = availableTracks[currentIndex + 1];
-      if (next) {
+      const nextId = selectNextPlaybackId(
+        availableTracks.map((track) => track.id),
+        currentTrackId,
+        shuffleEnabled,
+        repeatMode,
+        recentTrackIds,
+      );
+      if (nextId) {
         autoAdvanceInProgressRef.current = true;
-        void playTrack(next.id).finally(() => { autoAdvanceInProgressRef.current = false; });
+        void playTrack(nextId, false, true).finally(() => {
+          autoAdvanceInProgressRef.current = false;
+        });
       }
       return;
     }
@@ -590,7 +627,17 @@ export function VibraModule() {
         while (true) {
           if (selectionGeneration !== manualSelectionGenerationRef.current) return;
           const candidates = availableTracks.filter((track) => !failedIds.has(track.id));
-          const next = selectNextTrack(candidates, currentTrackId, recentTrackIds, musicDirection);
+          const next = shuffleEnabled
+            ? candidates.find((track) =>
+                track.id === selectNextPlaybackId(
+                  candidates.map((candidate) => candidate.id),
+                  currentTrackId,
+                  true,
+                  "off",
+                  recentTrackIds,
+                ),
+              )
+            : selectNextTrack(candidates, currentTrackId, recentTrackIds, musicDirection);
           if (!next) {
             setError(
               musicDirection.goal
@@ -618,32 +665,39 @@ export function VibraModule() {
     void attemptNext();
   };
 
-  const nextTrack = async () => {
+  const nextTrack = async (): Promise<boolean> => {
     const activeSequence = activeSequenceRef.current;
-    if (activeSequence) {
-      const currentIndex = activeSequence.indexOf(currentId ?? "");
-      if (currentIndex >= 0 && currentIndex < activeSequence.length - 1) {
-        return playSequenceFrom(activeSequence, currentIndex + 1);
-      }
-      return false;
-    }
-    const idx = tracks.findIndex((t) => t.id === currentId);
-    if (idx >= 0 && idx < tracks.length - 1) return playTrack(tracks[idx + 1].id);
-    return false;
+    const queue = activeSequence ?? tracks.map((track) => track.id);
+    const nextId = selectNextPlaybackId(
+      queue,
+      currentId,
+      shuffleEnabled,
+      repeatMode === "all" ? "all" : "off",
+      recentTrackIds,
+    );
+    if (!nextId) return false;
+    if (activeSequence) return playSequenceFrom(activeSequence, activeSequence.indexOf(nextId));
+    return playTrack(nextId);
   };
 
-  const prevTrack = () => {
+  const prevTrack = async (): Promise<boolean> => {
     const audio = audioRef.current;
-    // If more than 3s in, restart; otherwise go prev
-    if (audio && audio.currentTime > 3) { audio.currentTime = 0; return; }
-    const activeSequence = activeSequenceRef.current;
-    if (activeSequence) {
-      const currentIndex = activeSequence.indexOf(currentId ?? "");
-      if (currentIndex > 0) void playSequenceFrom(activeSequence, currentIndex - 1);
-      return;
+    if (audio && audio.currentTime > 3) {
+      audio.currentTime = 0;
+      return true;
     }
-    const idx = tracks.findIndex((t) => t.id === currentId);
-    if (idx > 0) playTrack(tracks[idx - 1].id);
+    const activeSequence = activeSequenceRef.current;
+    const queue = activeSequence ?? tracks.map((track) => track.id);
+    const previousId = selectPreviousPlaybackId(
+      queue,
+      currentId,
+      shuffleEnabled,
+      repeatMode === "all" ? "all" : "off",
+      recentTrackIds,
+    );
+    if (!previousId) return false;
+    if (activeSequence) return playSequenceFrom(activeSequence, activeSequence.indexOf(previousId));
+    return playTrack(previousId);
   };
 
   const playTrackSequence = async (trackIds: string[]) => {
@@ -687,35 +741,31 @@ export function VibraModule() {
         return result(paused, { isPlaying: !paused }, paused ? undefined : "No se pudo pausar");
       }),
       hbgCore.registerAction("music.next", async () => {
-        const sequence = activeSequenceRef.current;
-        const sequenceIndex = sequence?.indexOf(currentId ?? "") ?? -1;
-        const idx = tracks.findIndex((t) => t.id === currentId);
-        const next = sequence && sequenceIndex >= 0
-          ? tracks.find((track) => track.id === sequence[sequenceIndex + 1])
-          : tracks[idx + 1];
-        if (!next) return result(false, undefined, "No hay una siguiente canción");
         const started = await nextTrack();
         return started
-          ? result(true, { track: next })
-          : result(false, undefined, "No se pudo iniciar la siguiente canción");
+          ? result(true)
+          : result(false, undefined, "No hay una siguiente canción disponible");
       }),
       hbgCore.registerAction("music.previous", async () => {
-        const audio = audioRef.current;
-        if (audio && audio.currentTime > 3) {
-          audio.currentTime = 0;
-          return result(true, { currentTime: 0 });
-        }
-        const sequence = activeSequenceRef.current;
-        const sequenceIndex = sequence?.indexOf(currentId ?? "") ?? -1;
-        const idx = tracks.findIndex((t) => t.id === currentId);
-        const previous = sequence && sequenceIndex > 0
-          ? tracks.find((track) => track.id === sequence[sequenceIndex - 1])
-          : sequence ? undefined : tracks[idx - 1];
-        if (!previous) return result(false, undefined, "No hay una canción anterior");
-        const started = sequence ? await playSequenceFrom(sequence, sequenceIndex - 1) : await playTrack(previous.id);
+        const started = await prevTrack();
         return started
-          ? result(true, { track: previous })
-          : result(false, undefined, "No se pudo iniciar la canción anterior");
+          ? result(true)
+          : result(false, undefined, "No hay una canción anterior disponible");
+      }),
+      hbgCore.registerAction("music.shuffle", (payload) => {
+        if (typeof payload?.enabled !== "boolean") {
+          return result(false, undefined, "El estado de reproducción aleatoria no es válido.");
+        }
+        setShuffleEnabled(payload.enabled);
+        return result(true, { enabled: payload.enabled });
+      }),
+      hbgCore.registerAction("music.repeat", (payload) => {
+        const mode = payload?.mode;
+        if (mode !== "off" && mode !== "all" && mode !== "one") {
+          return result(false, undefined, "El modo de repetición no es válido.");
+        }
+        setRepeatMode(mode);
+        return result(true, { mode });
       }),
       hbgCore.registerAction("music.mood", (payload) => {
         const mood = MOODS.find(({ mode }) => mode === payload?.mode);
@@ -1168,7 +1218,7 @@ export function VibraModule() {
 
             {/* Controls */}
             <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10, marginBottom: 12 }}>
-              <button className="hbg-btn hbg-btn-ghost" style={{ padding: "7px 12px" }} onClick={prevTrack} disabled={!currentTrack || tracks.length < 2}>⏮</button>
+              <button className="hbg-btn hbg-btn-ghost" style={{ padding: "7px 12px" }} onClick={() => void prevTrack()} disabled={!currentTrack || tracks.length < 2}>⏮</button>
               <button
                 className="hbg-btn"
                 style={{ padding: "9px 22px", background: `${mood.color}20`, borderColor: mood.color, color: mood.color, fontSize: 20, boxShadow: isPlaying ? `0 0 20px ${mood.color}40` : "none", opacity: loading ? 0.6 : 1 }}
@@ -1177,11 +1227,30 @@ export function VibraModule() {
               >
                 {loading ? "◎" : isPlaying ? "⏸" : "▶"}
               </button>
-              <button className="hbg-btn hbg-btn-ghost" style={{ padding: "7px 12px" }} onClick={nextTrack} disabled={!currentTrack || tracks.length < 2}>⏭</button>
+              <button className="hbg-btn hbg-btn-ghost" style={{ padding: "7px 12px" }} onClick={() => void nextTrack()} disabled={!currentTrack || tracks.length < 2}>⏭</button>
               <button className="hbg-btn hbg-btn-ghost" style={{ padding: "7px 12px" }} onClick={() => currentId && toggleFav(currentId)}>
                 <span style={{ color: currentId && favorites.has(currentId) ? "#ffd740" : undefined }}>
                   {currentId && favorites.has(currentId) ? "★" : "☆"}
                 </span>
+              </button>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+              <button
+                className="hbg-btn hbg-btn-ghost"
+                aria-pressed={shuffleEnabled}
+                onClick={() => setShuffleEnabled((enabled) => !enabled)}
+                style={{ fontSize: 9, borderColor: shuffleEnabled ? mood.color : undefined, color: shuffleEnabled ? mood.color : undefined }}
+              >
+                🔀 ALEATORIO {shuffleEnabled ? "ON" : "OFF"}
+              </button>
+              <button
+                className="hbg-btn hbg-btn-ghost"
+                aria-pressed={repeatMode !== "off"}
+                onClick={() => setRepeatMode((mode) => mode === "off" ? "all" : mode === "all" ? "one" : "off")}
+                style={{ fontSize: 9, borderColor: repeatMode !== "off" ? mood.color : undefined, color: repeatMode !== "off" ? mood.color : undefined }}
+              >
+                {repeatMode === "off" ? "🔁 REPETIR OFF" : repeatMode === "all" ? "🔁 REPETIR TODO" : "🔂 REPETIR UNA"}
               </button>
             </div>
 
