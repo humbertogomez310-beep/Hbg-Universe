@@ -1,4 +1,4 @@
-import { hbgCore } from "../core/hbgCore";
+import { hbgCore } from "../core/hbgCore.ts";
 import type { VoiceAction } from "./intentParser";
 
 const MOOD_LABELS: Record<string, string> = {
