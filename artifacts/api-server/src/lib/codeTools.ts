@@ -57,7 +57,7 @@ const PROTECTED_FILES = new Set([
   "artifacts/api-server/src/app.ts",
   "artifacts/api-server/src/middlewares/authMiddleware.ts",
   "lib/db/src/schema/hbg.ts",
-]);
+].map((file) => file.toLowerCase()));
 
 function isProtectedEntryName(name: string): boolean {
   const normalized = name.toLowerCase();
@@ -93,7 +93,7 @@ function normalizedRelativePath(relativePath: string): string {
   const segments = portablePath.split("/");
   if (
     segments.some(isProtectedEntryName) ||
-    PROTECTED_FILES.has(portablePath) ||
+    PROTECTED_FILES.has(portablePath.toLowerCase()) ||
     !segments.every((segment) => /^[a-zA-Z0-9_.@-]+$/.test(segment))
   ) {
     throw new Error("Recurso protegido o ruta no permitida.");
