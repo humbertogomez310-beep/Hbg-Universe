@@ -199,3 +199,11 @@ export type HBGTerminadorAuthorization =
   typeof hbgTerminadorAuthorizations.$inferSelect;
 export type HBGPermissionGrant = typeof hbgPermissionGrants.$inferSelect;
 export type HBGApplication = typeof hbgApplications.$inferSelect;
+
+export const hbgSchemaMigrations = pgTable("hbg_schema_migrations", {
+  version: text("version").primaryKey(),
+  checksum: text("checksum").notNull(),
+  appliedAt: timestamp("applied_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
