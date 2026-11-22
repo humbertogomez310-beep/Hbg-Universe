@@ -30,6 +30,25 @@ test("Code Tools block traversal, protected files, symlink escapes, and unauthen
 
     await assert.rejects(inspectFile("../package.json"), /traversal/i);
     await assert.rejects(inspectFile(".env.local"), /protegido/i);
+    for (const protectedPath of [
+      ".npmrc",
+      ".pypirc",
+      ".netrc",
+      ".aws/credentials",
+      ".docker/config.json",
+      ".kube/config",
+      ".config/gh/hosts.yml",
+      "id_ed25519",
+      "service-account.json",
+      "terraform.tfstate",
+    ]) {
+      await assert.rejects(inspectFile(protectedPath), /protegido/i);
+    }
+    await assert.rejects(
+      writeWorkspaceFile(".npmrc", "tampered"),
+      /protegido/i,
+    );
+    await assert.rejects(deleteFile(".aws/credentials"), /protegido/i);
     await assert.rejects(
       inspectFile("artifacts/api-server/src/lib/terminadorAuthorization.ts"),
       /protegido/i,
