@@ -393,9 +393,10 @@ export function VibraModule() {
     audioRef.current = audio;
 
     let context: AudioContext | null = null;
+    let source: MediaElementAudioSourceNode | null = null;
     try {
       context = new AudioContext();
-      const source = context.createMediaElementSource(audio);
+      source = context.createMediaElementSource(audio);
       const filters = EQ_BANDS.map((band, index) => {
         const filter = context!.createBiquadFilter();
         filter.frequency.value = EQ_FREQUENCIES[index];
@@ -416,11 +417,23 @@ export function VibraModule() {
       equalizerFiltersRef.current = filters;
       setAudioAnalyser(analyser);
     } catch {
-      // Playback can still work without Web Audio support; EQ and spectrum are then unavailable.
-      if (context) void context.close().catch(() => undefined);
-      audioContextRef.current = null;
+      // If graph construction fails after creating the media source, reconnect it
+      // directly so the browser can still play audio without EQ or spectrum.
       equalizerFiltersRef.current = [];
       setAudioAnalyser(null);
+      if (context && source) {
+        try {
+          source.disconnect();
+          source.connect(context.destination);
+          audioContextRef.current = context;
+        } catch {
+          audioContextRef.current = null;
+          void context.close().catch(() => undefined);
+        }
+      } else {
+        audioContextRef.current = null;
+        if (context) void context.close().catch(() => undefined);
+      }
     }
 
     const onTimeUpdate = () => {
@@ -633,7 +646,7 @@ export function VibraModule() {
                   candidates.map((candidate) => candidate.id),
                   currentTrackId,
                   true,
-                  "off",
+                  repeatMode === "all" ? "all" : "off",
                   recentTrackIds,
                 ),
               )
