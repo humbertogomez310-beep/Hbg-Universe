@@ -142,6 +142,7 @@ const MOODS: { mode: MoodMode; label: string; color: string; bpm: [number, numbe
 ];
 
 const EQ_BANDS = ["60Hz", "170Hz", "310Hz", "600Hz", "1kHz", "3kHz", "6kHz", "12kHz", "14kHz", "16kHz"];
+const EQ_FREQUENCIES = [60, 170, 310, 600, 1000, 3000, 6000, 12000, 14000, 16000];
 
 function VisualizerBars({ active, color, analyser }: { active: boolean; color: string; analyser: AnalyserNode | null }) {
   const [heights, setHeights] = useState<number[]>(() => Array(24).fill(4));
@@ -383,7 +384,7 @@ export function VibraModule() {
       const source = context.createMediaElementSource(audio);
       const filters = EQ_BANDS.map((band, index) => {
         const filter = context!.createBiquadFilter();
-        filter.frequency.value = Number.parseInt(band, 10);
+        filter.frequency.value = EQ_FREQUENCIES[index];
         filter.type = index === 0 ? "lowshelf" : index === EQ_BANDS.length - 1 ? "highshelf" : "peaking";
         filter.Q.value = filter.type === "peaking" ? 1 : 0.7;
         filter.gain.value = ((eqValues[band] - 50) / 50) * 12;
@@ -484,8 +485,16 @@ export function VibraModule() {
       return;
     }
     if (audio.src && audio.src !== window.location.href) {
-      if (isPlaying) { audio.pause(); }
-      else { try { await audio.play(); } catch (e) { setError("No se pudo reproducir — intenta de nuevo"); } }
+      if (isPlaying) {
+        audio.pause();
+      } else {
+        try {
+          await audioContextRef.current?.resume();
+          await audio.play();
+        } catch {
+          setError("No se pudo reproducir — revisa el formato del audio o los permisos del navegador.");
+        }
+      }
     } else if (currentId) {
       await loadTrack(currentId, true);
     }
