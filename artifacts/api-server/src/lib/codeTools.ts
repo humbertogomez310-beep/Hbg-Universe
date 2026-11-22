@@ -30,7 +30,16 @@ function findWorkspaceRoot(startDirectory: string): string {
 const WORKSPACE_ROOT = findWorkspaceRoot(process.cwd());
 const MAX_READ_BYTES = 256 * 1024;
 const MAX_WRITE_BYTES = 1024 * 1024;
-const PROTECTED_SEGMENTS = new Set([".git", "node_modules", ".ssh"]);
+const PROTECTED_SEGMENTS = new Set([
+  ".git", "node_modules", ".ssh", ".aws", ".azure", ".docker", ".kube",
+  ".gnupg", ".pki", ".terraform", ".config", ".npm",
+]);
+const PROTECTED_FILE_NAMES = new Set([
+  ".npmrc", ".pypirc", ".netrc", ".git-credentials", "id_rsa",
+  "id_ed25519", "id_ecdsa", "credentials", "credentials.json",
+  "secrets.json", "secrets.yaml", "secrets.yml", "service-account.json",
+  "service-account-key.json",
+]);
 const PROTECTED_FILES = new Set([
   "artifacts/api-server/src/lib/hbgAuth.ts",
   "artifacts/api-server/src/lib/audit.ts",
@@ -49,6 +58,15 @@ const PROTECTED_FILES = new Set([
   "artifacts/api-server/src/middlewares/authMiddleware.ts",
   "lib/db/src/schema/hbg.ts",
 ]);
+
+function isProtectedEntryName(name: string): boolean {
+  return (
+    PROTECTED_SEGMENTS.has(name) ||
+    name.startsWith(".env") ||
+    PROTECTED_FILE_NAMES.has(name.toLowerCase()) ||
+    /\.(?:pem|key|secret|p12|pfx|jks|keystore|tfstate|tfstate\.backup)$/i.test(name)
+  );
+}
 
 function normalizedRelativePath(relativePath: string): string {
   if (
@@ -72,10 +90,7 @@ function normalizedRelativePath(relativePath: string): string {
 
   const segments = portablePath.split("/");
   if (
-    segments.some((segment) =>
-      PROTECTED_SEGMENTS.has(segment) || segment.startsWith(".env")
-    ) ||
-    /\.(?:pem|key|secret)$/i.test(portablePath) ||
+    segments.some(isProtectedEntryName) ||
     PROTECTED_FILES.has(portablePath) ||
     !segments.every((segment) => /^[a-zA-Z0-9_.@-]+$/.test(segment))
   ) {
@@ -206,8 +221,7 @@ export async function listFiles(relativePath = ".") {
   return entries
     .filter((entry) =>
       !entry.isSymbolicLink() &&
-      !PROTECTED_SEGMENTS.has(entry.name) &&
-      !entry.name.startsWith(".env")
+      !isProtectedEntryName(entry.name)
     )
     .slice(0, 500)
     .map((entry) => ({
