@@ -57,6 +57,7 @@ export function UniversoModule() {
     { from: "core", text: "HBG CORE está conectado al enrutador local. Puedo navegar módulos y ejecutar las acciones que estén registradas. No hay un modelo generativo externo configurado.", time: new Date().toLocaleTimeString("es-ES", { hour12: false, hour: "2-digit", minute: "2-digit" }) },
   ]);
   const [memory, setMemory] = useState<Record<string, unknown>>(() => hbgCore.getMemorySnapshot());
+  const [memoryPersistent, setMemoryPersistent] = useState(() => hbgCore.isMemoryPersistenceAvailable());
   const [registeredActions, setRegisteredActions] = useState<string[]>(() => hbgCore.getRegisteredActions());
   const [activeNode, setActiveNode] = useState<ModuleId>(() => hbgCore.getModule());
   const [memoryKey, setMemoryKey] = useState("");
@@ -82,6 +83,7 @@ export function UniversoModule() {
     hbgCore.init();
     const unsubscribeMemory = hbgCore.subscribeMemory(() => {
       setMemory(hbgCore.getMemorySnapshot());
+      setMemoryPersistent(hbgCore.isMemoryPersistenceAvailable());
       const savedMood = hbgCore.recall<MoodState>("core.mood");
       if (typeof savedMood === "string" && savedMood in MOOD_PROFILES) {
         setMood(savedMood);
@@ -90,6 +92,7 @@ export function UniversoModule() {
     const unsubscribeActions = hbgCore.subscribeActions(setRegisteredActions);
     const unsubscribeModule = hbgCore.subscribe(setActiveNode);
     setMemory(hbgCore.getMemorySnapshot());
+    setMemoryPersistent(hbgCore.isMemoryPersistenceAvailable());
     setRegisteredActions(hbgCore.getRegisteredActions());
     setActiveNode(hbgCore.getModule());
     return () => {
@@ -327,6 +330,11 @@ export function UniversoModule() {
       {view === "memoria" && (
         <div>
           <div className="section-title">// memory core — recuerdos locales reales</div>
+          <div role="status" className="hbg-card" style={{ marginBottom: 12, fontFamily: "var(--font-mono)", fontSize: 10, color: memoryPersistent ? "var(--neon-green)" : "var(--neon-pink)" }}>
+            {memoryPersistent
+              ? "Persistencia local disponible en este navegador."
+              : "Almacenamiento persistente no disponible; los recuerdos solo duran esta sesión."}
+          </div>
           <div className="hbg-card" style={{ marginBottom: 12 }}>
             <input
               className="hbg-input"
