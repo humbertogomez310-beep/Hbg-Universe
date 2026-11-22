@@ -22,26 +22,53 @@ export class HBGMemoryStore {
   private readonly values = new Map<string, unknown>();
   private readonly subscribers = new Set<HBGMemorySubscriber>();
   private initialized = false;
+  private persistenceAvailable = false;
 
   init(): void {
     if (this.initialized) return;
     this.initialized = true;
     const storage = browserStorage();
-    if (!storage) return;
+    if (!storage) {
+      this.persistenceAvailable = false;
+      return;
+    }
 
     try {
       const serialized = storage.getItem(MEMORY_KEY);
-      if (!serialized) return;
-      const parsed: unknown = JSON.parse(serialized);
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
-      Object.entries(parsed).forEach(([key, value]) => this.values.set(key, value));
+      if (serialized) {
+        const parsed: unknown = JSON.parse(serialized);
+        if (
+          typeof parsed !== "object" ||
+          parsed === null ||
+          Array.isArray(parsed)
+        ) {
+          this.persistenceAvailable = false;
+          return;
+        }
+        const entries = Object.entries(parsed);
+        if (
+          entries.length > 500 ||
+          entries.some(([key]) => !key.trim() || key.length > 100)
+        ) {
+          this.persistenceAvailable = false;
+          return;
+        }
+        entries.forEach(([key, value]) => this.values.set(key, value));
+      }
+      this.persistenceAvailable = true;
     } catch {
-      // Corrupt local memory must not prevent HBG CORE from mounting.
-      storage.removeItem(MEMORY_KEY);
+      // Keep malformed or inaccessible storage untouched; memory remains session-local.
+      this.persistenceAvailable = false;
     }
   }
 
   remember(key: string, value: unknown): void {
+    if (!key.trim() || key.length > 100) {
+      throw new HBGError(
+        "MEMORY_SERIALIZATION_FAILED",
+        "La clave de memoria debe tener entre 1 y 100 caracteres.",
+      );
+    }
     try {
       JSON.stringify(value);
     } catch (error) {
@@ -53,7 +80,7 @@ export class HBGMemoryStore {
     }
 
     this.values.set(key, value);
-    this.persist();
+    this.persistenceAvailable = this.persist();
     this.notify(key, value);
   }
 
@@ -64,7 +91,7 @@ export class HBGMemoryStore {
   forget(key: string): boolean {
     const deleted = this.values.delete(key);
     if (!deleted) return false;
-    this.persist();
+    this.persistenceAvailable = this.persist();
     this.notify(key, undefined);
     return true;
   }
@@ -72,7 +99,7 @@ export class HBGMemoryStore {
   clear(): void {
     const keys = [...this.values.keys()];
     this.values.clear();
-    this.persist();
+    this.persistenceAvailable = this.persist();
     keys.forEach((key) => this.notify(key, undefined));
   }
 
@@ -85,13 +112,18 @@ export class HBGMemoryStore {
     return () => this.subscribers.delete(subscriber);
   }
 
-  private persist(): void {
+  isPersistenceAvailable(): boolean {
+    return this.persistenceAvailable;
+  }
+
+  private persist(): boolean {
     const storage = browserStorage();
-    if (!storage) return;
+    if (!storage) return false;
     try {
       storage.setItem(MEMORY_KEY, JSON.stringify(this.snapshot()));
+      return true;
     } catch {
-      // Memory is an enhancement; a storage quota failure must not break actions.
+      return false;
     }
   }
 
