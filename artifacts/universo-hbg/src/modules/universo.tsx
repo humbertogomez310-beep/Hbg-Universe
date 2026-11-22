@@ -81,6 +81,10 @@ export function UniversoModule() {
 
   useEffect(() => {
     hbgCore.init();
+    const initialMood = hbgCore.recall<MoodState>("core.mood");
+    if (typeof initialMood === "string" && initialMood in MOOD_PROFILES) {
+      setMood(initialMood);
+    }
     const unsubscribeMemory = hbgCore.subscribeMemory(() => {
       setMemory(hbgCore.getMemorySnapshot());
       setMemoryPersistent(hbgCore.isMemoryPersistenceAvailable());
