@@ -71,6 +71,8 @@ function requestForVoiceAction(action: VoiceAction): {
       throw new TerminadorTaskBlockedError("La intención musical no es ejecutable.");
     case "NOW_PLAYING":
       throw new TerminadorTaskBlockedError("La consulta del estado musical no requiere un despacho.");
+    default:
+      throw new TerminadorTaskBlockedError("El tipo de acción de voz no está soportado.");
   }
 }
 
