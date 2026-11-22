@@ -152,10 +152,9 @@ router.delete(
     }
 
     try {
-      const grant = await revokePermissionGrant(
-        context,
-        req.params.grantId,
-      );
+      const grantId =
+        typeof req.params.grantId === "string" ? req.params.grantId : "";
+      const grant = await revokePermissionGrant(context, grantId);
 
       res.json({
         success: true,
