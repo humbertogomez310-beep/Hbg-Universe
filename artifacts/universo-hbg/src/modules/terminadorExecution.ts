@@ -1,18 +1,18 @@
-import { hbgCore } from "../core/hbgCore";
+import { hbgCore } from "../core/hbgCore.ts";
 import type { HBGActionName, HBGActionResult } from "../core/types";
 import type { VoiceAction } from "../voice/intentParser";
 import {
   executeTerminadorRequest,
   type TerminadorApiRequest,
-} from "./terminadorRequest";
+} from "./terminadorRequest.ts";
 import {
   executeTerminadorPlan,
   musicActionNameForPlan,
   TerminadorTaskBlockedError,
   type TerminadorPlan,
   type TerminadorTask,
-} from "./terminadorPlanner";
-import { TerminadorMemory } from "./terminadorMemory";
+} from "./terminadorPlanner.ts";
+import { TerminadorMemory } from "./terminadorMemory.ts";
 
 type TerminadorCore = Pick<
   typeof hbgCore,
