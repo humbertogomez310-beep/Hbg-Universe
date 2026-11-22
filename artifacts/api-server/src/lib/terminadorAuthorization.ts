@@ -71,7 +71,7 @@ function stableJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
-function proposalDigest(input: {
+export function proposalDigest(input: {
   id: string;
   ownerUserId: string;
   sessionTokenHash: string;
