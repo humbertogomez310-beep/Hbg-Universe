@@ -95,16 +95,19 @@ test("PWA activation removes only old HBG shell caches", async () => {
 });
 
 test("PWA serves the cached app shell for offline navigation but never intercepts API requests", async () => {
+  let online = true;
   const harness = createWorkerHarness(async (request) => {
     if (String(request) === "/") {
       return new Response("<main>HBG shell</main>", { status: 200 });
     }
+    if (!online) throw new Error("offline");
     return new Response("asset", { status: 200 });
   });
 
   let installPromise;
   harness.listeners.get("install")({ waitUntil(promise) { installPromise = promise; } });
   await installPromise;
+  online = false;
 
   let navigationResponse;
   const navigationRequest = {
