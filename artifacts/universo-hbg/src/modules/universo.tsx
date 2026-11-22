@@ -357,7 +357,7 @@ export function UniversoModule() {
                 <div key={key} className="hbg-card" style={{ padding: "12px 16px", borderColor: `${MEMORY_COLORS[index % MEMORY_COLORS.length]}20` }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                     <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>{key}</span>
-                    <button className="hbg-btn hbg-btn-danger" style={{ padding: "3px 7px", fontSize: 8 }} onClick={() => hbgCore.forget(key)}>OLVIDAR</button>
+                    <button className="hbg-btn hbg-btn-danger" style={{ padding: "3px 7px", fontSize: 8 }} onClick={() => hbgCore.forgetMemory(key)}>OLVIDAR</button>
                   </div>
                   <div style={{ fontFamily: "var(--font-ui)", fontSize: 13, color: MEMORY_COLORS[index % MEMORY_COLORS.length], marginTop: 4, overflowWrap: "anywhere" }}>
                     {typeof value === "string" ? value : JSON.stringify(value)}
