@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { hbgCore, MODULES, type ModuleId } from "../core/hbgCore";
 import { UniversoScreen } from "../components/UniversoScreen";
+import { parseIntent } from "../voice/intentParser";
+import { executeVoiceAction } from "../voice/actionExecutor";
 
 type ViewMode = "core" | "memoria" | "mood" | "recomendaciones" | "nodos" | "sincronizacion" | "universo";
 
@@ -12,12 +14,6 @@ interface ChatMessage {
   time: string;
 }
 
-interface MemoryEntry {
-  key: string;
-  value: string;
-  color: string;
-  updatedAt: string;
-}
 
 const MOOD_PROFILES: Record<MoodState, { label: string; color: string; icon: string; bpm: string; palette: string }> = {
   relajado: { label: "RELAJADO", color: "var(--neon-green)", icon: "◉", bpm: "50–75", palette: "verde frío" },
@@ -29,134 +25,210 @@ const MOOD_PROFILES: Record<MoodState, { label: string; color: string; icon: str
   neutral: { label: "NEUTRAL", color: "var(--neon-purple)", icon: "◆", bpm: "90–120", palette: "purpura equilibrado" },
 };
 
-const CORE_RESPONSES: Record<string, string[]> = {
-  hola: ["Hola. Estoy aquí, siempre activo.", "Bienvenido de nuevo al universo HBG.", "Sistema en línea. ¿Cómo estás hoy?"],
-  música: ["Puedo pedirle a Vibra Pro que cambie el modo de reproducción. ¿Qué ánimo tienes?", "¿Quieres que active el Mood Engine de Vibra Pro?", "Recuerdo que la última vez preferiste tracks de 85-90 BPM para este momento del día."],
-  nota: ["Instinto está listo para recibir tus ideas. ¿Abrimos el bloc?", "Recuerdo 2 proyectos activos en Instinto. ¿Continuamos con La Voz del Lobo?", "¿Quieres que active el modo inspiración?"],
-  sistema: ["El sistema está operando al 87% de salud. El sistema reporta todo estable.", "No hay errores críticos registrados en las últimas 24h.", "Todos los módulos están conectados y respondiendo."],
-  modo: ["¿Qué modo prefieres? Puedo coordinar Vibra y cambiar el ambiente visual de Instinto.", "Activo modo enfoque: Vibra cambiará a 60–90 BPM y Instinto a tema azul.", "¿Modo fiesta o modo trabajo profundo?"],
-  default: [
-    "Entiendo. Procesa eso y dime qué necesitas.",
-    "Memoria registrada. ¿Hay algo más en lo que pueda ayudarte?",
-    "Interesante. Guardo eso en el historial del ecosistema.",
-    "Recibido. Los módulos están atentos a tus cambios de estado.",
-    "El universo HBG está escuchando.",
-  ],
+const MOOD_TO_MUSIC: Record<MoodState, string> = {
+  relajado: "chill",
+  feliz: "happy",
+  nostalgico: "nostalgia",
+  triste: "sad",
+  energia: "party",
+  enfocado: "focus",
+  neutral: "normal",
 };
 
-function getCoreResponse(input: string): string {
-  const lower = input.toLowerCase();
-  if (lower.includes("hola") || lower.includes("hey") || lower.includes("buenas")) {
-    const arr = CORE_RESPONSES.hola;
-    return arr[Math.floor(Math.random() * arr.length)];
-  }
-  if (lower.includes("músi") || lower.includes("vibra") || lower.includes("canción") || lower.includes("song")) {
-    const arr = CORE_RESPONSES.música;
-    return arr[Math.floor(Math.random() * arr.length)];
-  }
-  if (lower.includes("nota") || lower.includes("instinto") || lower.includes("letra") || lower.includes("idea")) {
-    const arr = CORE_RESPONSES.nota;
-    return arr[Math.floor(Math.random() * arr.length)];
-  }
-  if (lower.includes("sistema") || lower.includes("terminador") || lower.includes("salud")) {
-    const arr = CORE_RESPONSES.sistema;
-    return arr[Math.floor(Math.random() * arr.length)];
-  }
-  if (lower.includes("modo") || lower.includes("fiest") || lower.includes("enfoque") || lower.includes("relaj")) {
-    const arr = CORE_RESPONSES.modo;
-    return arr[Math.floor(Math.random() * arr.length)];
-  }
-  const arr = CORE_RESPONSES.default;
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
-const RECOMMENDATIONS = [
-  { type: "Canción", text: "Deep Neural Flow — coincide con tu mood actual (Enfocado, 85 BPM)", icon: "♫", color: "var(--neon-pink)" },
-  { type: "Proyecto", text: "Continúa con 'La Voz del Lobo' — lleva 3 días sin actualización", icon: "⬡", color: "var(--neon-cyan)" },
-  { type: "Modo", text: "Activa Modo Focus en Vibra — son las 17:39, hora de alta productividad", icon: "◎", color: "var(--neon-green)" },
-  { type: "Memoria", text: "Tu patrón creativo es más alto los lunes y miércoles por la tarde", icon: "◈", color: "var(--neon-purple)" },
+const MEMORY_COLORS = [
+  "var(--neon-purple)",
+  "var(--neon-cyan)",
+  "var(--neon-pink)",
+  "var(--neon-green)",
+  "#ff9100",
 ];
-
-const DEFAULT_MEMORY: MemoryEntry[] = [
-  { key: "estado_emocional", value: "Neutral", color: "var(--neon-purple)", updatedAt: "Hace 10min" },
-  { key: "modo_favorito", value: "Enfocado", color: "var(--neon-cyan)", updatedAt: "Ayer" },
-  { key: "cancion_favorita", value: "Deep Neural Flow", color: "var(--neon-pink)", updatedAt: "Hace 2h" },
-  { key: "proyecto_activo", value: "La Voz del Lobo", color: "var(--neon-cyan)", updatedAt: "Hace 3 días" },
-  { key: "hora_pico_creativo", value: "17:00–20:00", color: "#ff9100", updatedAt: "Esta semana" },
-  { key: "genero_favorito", value: "Lofi / Indie", color: "var(--neon-green)", updatedAt: "Siempre" },
-];
-
-const NODE_STATES: Record<ModuleId, { connected: boolean; latency: number }> = {
-  universo: { connected: true, latency: 0 },
-  instinto: { connected: true, latency: 12 },
-  vibra: { connected: true, latency: 8 },
-  terminador: { connected: true, latency: 23 },
-};
 
 export function UniversoModule() {
   const [view, setView] = useState<ViewMode>("core");
-  const [mood, setMood] = useState<MoodState>("enfocado");
+  const [mood, setMood] = useState<MoodState>(() => {
+    const saved = hbgCore.recall<MoodState>("core.mood");
+    return saved && saved in MOOD_PROFILES ? saved : "enfocado";
+  });
   const [chatInput, setChatInput] = useState("");
+  const [processing, setProcessing] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { from: "core", text: "Sistema HBG CORE activo. Todos los módulos conectados. ¿En qué puedo ayudarte hoy?", time: new Date().toLocaleTimeString("es-ES", { hour12: false, hour: "2-digit", minute: "2-digit" }) },
+    { from: "core", text: "HBG CORE está conectado al enrutador local. Puedo navegar módulos y ejecutar las acciones que estén registradas. No hay un modelo generativo externo configurado.", time: new Date().toLocaleTimeString("es-ES", { hour12: false, hour: "2-digit", minute: "2-digit" }) },
   ]);
-  const [nodes, setNodes] = useState(NODE_STATES);
-  const [token, setToken] = useState<string | null>(null);
+  const [memory, setMemory] = useState<Record<string, unknown>>(() => hbgCore.getMemorySnapshot());
+  const [registeredActions, setRegisteredActions] = useState<string[]>(() => hbgCore.getRegisteredActions());
+  const [activeNode, setActiveNode] = useState<ModuleId>(() => hbgCore.getModule());
+  const [memoryKey, setMemoryKey] = useState("");
+  const [memoryValue, setMemoryValue] = useState("");
   const [syncMsg, setSyncMsg] = useState("");
-  const [memory] = useState<MemoryEntry[]>(DEFAULT_MEMORY);
-  const [voiceActive, setVoiceActive] = useState(false);
+  const memoryFileRef = useRef<HTMLInputElement>(null);
   const chatRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const moodProfile = MOOD_PROFILES[mood];
+  const memoryEntries = Object.entries(memory);
+  const recommendations = [
+    { type: "CAPACIDADES", text: `${registeredActions.length} acciones locales están registradas en este momento.`, icon: "◎", color: "var(--neon-cyan)" },
+    { type: "MEMORIA", text: `${memoryEntries.length} recuerdos están guardados en HBG CORE.`, icon: "◈", color: "var(--neon-purple)" },
+    { type: "MÓDULO ACTIVO", text: `${hbgCore.getModuleConfig(activeNode).label} es el módulo seleccionado.`, icon: "⬡", color: "var(--neon-green)" },
+  ];
 
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
   }, [messages]);
 
   useEffect(() => {
-    const id = setInterval(() => {
-      setNodes((prev) => {
-        const next = { ...prev };
-        (Object.keys(next) as ModuleId[]).forEach((k) => {
-          if (k !== "universo") next[k] = { ...next[k], latency: Math.max(1, next[k].latency + Math.round((Math.random() - 0.45) * 4)) };
-        });
-        return next;
-      });
-    }, 2500);
-    return () => clearInterval(id);
+    hbgCore.init();
+    const unsubscribeMemory = hbgCore.subscribeMemory(() => {
+      setMemory(hbgCore.getMemorySnapshot());
+    });
+    const unsubscribeActions = hbgCore.subscribeActions(setRegisteredActions);
+    const unsubscribeModule = hbgCore.subscribe(setActiveNode);
+    setMemory(hbgCore.getMemorySnapshot());
+    setRegisteredActions(hbgCore.getRegisteredActions());
+    setActiveNode(hbgCore.getModule());
+    return () => {
+      unsubscribeMemory();
+      unsubscribeActions();
+      unsubscribeModule();
+    };
   }, []);
 
   const sendMessage = (text?: string) => {
     const input = text ?? chatInput.trim();
-    if (!input) return;
-    const t = new Date().toLocaleTimeString("es-ES", { hour12: false, hour: "2-digit", minute: "2-digit" });
-    setMessages((prev) => [...prev, { from: "user", text: input, time: t }]);
+    if (!input || processing) return;
+    const time = new Date().toLocaleTimeString("es-ES", { hour12: false, hour: "2-digit", minute: "2-digit" });
+    setMessages((prev) => [...prev, { from: "user", text: input, time }]);
     setChatInput("");
-    setTimeout(() => {
-      const resp = getCoreResponse(input);
-      setMessages((prev) => [...prev, { from: "core", text: resp, time: new Date().toLocaleTimeString("es-ES", { hour12: false, hour: "2-digit", minute: "2-digit" }) }]);
-    }, 700 + Math.random() * 400);
+    setProcessing(true);
+
+    void (async () => {
+      let response = "";
+      try {
+        const action = parseIntent(input);
+        switch (action.type) {
+          case "GREETING":
+            response = "Hola. Estoy listo para navegar el Universo HBG y ejecutar las capacidades locales conectadas.";
+            break;
+          case "CAPABILITIES":
+            response = `Módulos: ${MODULES.map((module) => module.label).join(", ")}. Acciones registradas ahora: ${registeredActions.length ? registeredActions.join(", ") : "ninguna"}.`;
+            break;
+          case "APP_INFO": {
+            const module = hbgCore.getModuleConfig(action.module);
+            response = `${module.label}: ${module.description}.`;
+            break;
+          }
+          case "NAVIGATE":
+            response = `Abriendo ${hbgCore.getModuleConfig(action.module).label}.`;
+            break;
+          case "CREATE_SONG":
+            response = `Abriendo INSTINTO. La letra "${action.title}" no se ha creado todavía; entra en LETRAS para crearla y guardarla.`;
+            break;
+          case "BLOCKED_DEVELOPMENT":
+            response = "Esa operación requiere una sesión de desarrollo autorizada. El chat de uso normal no puede modificar código, permisos ni despliegues.";
+            break;
+          case "UNKNOWN":
+            response = "No tengo un modelo generativo conectado. Puedo interpretar comandos compatibles, mostrar capacidades y ejecutar acciones registradas; prueba «capacidades», «abre Instinto», «pausa» o «activa modo fiesta».";
+            break;
+          default:
+            if (action.type === "SET_MOOD") {
+              const matched = (Object.entries(MOOD_TO_MUSIC) as [MoodState, string][]).find(([, value]) => value === action.mood)?.[0];
+              if (matched) {
+                setMood(matched);
+                hbgCore.remember("core.mood", matched);
+              }
+            }
+            response = await executeVoiceAction(action);
+        }
+      } catch (cause) {
+        response = cause instanceof Error ? cause.message : "No se pudo procesar la solicitud.";
+      }
+
+      const responseTime = new Date().toLocaleTimeString("es-ES", { hour12: false, hour: "2-digit", minute: "2-digit" });
+      setMessages((prev) => [...prev, { from: "core", text: response, time: responseTime }]);
+      setProcessing(false);
+
+      if (actionShouldNavigate(input)) {
+        const action = parseIntent(input);
+        if (action.type === "NAVIGATE") hbgCore.setModule(action.module);
+        if (action.type === "CREATE_SONG") hbgCore.setModule("instinto");
+      }
+    })();
   };
 
-  const generateToken = () => {
-    const t = "HBG-" + Math.random().toString(36).substring(2, 10).toUpperCase();
-    setToken(t); setSyncMsg("Token generado — comparte para vincular dispositivo");
-    setTimeout(() => setSyncMsg(""), 4000);
+  const saveMemory = () => {
+    const key = memoryKey.trim();
+    const value = memoryValue.trim();
+    if (!key || !value || key.length > 100) return;
+    hbgCore.remember(key, value);
+    setMemoryKey("");
+    setMemoryValue("");
   };
 
-  const exportUniverse = () => {
-    const data = { version: "1.0.0", timestamp: new Date().toISOString(), preferences: { estado_emocional: mood, tema: "cyberpunk" }, modulos_instalados: ["universo", "instinto", "vibra"], historial: { notas: 3, canciones: 6, proyectos: 2 } };
+  const exportCoreBackup = () => {
+    const data = {
+      format: "hbg-core-memory-v1",
+      exportedAt: new Date().toISOString(),
+      activeModule: hbgCore.getModule(),
+      memory: hbgCore.getMemorySnapshot(),
+    };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = "universo_hbg.json"; a.click();
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "hbg-core-memory.json";
+    anchor.click();
     URL.revokeObjectURL(url);
-    setSyncMsg("universo_hbg.json exportado");
-    setTimeout(() => setSyncMsg(""), 4000);
+    setSyncMsg("Respaldo de memoria HBG CORE exportado.");
   };
 
-  const QUICK_CMDS = ["reproduce música relajante", "abre Instinto", "¿cómo está el sistema?", "activa modo fiesta"];
+  const restoreCoreBackup = async (file?: File) => {
+    if (!file) return;
+    try {
+      const parsed: unknown = JSON.parse(await file.text());
+      if (
+        typeof parsed !== "object" ||
+        parsed === null ||
+        Array.isArray(parsed) ||
+        !("format" in parsed) ||
+        parsed.format !== "hbg-core-memory-v1" ||
+        !("memory" in parsed) ||
+        typeof parsed.memory !== "object" ||
+        parsed.memory === null ||
+        Array.isArray(parsed.memory)
+      ) {
+        throw new Error("El archivo no es un respaldo válido de HBG CORE.");
+      }
+      const entries = Object.entries(parsed.memory);
+      if (entries.length > 500 || entries.some(([key]) => !key.trim() || key.length > 100)) {
+        throw new Error("El respaldo supera los límites permitidos.");
+      }
+      if (!window.confirm("¿Reemplazar la memoria local de HBG CORE con este respaldo?")) return;
+      hbgCore.clearMemory();
+      entries.forEach(([key, value]) => hbgCore.remember(key, value));
+      setSyncMsg(`Memoria restaurada: ${entries.length} registros.`);
+    } catch (cause) {
+      setSyncMsg(cause instanceof Error ? cause.message : "No se pudo restaurar la memoria.");
+    } finally {
+      if (memoryFileRef.current) memoryFileRef.current.value = "";
+    }
+  };
+
+  const applyMood = async (nextMood: MoodState) => {
+    setMood(nextMood);
+    hbgCore.remember("core.mood", nextMood);
+    const result = await hbgCore.dispatchAction(
+      "music.mood",
+      { mode: MOOD_TO_MUSIC[nextMood] },
+      { timeoutMs: 3000 },
+    );
+    setSyncMsg(
+      result.success
+        ? `Modo ${MOOD_PROFILES[nextMood].label} aplicado en VIBRA.`
+        : `Modo guardado en CORE; VIBRA no confirmó el cambio: ${result.error ?? "sin respuesta"}.`,
+    );
+  };
+
+  const QUICK_CMDS = ["reproduce música relajante", "abre Instinto", "capacidades", "activa modo fiesta"];
 
   const NAV_ITEMS: { id: ViewMode; label: string; icon: string }[] = [
     { id: "core", label: "CORE IA", icon: "◈" },
