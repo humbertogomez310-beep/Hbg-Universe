@@ -1,9 +1,9 @@
 # Universo HBG — checkpoint de continuidad
 Fecha: 2026-11-22
 Rama de trabajo: `replit-agent`
-HEAD validado de este checkpoint: `39cef0cc42f0678efb9ae04ba0278f1142c6cb77`
+HEAD validado de este checkpoint: `38d8fc44d7b361bc671b97db8e103ccbfd05e346`
 Base de esta tanda: `6ec70948e69e5b2e82f92564e0fd317484dc9b24`
-Avance desde esa base: 117 commits confirmados en GitHub.
+Avance desde esa base: 140 commits confirmados en GitHub.
 
 ## Orden de trabajo que permanece vigente
 - GitHub es la fuente única de desarrollo y finalización. No adaptar la aplicación a las limitaciones del workspace de Replit.
@@ -49,27 +49,38 @@ Avance desde esa base: 117 commits confirmados en GitHub.
 - Manifest y service worker incluidos en validaciones CI.
 - Pruebas de comportamiento del service worker: precarga del shell/manifest/assets, limpieza selectiva de cachés HBG, fallback offline de navegación y exclusión de endpoints API. Los tests modelan Cache API y fetch; no sustituyen la prueba en navegador/dispositivo real.
 
+### Persistencia PostgreSQL y HBG Core conversacional
+- Migración inicial versionada `lib/db/migrations/0001_hbg_core.sql` para las siete tablas HBG (usuarios, sesiones, sesiones de desarrollo, auditoría, autorizaciones TERMINADOR, concesiones de permisos y registro de aplicaciones).
+- Runner `lib/db/migrate.mjs` con transacción por migración, bloqueo advisory, checksum SHA-256 inmutable y tabla de versiones. El comando de workspace es `pnpm --filter @workspace/db migrate`.
+- CI ya no usa `drizzle push` para provisionar su base temporal: aplica la migración versionada dos veces, comprobando aplicación e idempotencia.
+- HBG Core cuenta con integración opcional y del lado del servidor con OpenAI Responses API. Usa `OPENAI_API_KEY` solo como secreto del servidor y `OPENAI_MODEL` opcional (default `gpt-6.2-astra`); limita mensajes y contexto, fija `store: false`, no declara tools y no puede ejecutar acciones. Sin clave, Core conserva su modo local.
+- Nuevas rutas autenticadas `/api/core/status` y `/api/core/chat`, con límite temporal por usuario, validación estricta de mensajes y manejo seguro de errores del proveedor.
+- Registry de aplicaciones: seed idempotente al iniciar API, sin sobrescribir estados existentes; HBG Core, HBG Authority y TERMINADOR se protegen como aplicaciones críticas. Se añadieron pruebas de seed y protección.
+- La configuración del proveedor remoto es opcional: el chat no estará habilitado hasta configurar la variable secreta en el deployment. No se ha creado ni compartido ninguna clave API.
+- La migración inicial crea tablas ausentes, pero no repara columnas/constraints de tablas preexistentes; una DB ya existente requiere inspección y reconciliación antes de aplicarla.
+
 ## Estado de verificación al guardar este checkpoint
-- HEAD validado: `39cef0cc42f0678efb9ae04ba0278f1142c6cb77`.
-- GitHub Actions run `45069214416` terminó `success` sobre exactamente ese HEAD.
-- Node.js 24: instalación congelada, PostgreSQL 16 aislado y provisionamiento de schema correctos.
-- Tests API: aprobados, incluidas pruebas de protección de rutas de credenciales, secretos y archivos críticos.
-- Tests de aplicación Universo HBG: aprobados, incluidos tests de integración del ejecutor global de voz y comportamiento offline del service worker.
+- HEAD validado: `38d8fc44d7b361bc671b97db8e103ccbfd05e346`.
+- GitHub Actions run `45069804352` terminó `success` sobre exactamente ese HEAD.
+- Node.js 24: instalación congelada, PostgreSQL 16 aislado y migración de schema versionada aplicada dos veces correctamente.
+- Tests API: aprobados, incluidos Authority/Code Tools, permisos de ruta exacta, TERMINADOR, proveedor remoto de Core y bootstrap/protección del registry.
+- Tests de aplicación Universo HBG: aprobados, incluidos INSTINTO, VIBRA, voz, memoria y PWA/offline.
 - Typecheck del workspace: aprobado.
 - Build de producción del workspace: aprobado.
 - Validación sintáctica de service worker, manifest y script post-merge: aprobada.
-- El primer intento de esta revisión detectó una aserción desactualizada en el test de listado de Code Tools; se corrigió para aceptar la carpeta interna válida `safe`, manteniendo las pruebas que rechazan symlinks y rutas protegidas. La suite posterior pasó.
-- Esta CI usa una base PostgreSQL temporal; no demuestra que la base de datos de producción esté provisionada ni migrada.
+- La CI valida una base PostgreSQL temporal; no demuestra que la base de datos de producción esté provisionada, que la migración sea compatible con su estado actual ni que exista el registro OWNER esperado.
+- El proveedor remoto de HBG Core es opcional y no está activo hasta que el deployment tenga `OPENAI_API_KEY` configurada.
 - No se ha ejecutado una prueba integral de producción en el deployment de Replit.
 - No declarar la publicación verificada basándose únicamente en el build de GitHub.
+- El repositorio sigue sin estar listo para declarar publicación: falta inspección/reconciliación de DB real, verificar secretos y OWNER, incorporar el commit validado en Replit y hacer smoke tests del deployment.
 
 ## Siguientes pasos obligatorios
-1. Esperar y revisar el resultado de CI del HEAD actual; abrir logs de jobs si falla y corregir causas reales.
-2. Revisar específicamente los contratos de grants y guards en cada operación Code Tools, incluidos límites de ruta, TOCTOU/symlinks y auditoría.
-3. Confirmar que los scripts de pruebas cubren Authority, Code Tools, Terminador, Core/memoria, INSTINTO, VIBRA y voz; ampliar pruebas negativas de autorización.
-4. Revisar coherencia entre migraciones/schema Drizzle y las tablas exigidas por health check; no ejecutar cambios destructivos sobre una DB real.
-5. Completar las brechas funcionales restantes de UI/API y persistencia, sin inventar capacidades ni reemplazar módulos existentes.
-6. Ejecutar CI después de cada corrección sustantiva y lograr un CI verde sobre el HEAD de entrega.
-7. Crear punto de recuperación final; solo entonces incorporar en Replit, verificar variables, DB/schema, URL/API, autenticación y flujos reales, y conservar posibilidad de rollback.
+1. Revisar con el propietario el estado real de PostgreSQL del deployment existente, hacer respaldo y comparar tablas/columnas/constraints con el schema Drizzle y la migración inicial; no aplicar la migración a ciegas sobre una DB preexistente.
+2. Confirmar la existencia de la identidad OWNER original y la disponibilidad de `HBG_OWNER_SECRET` sin exponer secretos; no crear ni sustituir identidades OWNER.
+3. Hacer revisión final de la integración remota de Core, costos/límites del proveedor y experiencia cuando la clave no esté configurada; probar con una clave configurada solo durante la verificación del deployment.
+4. Completar las brechas funcionales restantes de UI/API y persistencia, sin inventar capacidades ni reemplazar módulos existentes. Mantener deshabilitada la ejecución de scripts hasta disponer de aislamiento real.
+5. Ejecutar CI sobre el HEAD final y conservar el resultado verde exacto.
+6. Crear tag/punto de recuperación final y registrar el commit validado.
+7. Solo entonces incorporar en Replit, configurar variables y DB/schema, publicar y ejecutar smoke tests de `/api/healthz`, login OWNER, sesión de desarrollo, guards, chat de Core (si se configura), Registry, módulos, voz y PWA en navegador/dispositivo. Conservar el deployment anterior para rollback.
 
 Este archivo es un checkpoint de continuidad, no una declaración de finalización ni de publicación.
