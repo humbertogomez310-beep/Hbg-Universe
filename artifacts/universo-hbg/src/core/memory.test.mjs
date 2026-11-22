@@ -53,6 +53,7 @@ test("HBG memory remains usable but reports session-only mode when storage is bl
     memory.remember("session.note", "still available");
     assert.equal(memory.recall("session.note"), "still available");
     assert.equal(memory.isPersistenceAvailable(), false);
+    assert.throws(() => memory.remember("invalid", undefined), /No se pudo guardar memoria/);
   });
 });
 
