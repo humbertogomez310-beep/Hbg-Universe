@@ -1,45 +1,75 @@
-# [Project name]
+# Universo HBG
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Ecosistema web instalable que integra HBG CORE, INSTINTO, VIBRA PRO y TERMINADOR IA, con una capa de autoridad y auditoría del lado del servidor.
 
-## Run & Operate
+## Ejecutar y operar
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- Instalar dependencias: `pnpm install --frozen-lockfile`
+- Frontend: `PORT=22538 pnpm --filter @workspace/universo-hbg run dev`
+- API: `PORT=8080 pnpm --filter @workspace/api-server run dev`
+- Verificar tipos: `pnpm typecheck`
+- Ejecutar pruebas API: `pnpm --filter @workspace/api-server test`
+- Ejecutar pruebas frontend: `pnpm --filter @workspace/universo-hbg test`
+- Compilar todo: `pnpm build`
+- Consultar estado de API y esquema: `GET /api/healthz`
 
-## Stack
+Requisitos: Node.js 24, pnpm 10 y PostgreSQL cuando se ejecuta la API.
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+## Fuente de verdad y estructura
 
-## Where things live
+- `artifacts/universo-hbg`: aplicación web principal y PWA.
+- `artifacts/api-server`: API, autenticación, HBG Authority, permisos, auditoría, registry y TERMINADOR.
+- `lib/db/src/schema/hbg.ts`: esquema PostgreSQL de HBG.
+- `artifacts/universo-hbg/src/core`: HBG CORE, contexto, memoria y enrutador de acciones.
+- `artifacts/universo-hbg/src/modules`: módulos de producto.
+- `artifacts/universo-hbg/src/voice`: interpretación local y ejecución de comandos compatibles.
+- `.github/workflows/hbg-universe-ci.yml`: pruebas, typecheck y build de integración continua.
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+La rama de trabajo oficial es `replit-agent`. GitHub es la fuente de desarrollo; Replit se utiliza después para incorporar, publicar y verificar el deployment.
 
-## Architecture decisions
+## Autoridad y seguridad
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Roles: `owner`, `user` y `system`.
+- El modo desarrollo requiere identidad OWNER autenticada y sesión de desarrollo activa.
+- Las herramientas de inspección y modificación se validan en el servidor.
+- Cada escritura o eliminación requiere una concesión individual para la ruta exacta; la concesión expira como máximo a los 15 minutos.
+- Los campos de autoridad enviados por el cliente se rechazan. La intención o el texto de un comando nunca otorgan permisos.
+- Las operaciones sensibles generan auditoría. Si la auditoría previa no está disponible, la operación se bloquea.
+- La ejecución de scripts y comandos de shell permanece deshabilitada; no debe activarse sin un entorno aislado y pruebas específicas.
+- TERMINADOR exige propuesta, aprobación del OWNER y ejecución explícita. Su operación actual cambia únicamente el estado del registro de aplicaciones; no detiene procesos ni deployments.
 
-## Product
+No modificar las protecciones de HBG Authority para facilitar una función. La IA interpreta y propone; el servidor decide y valida permisos.
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+## Capacidades actuales
 
-## User preferences
+- HBG CORE: navegación de módulos, comandos locales compatibles, despacho de acciones registradas, memoria local y respaldo JSON. No hay un proveedor generativo remoto configurado por defecto; los mensajes no reconocidos no se presentan como respuestas de IA.
+- INSTINTO: notas, letras y proyectos con persistencia local del navegador.
+- VIBRA PRO: biblioteca local, reproducción de audio, playlists, controles de reproducción, aleatorio, repetición, volumen y preferencias persistidas.
+- TERMINADOR IA: interpretación local, planificación, memoria local, lectura del registro, propuestas y ejecución autorizada de cambios del registro.
+- PWA: shell y recursos estáticos se almacenan en caché después de la primera carga. Las rutas API y respuestas dinámicas no se cachean. La disponibilidad offline depende de los recursos que el dispositivo ya haya descargado.
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+## Variables y preparación de producción
 
-## Gotchas
+- `DATABASE_URL`: conexión PostgreSQL obligatoria para la API.
+- `HBG_OWNER_SECRET` (o el nombre heredado `HBG_OWNER_TOKEN`): credencial bootstrap del OWNER, de al menos 16 caracteres.
+- El login recupera únicamente el registro OWNER existente; no crea ni sustituye identidades OWNER automáticamente.
+- `PORT`: puerto de la API o del frontend según el servicio.
+- `BASE_PATH`: ruta base del frontend; en el deployment actual es `/`.
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+La comprobación `/api/healthz` valida conectividad y existencia de las tablas esenciales de HBG. Si falta alguna, devuelve HTTP 503.
 
-## Pointers
+El comando `pnpm --filter @workspace/db run push` está destinado al desarrollo. No usar `push-force` ni aplicar cambios de esquema en producción sin respaldo, revisión del estado real de PostgreSQL y una ventana de mantenimiento autorizada. La base de datos de producción no se ha inspeccionado desde GitHub Actions: CI utiliza una base PostgreSQL aislada de pruebas.
 
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+## Build y publicación
+
+El frontend genera archivos estáticos en `artifacts/universo-hbg/dist/public`. La API se compila en `artifacts/api-server/dist`.
+
+Antes de publicar:
+1. Confirmar que CI pasó en el commit exacto que se va a desplegar.
+2. Confirmar que la base PostgreSQL de producción contiene el esquema requerido y que existe el registro OWNER esperado.
+3. Confirmar los secretos del entorno sin imprimirlos ni compartirlos.
+4. Integrar el commit validado en Replit y construir los dos artefactos.
+5. Verificar `/api/healthz`, login OWNER, sesión de desarrollo, guards, módulos y PWA en el deployment real.
+6. Conservar el deployment anterior y registrar commit y deployment para poder revertir.
+
+No declarar una publicación verificada basándose únicamente en un build de GitHub.
