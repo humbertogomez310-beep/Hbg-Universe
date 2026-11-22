@@ -45,6 +45,8 @@ function musicActionName(action: VoiceAction): string {
     case "STOP": return "music.pause";
     case "NEXT": return "music.next";
     case "PREVIOUS": return "music.previous";
+    case "SET_SHUFFLE": return "music.shuffle";
+    case "SET_REPEAT": return "music.repeat";
     case "SET_MOOD": return "music.mood";
     case "SET_DIRECTION": return "music.direct";
     case "SET_AUTO_DJ": return "music.autoDj";
