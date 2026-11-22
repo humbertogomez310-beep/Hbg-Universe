@@ -1,57 +1,22 @@
 import { useState, useRef, useEffect } from "react";
 import { UniversoScreen } from "../components/UniversoScreen";
+import {
+  createInstintoBackup,
+  parseInstintoBackup,
+  type InstintoCategory as Category,
+  type InstintoNote as Note,
+  type InstintoLyric as Lyric,
+  type InstintoLyricSection as LyricSection,
+  type InstintoProject as Project,
+  type InstintoDraft as NoteDraft,
+} from "./instintoBackup";
 
-type Category = "notas" | "letras" | "ideas" | "reflexiones";
 type ViewMode = "inicio" | "bloc" | "letras" | "ideas" | "proyectos" | "exportar" | "universo";
-
-interface Note {
-  id: string;
-  title: string;
-  content: string;
-  category: Category;
-  createdAt: string;
-  updatedAt: string;
-  pinned: boolean;
-  favorite: boolean;
-  tags: string[];
-  deleted: boolean;
-}
-
-interface LyricSection {
-  id: string;
-  type: "intro" | "verso" | "coro" | "puente" | "outro";
-  content: string;
-}
-
-interface Lyric {
-  id: string;
-  title: string;
-  album?: string;
-  sections: LyricSection[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface Project {
-  id: string;
-  name: string;
-  description: string;
-  status: "borrador" | "en_progreso" | "completado";
-  color: string;
-  createdAt: string;
-}
 
 const NOTE_KEY = "hbg_instinto_notes_v2";
 const LYRIC_KEY = "hbg_instinto_lyrics_v2";
 const PROJECT_KEY = "hbg_instinto_projects";
 const DRAFT_KEY = "hbg_instinto_draft_v1";
-
-interface NoteDraft {
-  title: string;
-  content: string;
-  category: Category;
-  tags: string[];
-}
 
 function browserStorage(): Storage | null {
   if (typeof window === "undefined") return null;
@@ -162,6 +127,8 @@ export function InstintoModule() {
   const [inspirationLines, setInspirationLines] = useState<string[]>([]);
   const [autoSaved, setAutoSaved] = useState(false);
   const [storageWarning, setStorageWarning] = useState("");
+  const [backupStatus, setBackupStatus] = useState("");
+  const backupFileRef = useRef<HTMLInputElement>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -312,8 +279,72 @@ export function InstintoModule() {
   const exportJson = (data: unknown, filename: string) => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
-    URL.revokeObjectURL(url);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const exportFullBackup = () => {
+    const backup = createInstintoBackup(notes, lyrics, projects, {
+      title: newTitle,
+      content: newContent,
+      category: newCategory,
+      tags: activeTags,
+    });
+    exportJson(backup, "instinto_backup_v1.json");
+    setBackupStatus("Respaldo completo exportado, incluidos la papelera y el borrador actual.");
+  };
+
+  const importFullBackup = async (file?: File) => {
+    if (!file) return;
+    try {
+      if (file.size > 10 * 1024 * 1024) {
+        throw new Error("El respaldo supera el límite de 10 MB.");
+      }
+      const parsed: unknown = JSON.parse(await file.text());
+      const backup = parseInstintoBackup(parsed);
+      if (!window.confirm(
+        `Se reemplazarán los datos locales de INSTINTO. Notas: ${backup.notes.length}; letras: ${backup.lyrics.length}; proyectos: ${backup.projects.length}. ¿Continuar?`,
+      )) return;
+
+      const storage = browserStorage();
+      if (!storage) throw new Error("El almacenamiento local no está disponible.");
+      const keys = [NOTE_KEY, LYRIC_KEY, PROJECT_KEY, DRAFT_KEY];
+      const previous = new Map(keys.map((key) => [key, storage.getItem(key)]));
+      try {
+        storage.setItem(NOTE_KEY, JSON.stringify(backup.notes));
+        storage.setItem(LYRIC_KEY, JSON.stringify(backup.lyrics));
+        storage.setItem(PROJECT_KEY, JSON.stringify(backup.projects));
+        storage.setItem(DRAFT_KEY, JSON.stringify(backup.draft));
+      } catch (error) {
+        for (const [key, value] of previous) {
+          try {
+            if (value === null) storage.removeItem(key);
+            else storage.setItem(key, value);
+          } catch {
+            // Best-effort rollback if the browser storage quota is exhausted.
+          }
+        }
+        throw error;
+      }
+
+      setNotes(backup.notes);
+      setLyrics(backup.lyrics);
+      setProjects(backup.projects);
+      setNewTitle(backup.draft.title);
+      setNewContent(backup.draft.content);
+      setNewCategory(backup.draft.category);
+      setActiveTags(backup.draft.tags);
+      setActiveLyric(backup.lyrics[0] ?? null);
+      setStorageWarning("");
+      setBackupStatus(`Respaldo restaurado: ${backup.notes.length} notas, ${backup.lyrics.length} letras y ${backup.projects.length} proyectos.`);
+    } catch (error) {
+      setBackupStatus(error instanceof Error ? error.message : "No se pudo restaurar el respaldo.");
+    } finally {
+      if (backupFileRef.current) backupFileRef.current.value = "";
+    }
   };
 
   const allTags = [...new Set(notes.flatMap((n) => n.tags).filter(Boolean))];
@@ -690,7 +721,16 @@ export function InstintoModule() {
               <div className="section-title">// notas completas</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <button className="hbg-btn hbg-btn-ghost w-full" onClick={() => exportJson(notes.filter(n => !n.deleted), "instinto_notas.json")}>↓ TODAS LAS NOTAS (JSON)</button>
-                <button className="hbg-btn hbg-btn-ghost w-full" onClick={() => exportJson({ notas: notes.filter(n => !n.deleted), letras: lyrics, proyectos: projects }, "instinto_completo.json")}>↓ BACKUP COMPLETO</button>
+                <button className="hbg-btn hbg-btn-ghost w-full" onClick={exportFullBackup}>↓ BACKUP COMPLETO</button>
+                <button className="hbg-btn hbg-btn-ghost w-full" onClick={() => backupFileRef.current?.click()}>↑ RESTAURAR BACKUP</button>
+                <input
+                  ref={backupFileRef}
+                  type="file"
+                  accept=".json,application/json"
+                  style={{ display: "none" }}
+                  onChange={(event) => void importFullBackup(event.target.files?.[0])}
+                />
+                {backupStatus && <div role="status" style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: backupStatus.startsWith("No se pudo") || backupStatus.startsWith("El respaldo") || backupStatus.startsWith("El archivo") ? "var(--neon-pink)" : "var(--neon-green)", marginTop: 8 }}>{backupStatus}</div>}
               </div>
             </div>
           </div>
