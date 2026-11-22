@@ -62,3 +62,75 @@ test("voice shuffle and repeat commands dispatch to the registered VIBRA actions
     removeRepeat();
   }
 });
+
+
+test("voice track search activates VIBRA and plays the exact verified track ID", async () => {
+  hbgCore.setModule("universo");
+  const calls = [];
+  let removeSearch;
+  let removePlay;
+  const unsubscribe = hbgCore.subscribe((module) => {
+    if (module !== "vibra" || removeSearch) return;
+    removeSearch = hbgCore.registerAction("music.search", (payload) => {
+      calls.push({ action: "search", payload });
+      return {
+        success: true,
+        data: { results: [{ id: "voice-track-42", title: "Coincidence" }] },
+      };
+    });
+    removePlay = hbgCore.registerAction("music.playTrack", (payload) => {
+      calls.push({ action: "play", payload });
+      return {
+        success: payload?.id === "voice-track-42",
+        data: { track: { title: "Coincidence" } },
+      };
+    });
+  });
+
+  try {
+    const response = await executeVoiceAction({
+      type: "PLAY_TRACK",
+      query: "Coincidence",
+    });
+    assert.equal(hbgCore.getModule(), "vibra");
+    assert.match(response, /Reproduciendo Coincidence/i);
+    assert.deepEqual(calls, [
+      { action: "search", payload: { query: "Coincidence" } },
+      { action: "play", payload: { id: "voice-track-42" } },
+    ]);
+  } finally {
+    unsubscribe();
+    removeSearch?.();
+    removePlay?.();
+    hbgCore.setModule("universo");
+  }
+});
+
+test("voice track search asks for clarification instead of playing an ambiguous first result", async () => {
+  const calls = [];
+  const removeSearch = hbgCore.registerAction("music.search", () => ({
+    success: true,
+    data: {
+      results: [
+        { id: "track-live", title: "Coincidence Live" },
+        { id: "track-remix", title: "Coincidence Remix" },
+      ],
+    },
+  }));
+  const removePlay = hbgCore.registerAction("music.playTrack", (payload) => {
+    calls.push(payload);
+    return { success: true };
+  });
+
+  try {
+    const response = await executeVoiceAction({
+      type: "PLAY_TRACK",
+      query: "Coincidence",
+    });
+    assert.match(response, /varias coincidencias/i);
+    assert.deepEqual(calls, []);
+  } finally {
+    removeSearch();
+    removePlay();
+  }
+});
