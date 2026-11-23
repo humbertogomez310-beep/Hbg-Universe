@@ -248,3 +248,19 @@ export function interpretUtterance(input: string): LinguaInterpretation {
     engine: "HBG_LINGUA_RULES_V1",
   };
 }
+
+
+export function clarifyUtterance(input: string): string {
+  const normalized = normalizeUtterance(input);
+
+  if (/\b(volumen|audio|sonido|musica)\b/.test(normalized)) {
+    return "Creo que quieres ajustar el audio, pero no capté cómo. ¿Quieres subirlo, bajarlo o dejarlo en un nivel concreto?";
+  }
+  if (/\b(abre|entrar|ir a|aplicacion|app|modulo)\b/.test(normalized)) {
+    return "¿Qué parte quieres abrir: UNIVERSO, INSTINTO o VIBRA?";
+  }
+  if (/\b(cancion|letra|componer|crear)\b/.test(normalized)) {
+    return "Quiero asegurarme de hacerlo bien. ¿Quieres crear una canción, escribir una letra o reproducir una canción?";
+  }
+  return "No estoy seguro de lo que quieres hacer. ¿Me lo dices de otra forma?";
+}
