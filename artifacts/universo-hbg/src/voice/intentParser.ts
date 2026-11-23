@@ -19,6 +19,7 @@ export type VoiceAction =
   | { type: "SET_PARTY"; enabled: boolean }
   | { type: "NOW_PLAYING" }
   | { type: "SET_VOLUME"; volume: number }
+  | { type: "ADJUST_VOLUME"; delta: number }
   | { type: "PLAYLIST_CREATE"; name: string; query?: string }
   | { type: "PLAYLIST_ADD"; name: string }
   | { type: "PLAYLIST_REMOVE"; name: string }
@@ -110,8 +111,25 @@ export function parseIntent(text: string): VoiceAction {
   if (/^(desactiva|desactivar|apaga) (el )?modo fiesta pro$/.test(n)) return { type: "SET_PARTY", enabled: false };
   if (/^que cancion (esta )?sonando$/.test(n) || /^que suena$/.test(n)) return { type: "NOW_PLAYING" };
 
-  const volumeMatch = n.match(/^(?:pon|ajusta|cambia) (?:el )?volumen (?:a )?(\d{1,3})%?$/);
-  if (volumeMatch) return { type: "SET_VOLUME", volume: Number(volumeMatch[1]) };
+  // Explicit levels take precedence over relative volume language.
+  const volumeMatch = n.match(/^(?:(?:pon|ajusta|cambia|deja|fija) (?:el )?volumen|(?:sube|baja|aumenta|disminuye) (?:el )?volumen) (?:a )?(\\d{1,3})%?$/);
+  if (volumeMatch) {
+    const volume = Number(volumeMatch[1]);
+    return volume <= 100
+      ? { type: "SET_VOLUME", volume }
+      : { type: "UNKNOWN", raw };
+  }
+
+  // Relative volume changes are persistent user preferences, not temporary voice ducking.
+  const volumeDirection = /^(?:sube|subele|aumenta|incrementa|dale mas|mas alto|mas fuerte)(?: el)?(?: volumen)?(?: un poco| poquito| tantito| bastante| mucho)?$/.test(n)
+    ? 1
+    : /^(?:baja|bajale|reduce|disminuye|dale menos|mas bajo|mas bajito|mas suave)(?: el)?(?: volumen)?(?: un poco| poquito| tantito| bastante| mucho)?$/.test(n)
+      ? -1
+      : 0;
+  if (volumeDirection !== 0) {
+    const intensity = /mucho|bastante/.test(n) ? 20 : /poco|poquito|tantito/.test(n) ? 5 : 10;
+    return { type: "ADJUST_VOLUME", delta: volumeDirection * intensity };
+  }
 
   const createPlaylistMatch = n.match(/^crea(?:r)? (?:una )?(?:playlist|lista)(?: llamada)? (.+)$/);
   if (createPlaylistMatch) {
