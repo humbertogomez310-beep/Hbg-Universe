@@ -1,6 +1,6 @@
-const SW_VERSION = "hbg-pwa-v2";
+const SW_VERSION = "hbg-pwa-v3";
 const CACHE_NAME = `hbg-shell-${SW_VERSION}`;
-const CORE_ASSETS = ["/", "/manifest.webmanifest", "/icons/hbg.svg"];
+const CORE_ASSETS = ["/", "/manifest.webmanifest", "/icons/hbg.svg", "/apple-touch-icon.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil((async () => {

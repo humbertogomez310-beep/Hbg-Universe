@@ -64,7 +64,7 @@ jobs:
       - name: Validate deployment and PWA scripts
         run: |
           node --check artifacts/universo-hbg/public/sw.js
-          node -e "const fs=require('node:fs'); const manifest=JSON.parse(fs.readFileSync('artifacts/universo-hbg/public/manifest.webmanifest','utf8')); for (const icon of manifest.icons ?? []) { if (!fs.existsSync('artifacts/universo-hbg/public' + icon.src)) throw new Error('Missing PWA icon: ' + icon.src); }"
+          node -e "const fs=require('node:fs'); const root='artifacts/universo-hbg/public'; const manifest=JSON.parse(fs.readFileSync(root+'/manifest.webmanifest','utf8')); for (const icon of manifest.icons ?? []) { if (!fs.existsSync(root + icon.src)) throw new Error('Missing PWA icon: ' + icon.src); } if (!fs.existsSync(root+'/apple-touch-icon.png')) throw new Error('Missing iOS apple-touch-icon.png');"
           bash -n scripts/post-merge.sh
 
       - name: Run API server tests
