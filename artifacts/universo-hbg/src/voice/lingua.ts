@@ -115,7 +115,6 @@ function classifyPlaybackControl(n: string): VoiceAction | null {
     /^(?:reanuda|retoma) (?:la )?(?:musica|reproduccion|cancion)$/,
     /^(?:quita|quita la) pausa$/,
     /^(?:sacalo|sacala) de pausa$/,
-    /^(?:dale|pon) (?:al )?play$/,
     /^(?:vuelve a reproducir|vuelve a poner musica)$/,
     /^(?:continualo|continuala|reanudalo|reanudala)$/,
   ];
