@@ -11,33 +11,27 @@ export interface NormalizedUtterance {
   wakePhrasePresent: boolean;
 }
 
-const WAKE_PREFIX = /^(?:oye|hey|hola) hbg\\b\\s*/;
+const WAKE_PREFIX = /^(?:oye|hey|hola) hbg\b\s*/;
 
-export function normalizeUtterance(input: string): string {
+function normalizeBase(input: string): string {
   return input
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\\u0300-\\u036f]/g, "")
-    .replace(/[^\\p{L}\\p{N}\\s]/gu, " ")
-    .replace(/\\s+/g, " ")
-    .trim()
-    .replace(WAKE_PREFIX, "")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
-export function inspectUtterance(input: string): NormalizedUtterance {
-  const raw = input;
-  const normalized = input
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\\u0300-\\u036f]/g, "")
-    .replace(/[^\\p{L}\\p{N}\\s]/gu, " ")
-    .replace(/\\s+/g, " ")
-    .trim();
+export function normalizeUtterance(input: string): string {
+  return normalizeBase(input).replace(WAKE_PREFIX, "").trim();
+}
 
+export function inspectUtterance(input: string): NormalizedUtterance {
+  const normalized = normalizeBase(input);
   return {
-    raw,
+    raw: input,
     text: normalized.replace(WAKE_PREFIX, "").trim(),
-    wakePhrasePresent: /^(?:oye|hey|hola) hbg\\b/.test(normalized),
+    wakePhrasePresent: /^(?:oye|hey|hola) hbg\b/.test(normalized),
   };
 }
