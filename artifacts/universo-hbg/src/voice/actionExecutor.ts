@@ -172,6 +172,7 @@ export async function executeVoiceAction(action: VoiceAction): Promise<string> {
 
     case "SET_VOLUME": {
       const res = await hbgCore.dispatchAction("music.volume", { volume: action.volume });
+      if (res.success) hbgCore.setContext("music.volume", action.volume);
       return res.success
         ? `Volumen ajustado al ${action.volume}%.`
         : res.error ?? "No se pudo cambiar el volumen.";
@@ -185,6 +186,7 @@ export async function executeVoiceAction(action: VoiceAction): Promise<string> {
       const currentVolume = Math.max(0, Math.min(100, current));
       const volume = Math.max(0, Math.min(100, currentVolume + action.delta));
       const res = await hbgCore.dispatchAction("music.volume", { volume });
+      if (res.success) hbgCore.setContext("music.volume", volume);
       return res.success
         ? `Listo, dejé el volumen en ${volume}%.`
         : res.error ?? "No pude cambiar el volumen.";
