@@ -2,13 +2,16 @@ import express, { type Express } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { authMiddleware } from "./middlewares/authMiddleware";
 
 const app: Express = express();
 
-// Detrás del proxy de Replit: req.ip debe ser la IP real del visitante.
+// La aplicación se publica detrás de un único proxy inverso de confianza.
 app.set("trust proxy", 1);
 
 app.use(
@@ -66,8 +69,43 @@ app.use(
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(authMiddleware);
 
+// En despliegues unificados, Express sirve el frontend compilado desde el mismo origen.
+// Esto mantiene /api relativo, cookies same-site y PWA bajo un único dominio.
+const webDist = process.env.HBG_WEB_DIST ?? path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../universo-hbg/dist/public",
+);
+const webIndex = path.join(webDist, "index.html");
+const hasWebBuild = existsSync(webIndex);
+
+if (hasWebBuild) {
+  app.use(express.static(webDist, {
+    index: "index.html",
+    fallthrough: true,
+  }));
+}
+
+// Las rutas de la SPA reciben index.html; las rutas API desconocidas nunca reciben HTML.
+if (hasWebBuild) {
+  app.use((req, res, next) => {
+    if (
+      (req.method !== "GET" && req.method !== "HEAD") ||
+      req.path === "/api" ||
+      req.path.startsWith("/api/") ||
+      !req.accepts("html")
+    ) {
+      next();
+      return;
+    }
+
+    res.sendFile(webIndex, (error) => {
+      if (error) next(error);
+    });
+  });
+}
+
+app.use(authMiddleware);
 app.use("/api", router);
 
 app.use(
