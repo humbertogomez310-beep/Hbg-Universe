@@ -7,6 +7,7 @@ export type AudioDuckingTarget = (factor: number) => void;
 const VOICE_DUCK_FACTOR = 0.25;
 const outputs = new Map<string, AudioDuckingTarget>();
 const voiceSessions = new Set<symbol>();
+let lastAppliedFactor = 1;
 
 export function getCurrentAudioDuckingFactor(): number {
   return voiceSessions.size > 0 ? VOICE_DUCK_FACTOR : 1;
@@ -14,6 +15,8 @@ export function getCurrentAudioDuckingFactor(): number {
 
 function applyFactor(): void {
   const factor = getCurrentAudioDuckingFactor();
+  if (factor === lastAppliedFactor) return;
+  lastAppliedFactor = factor;
   for (const target of outputs.values()) {
     try {
       target(factor);
