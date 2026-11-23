@@ -65,8 +65,6 @@ export type VoiceAction =
   | { type: "PLAY_TRACK"; query: string }
   | { type: "UNKNOWN"; raw: string };
 
-import { normalizeUtterance } from "./lingua.ts";
-
 function resolvePublicModule(text: string): "universo" | "instinto" | "vibra" | null {
   if (/\b(instinto|notas|letras|creatividad)\b/.test(text)) return "instinto";
   if (/\b(vibra|musica|reproductor)\b/.test(text)) return "vibra";
