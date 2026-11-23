@@ -27,7 +27,7 @@ import {
 } from "./vibraPlayback";
 
 type MoodMode = "party" | "focus" | "creative" | "chill" | "nostalgia" | "sad" | "happy" | "normal";
-type ViewMode = "player" | "library" | "playlists" | "modes" | "eq" | "perfil" | "universo";
+type ViewMode = "player" | "dj" | "library" | "playlists" | "modes" | "eq" | "perfil" | "universo";
 
 interface Playlist {
   id: string;
@@ -1090,6 +1090,7 @@ export function VibraModule() {
 
   const NAV_ITEMS: { id: ViewMode; label: string }[] = [
     { id: "player", label: "REPRODUCTOR" },
+    { id: "dj", label: "DJ VIBRA" },
     { id: "library", label: "BIBLIOTECA" },
     { id: "playlists", label: "PLAYLISTS" },
     { id: "modes", label: "MODOS" },
@@ -1113,60 +1114,76 @@ export function VibraModule() {
       </div>
 
       {/* Sub-nav */}
-      <div style={{ display: "flex", gap: 2, marginBottom: 20, background: "var(--bg-deep)", padding: 4, borderRadius: 4, border: "1px solid var(--border-dim)" }}>
+      <div style={{ display: "flex", gap: 2, marginBottom: 20, background: "var(--bg-deep)", padding: 4, borderRadius: 4, border: "1px solid var(--border-dim)", overflowX: "auto", scrollbarWidth: "thin" }}>
         {NAV_ITEMS.map((n) => (
           <button key={n.id} onClick={() => setView(n.id)}
-            style={{ flex: 1, padding: "7px 4px", fontFamily: "var(--font-mono)", fontSize: 8, letterSpacing: "0.06em", background: view === n.id ? `${mood.color}18` : "transparent", border: `1px solid ${view === n.id ? mood.color : "transparent"}`, borderRadius: 3, color: view === n.id ? mood.color : "var(--text-muted)", cursor: "pointer", boxShadow: view === n.id ? `0 0 10px ${mood.color}25` : "none", transition: "all 0.15s" }}>
+            style={{ flex: "0 0 auto", minWidth: 74, padding: "7px 8px", fontFamily: "var(--font-mono)", fontSize: 8, letterSpacing: "0.06em", background: view === n.id ? `${mood.color}18` : "transparent", border: `1px solid ${view === n.id ? mood.color : "transparent"}`, borderRadius: 3, color: view === n.id ? mood.color : "var(--text-muted)", cursor: "pointer", boxShadow: view === n.id ? `0 0 10px ${mood.color}25` : "none", transition: "all 0.15s" }}>
             {n.label}
           </button>
         ))}
       </div>
 
-      <section className="hbg-card" aria-label="Dirección musical" style={{ marginBottom: 14 }}>
-        <div className="section-title">// DJ VIBRA · DIRECCIÓN MUSICAL</div>
-        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-          <input
-            className="hbg-input"
-            style={{ flex: 1 }}
-            aria-label="Objetivo musical"
-            placeholder="Ej.: música romántica, canciones para cantar..."
-            value={directionInput}
-            onChange={(event) => setDirectionInput(event.target.value)}
-            onKeyDown={(event) => { if (event.key === "Enter") applyMusicDirection(); }}
-          />
-          <button className="hbg-btn hbg-btn-primary" onClick={applyMusicDirection}>APLICAR</button>
+      {view !== "player" && currentTrack && (
+        <div className="hbg-card" aria-label="Reproductor compacto" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, padding: "9px 12px" }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 8, color: mood.color, letterSpacing: "0.08em" }}>REPRODUCIENDO</div>
+            <div title={currentTrack.title} style={{ fontFamily: "var(--font-ui)", fontSize: 12, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentTrack.title}</div>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentTrack.artist || "Artista desconocido"}</div>
+          </div>
+          <button className="hbg-btn hbg-btn-ghost" onClick={togglePlay} disabled={loading} aria-label={isPlaying ? "Pausar música" : "Reanudar música"} style={{ minWidth: 38 }}>{isPlaying ? "⏸" : "▶"}</button>
+          <button className="hbg-btn hbg-btn-ghost" onClick={() => setView("player")} style={{ fontSize: 9 }}>ABRIR</button>
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button
-            className="hbg-btn hbg-btn-ghost"
-            aria-pressed={autoDjEnabled}
-            onClick={() => setAutoDjEnabled((enabled) => !enabled)}
-          >
-            AUTO DJ: {autoDjEnabled ? "ACTIVO" : "INACTIVO"}
-          </button>
-          <button
-            className="hbg-btn hbg-btn-ghost"
-            aria-pressed={partyMode}
-            onClick={() => {
-              const enabled = !partyMode;
-              setPartyMode(enabled);
-              if (enabled) {
-                setAutoDjEnabled(true);
-                setMusicDirection((current) => ({ ...current, energy: "up" }));
-              }
-            }}
-          >
-            FIESTA PRO: {partyMode ? "ACTIVA" : "INACTIVA"}
-          </button>
-          <span style={{ alignSelf: "center", fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-secondary)" }}>
-            Objetivo: {musicDirection.goal || "sin fijar"} · Preferencia de energía: {musicDirection.energy === "up" ? "más alta" : "estable"}
-            {plannedNextTrack ? ` · Siguiente candidata: ${plannedNextTrack.title}` : ""}
-          </span>
-        </div>
-        <div style={{ marginTop: 7, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>
-          Selección local por coincidencia con título, artista o álbum. No se infieren géneros ni BPM; energía, Karaoke y adaptación ambiental no están implementados.
-        </div>
-      </section>
+      )}
+
+      {view === "dj" && (
+        <section className="hbg-card" aria-label="Dirección musical" style={{ marginBottom: 14 }}>
+          <div className="section-title">// DJ VIBRA · DIRECCIÓN MUSICAL</div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            <input
+              className="hbg-input"
+              style={{ flex: 1 }}
+              aria-label="Objetivo musical"
+              placeholder="Ej.: música romántica, canciones para cantar..."
+              value={directionInput}
+              onChange={(event) => setDirectionInput(event.target.value)}
+              onKeyDown={(event) => { if (event.key === "Enter") applyMusicDirection(); }}
+            />
+            <button className="hbg-btn hbg-btn-primary" onClick={applyMusicDirection}>APLICAR</button>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              className="hbg-btn hbg-btn-ghost"
+              aria-pressed={autoDjEnabled}
+              onClick={() => setAutoDjEnabled((enabled) => !enabled)}
+            >
+              AUTO DJ: {autoDjEnabled ? "ACTIVO" : "INACTIVO"}
+            </button>
+            <button
+              className="hbg-btn hbg-btn-ghost"
+              aria-pressed={partyMode}
+              onClick={() => {
+                const enabled = !partyMode;
+                setPartyMode(enabled);
+                if (enabled) {
+                  setAutoDjEnabled(true);
+                  setMusicDirection((current) => ({ ...current, energy: "up" }));
+                }
+              }}
+            >
+              FIESTA PRO: {partyMode ? "ACTIVA" : "INACTIVA"}
+            </button>
+            <span style={{ alignSelf: "center", fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-secondary)" }}>
+              Objetivo: {musicDirection.goal || "sin fijar"} · Preferencia de energía: {musicDirection.energy === "up" ? "más alta" : "estable"}
+              {plannedNextTrack ? ` · Siguiente candidata: ${plannedNextTrack.title}` : ""}
+            </span>
+          </div>
+          <div style={{ marginTop: 7, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>
+            Selección local por coincidencia con título, artista o álbum. No se infieren géneros ni BPM; energía, Karaoke y adaptación ambiental no están implementados.
+          </div>
+        </section>
+
+
+      )}
 
       {/* Hidden file input */}
       <input
