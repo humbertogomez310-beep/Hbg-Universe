@@ -127,12 +127,24 @@ export function parseIntent(text: string): VoiceAction {
   const playPlaylistMatch = n.match(/^(?:reproduce|reproducir|pon) (?:mi )?(?:playlist|lista) (.+)$/);
   if (playPlaylistMatch) return { type: "PLAYLIST_PLAY", name: playPlaylistMatch[1].trim() };
 
-  if (/^(pon musica|reproduce|reproducir|play)$/.test(n)) return { type: "PLAY" };
-  if (/^(pausa|pausar|pause)$/.test(n)) return { type: "PAUSE" };
-  if (/^(continua|continuar|resume|reanuda|reanudar)$/.test(n)) return { type: "RESUME" };
+  // Natural-language playback requests. Keep these intentionally bounded:
+  // generic requests control the current queue; named titles still route to PLAY_TRACK.
+  const playRequests = [
+    /^(?:pon|ponme|reproduce|reproducir|inicia|iniciar|empieza|empezar|arranca|arrancar|activa) (?:a )?(?:la )?musica$/,
+    /^(?:pon|ponme|reproduce|reproducir) (?:algo|algo de musica|una cancion|canciones)$/,
+    /^(?:quiero|quisiera|me gustaria) (?:escuchar|oir) (?:musica|algo|algo de musica|una cancion)$/,
+    /^(?:quiero|quisiera) (?:poner|reproducir) musica$/,
+    /^(?:vamos a )?(?:escuchar|oir) (?:musica|algo|una cancion)$/,
+    /^(?:haz sonar|que suene) (?:la )?(?:musica|algo|una cancion)$/,
+    /^(?:dale|pon) (?:al )?(?:play|reproducir)$/,
+    /^(?:play|reproduce|reproducir)$/
+  ];
+  if (playRequests.some((pattern) => pattern.test(n))) return { type: "PLAY" };
+  if (/^(?:pausa|pausar|pause|pon en pausa|deten la musica|para la musica)$/.test(n)) return { type: "PAUSE" };
+  if (/^(?:continua|continuar|sigue|seguir|resume|reanuda|reanudar|retoma|retomar)(?: la musica| la reproduccion)?$/.test(n)) return { type: "RESUME" };
   if (/^(siguiente cancion|siguiente|next)$/.test(n)) return { type: "NEXT" };
   if (/^(cancion anterior|anterior|previous)$/.test(n)) return { type: "PREVIOUS" };
-  if (/^(detener|deten|para|stop)$/.test(n)) return { type: "STOP" };
+  if (/^(detener|deten|para|stop|deten la reproduccion|para la musica por completo)$/.test(n)) return { type: "STOP" };
 
   if (/^(activa|activar) (el )?(aleatorio|shuffle)$/.test(n)) return { type: "SET_SHUFFLE", value: true };
   if (/^(desactiva|desactivar) (el )?(aleatorio|shuffle)$/.test(n)) return { type: "SET_SHUFFLE", value: false };
