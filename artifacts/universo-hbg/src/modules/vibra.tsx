@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { UniversoScreen } from "../components/UniversoScreen";
 import { hbgCore, type HBGActionResult } from "../core/hbgCore";
+import { getCurrentAudioDuckingFactor, registerAudioOutput } from "../core/audioManager";
 import {
   saveAudioBlob,
   getAudioBlob,
@@ -201,7 +202,6 @@ export function VibraModule() {
     const stored = readStoredValue(STORAGE_KEYS.repeat);
     return stored === "all" || stored === "one" ? stored : "off";
   });
-  const [voiceCaptureActive, setVoiceCaptureActive] = useState(false);
   const [recentTrackIds, setRecentTrackIds] = useState<string[]>(readStoredRecentTracks);
 
   const [view, setView] = useState<ViewMode>("player");
@@ -282,9 +282,8 @@ export function VibraModule() {
   }, [activeMode]);
   useEffect(() => {
     hbgCore.setContext("music.volume", volume);
-    if (audioRef.current) audioRef.current.volume = (volume / 100) * (voiceCaptureActive ? 0.25 : 1);
     if (!writeStoredValue(STORAGE_KEYS.volume, String(volume))) setError("No se pudo guardar el volumen en este dispositivo.");
-  }, [volume, voiceCaptureActive]);
+  }, [volume]);
   useEffect(() => {
     if (!writeStoredValue(STORAGE_KEYS.favorites, JSON.stringify([...favorites]))) setError("No se pudieron guardar los favoritos.");
   }, [favorites]);
@@ -339,7 +338,7 @@ export function VibraModule() {
       const audio = audioRef.current!;
       if (!audio) throw new Error("El reproductor de audio no está disponible");
       audio.src = url;
-      audio.volume = (volume / 100) * (voiceCaptureActive ? 0.25 : 1);
+      audio.volume = (volume / 100) * getCurrentAudioDuckingFactor();
 
       await new Promise<void>((resolve, reject) => {
         let settled = false;
@@ -384,7 +383,7 @@ export function VibraModule() {
     } finally {
       if (requestId === loadGenerationRef.current) setLoading(false);
     }
-  }, [volume, voiceCaptureActive]);
+  }, [volume]);
   loadTrackRef.current = loadTrack;
 
   // Setup one persistent Web Audio graph for playback, EQ, and the real frequency visualizer.
@@ -481,6 +480,16 @@ export function VibraModule() {
       if (context) void context.close().catch(() => undefined);
     };
   }, []);
+
+  // Register VIBRA playback with the central HBG audio coordinator.
+  // User volume remains persistent; voice ducking is a temporary independent factor.
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    return registerAudioOutput("vibra.playback", (factor) => {
+      audio.volume = Math.max(0, Math.min(1, (volume / 100) * factor));
+    });
+  }, [volume]);
 
   // Restore last track on mount (after tracks load)
   const restoredRef = useRef(false);
@@ -826,16 +835,6 @@ export function VibraModule() {
           setMusicDirection((current) => ({ ...current, energy: "up" }));
         }
         return result(true, { enabled, autoDj: enabled || autoDjEnabled });
-      }),
-      hbgCore.registerAction("music.voiceCapture", (payload) => {
-        if (typeof payload?.active !== "boolean") {
-          return result(false, undefined, "El estado de captura de voz no es válido.");
-        }
-        setVoiceCaptureActive(payload.active);
-        if (audioRef.current) {
-          audioRef.current.volume = (volume / 100) * (payload.active ? 0.25 : 1);
-        }
-        return result(true, { active: payload.active, duckingApplied: Boolean(audioRef.current) });
       }),
       hbgCore.registerAction("music.search", (payload) => {
         const query = normalizeMusicText(String(payload?.query ?? ""));
