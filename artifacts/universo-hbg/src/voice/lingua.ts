@@ -66,9 +66,11 @@ export type VoiceAction =
   | { type: "UNKNOWN"; raw: string };
 
 function resolvePublicModule(text: string): "universo" | "instinto" | "vibra" | null {
-  if (/\b(instinto|notas|letras|creatividad)\b/.test(text)) return "instinto";
-  if (/\b(vibra|musica|reproductor)\b/.test(text)) return "vibra";
-  if (/\b(universo|hbg core|core)\b/.test(text)) return "universo";
+  // Public aliases map only to existing applications; sub-features are not
+  // treated as executable operations unless an app action is registered.
+  if (/\b(instinto|notas|letras|creatividad|proyectos|mis notas|mis letras|mis proyectos|bloc de notas)\b/.test(text)) return "instinto";
+  if (/\b(vibra|musica|reproductor|audio|auto dj|dj vibra|playlist|playlists|biblioteca musical)\b/.test(text)) return "vibra";
+  if (/\b(universo|hbg core|core|inicio|panel principal|centro de control)\b/.test(text)) return "universo";
   return null;
 }
 
@@ -112,14 +114,14 @@ export function parseIntent(text: string): VoiceAction {
   }
 
   const appQuestion =
-    /^(?:que es|que hace|para que sirve|que puedo hacer en|que puedo hacer con) (?:la app |la aplicacion |el modulo )?(.+)$/.exec(n);
+    /^(?:que es|que hace|para que sirve|que puedo hacer en|que puedo hacer con|hablame de|cuentame sobre|que hay en) (?:la app |la aplicacion |el modulo )?(.+)$/.exec(n);
   if (appQuestion) {
     const module = resolvePublicModule(appQuestion[1]);
     if (module) return { type: "APP_INFO", module };
     return { type: "CAPABILITIES" };
   }
 
-  const openRequest = /^(?:abre|abrir|entra a|entra en|ve a|ir a|abre la app|abre el modulo) (?:la app de |el modulo de |a )?(.+)$/.exec(n);
+  const openRequest = /^(?:abre|abrir|entra a|entra en|ve a|ir a|quiero ir a|quiero entrar a|quiero entrar en|quiero abrir|llevame a|llevame al|mandame a|mandame al|muestrame|abre la app|abre el modulo) (?:la app de |el modulo de |a )?(.+)$/.exec(n);
   if (openRequest) {
     const module = resolvePublicModule(openRequest[1]);
     if (module) return { type: "NAVIGATE", module };
