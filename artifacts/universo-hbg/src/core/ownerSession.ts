@@ -1,3 +1,4 @@
+import { remoteApiEnabled } from "./apiConfig";
 import { useSyncExternalStore } from "react";
 
 export interface OwnerSessionState {
@@ -30,6 +31,10 @@ function getSnapshot(): OwnerSessionState {
 // Pregunta al servidor si hay sesión de dueño. La interfaz nunca decide por sí sola.
 async function checkSession(): Promise<void> {
   const mine = ++version;
+  if (!remoteApiEnabled()) {
+    if (mine === version) publish({ isOwner: false, checking: false });
+    return;
+  }
   let owner = false;
   try {
     const response = await fetch("/api/auth/me", { credentials: "include" });
@@ -47,6 +52,9 @@ async function checkSession(): Promise<void> {
 
 // La clave solo viaja en esta llamada; no se guarda en ningún sitio.
 async function login(credential: string): Promise<OwnerLoginResult> {
+  if (!remoteApiEnabled()) {
+    return { ok: false, reason: "error", detail: "REMOTE_API_DISABLED" };
+  }
   let response: Response;
   try {
     response = await fetch("/api/auth/login", {
@@ -69,7 +77,9 @@ async function login(credential: string): Promise<OwnerLoginResult> {
 async function logout(): Promise<void> {
   version += 1;
   try {
-    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    if (remoteApiEnabled()) {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    }
   } catch {
     // Aunque falle la red, la interfaz se bloquea.
   }
