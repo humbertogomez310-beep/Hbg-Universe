@@ -31,7 +31,7 @@ test("overlapping voice sessions keep audio ducked until the final session ends"
     assert.equal(getCurrentAudioDuckingFactor(), 0.25);
     releaseSecond();
     assert.equal(getCurrentAudioDuckingFactor(), 1);
-    assert.deepEqual(factors, [1, 0.25, 0.25, 1]);
+    assert.deepEqual(factors, [1, 0.25, 1]);
   } finally {
     unregister();
   }
