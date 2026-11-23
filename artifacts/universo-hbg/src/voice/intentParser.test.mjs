@@ -32,3 +32,47 @@ test("HBG Core does not fabricate an intent for unsupported conversation", () =>
     raw: "qué opinas de esta situación",
   });
 });
+
+test("VIBRA recognizes natural variations for starting music playback", () => {
+  const phrases = [
+    "pon música",
+    "ponme música",
+    "reproduce música",
+    "quiero escuchar música",
+    "quiero oír algo",
+    "me gustaría escuchar una canción",
+    "pon algo de música",
+    "haz sonar la música",
+    "que suene una canción",
+    "vamos a escuchar música",
+    "empieza la música",
+    "arranca música",
+    "dale play",
+    "pon play",
+    "play",
+  ];
+
+  for (const phrase of phrases) {
+    assert.deepEqual(parseIntent(phrase), { type: "PLAY" }, phrase);
+  }
+});
+
+test("VIBRA keeps named music requests and musical direction distinct from generic play", () => {
+  assert.deepEqual(parseIntent("pon Bohemian Rhapsody"), {
+    type: "PLAY_TRACK",
+    query: "bohemian rhapsody",
+  });
+  assert.deepEqual(parseIntent("pon música romántica"), {
+    type: "SET_DIRECTION",
+    text: "pon música romántica",
+  });
+});
+
+test("VIBRA recognizes conversational pause and resume variations", () => {
+  for (const phrase of ["pon en pausa", "detén la música", "para la música"]) {
+    assert.deepEqual(parseIntent(phrase), { type: "PAUSE" }, phrase);
+  }
+  for (const phrase of ["sigue", "continúa la música", "reanuda la reproducción", "retoma"]) {
+    assert.deepEqual(parseIntent(phrase), { type: "RESUME" }, phrase);
+  }
+});
