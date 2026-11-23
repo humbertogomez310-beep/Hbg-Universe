@@ -281,6 +281,7 @@ export function VibraModule() {
     if (!writeStoredValue(STORAGE_KEYS.mood, activeMode)) setError("No se pudo guardar el modo musical en este dispositivo.");
   }, [activeMode]);
   useEffect(() => {
+    hbgCore.setContext("music.volume", volume);
     if (audioRef.current) audioRef.current.volume = (volume / 100) * (voiceCaptureActive ? 0.25 : 1);
     if (!writeStoredValue(STORAGE_KEYS.volume, String(volume))) setError("No se pudo guardar el volumen en este dispositivo.");
   }, [volume, voiceCaptureActive]);

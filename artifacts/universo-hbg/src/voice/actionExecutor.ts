@@ -1,5 +1,6 @@
 import { hbgCore } from "../core/hbgCore.ts";
 import type { VoiceAction } from "./intentParser";
+import { clarifyUtterance } from "./lingua.ts";
 
 const MOOD_LABELS: Record<string, string> = {
   party: "fiesta",
@@ -58,7 +59,7 @@ function selectVerifiedTrack(
 export async function executeVoiceAction(action: VoiceAction): Promise<string> {
   switch (action.type) {
     case "UNKNOWN":
-      return "No entendí el comando.";
+      return clarifyUtterance(action.raw);
 
     case "GREETING":
       return "Hola. Estoy listo para ayudarte a navegar y controlar las funciones locales del Universo HBG.";
@@ -171,9 +172,24 @@ export async function executeVoiceAction(action: VoiceAction): Promise<string> {
 
     case "SET_VOLUME": {
       const res = await hbgCore.dispatchAction("music.volume", { volume: action.volume });
+      if (res.success) hbgCore.setContext("music.volume", action.volume);
       return res.success
         ? `Volumen ajustado al ${action.volume}%.`
         : res.error ?? "No se pudo cambiar el volumen.";
+    }
+
+    case "ADJUST_VOLUME": {
+      const current = hbgCore.getContext<number>("music.volume");
+      if (typeof current !== "number" || !Number.isFinite(current)) {
+        return "No tengo el nivel actual del volumen para ajustarlo con precisión. Dime un nivel concreto, por ejemplo: déjalo al 50%.";
+      }
+      const currentVolume = Math.max(0, Math.min(100, current));
+      const volume = Math.max(0, Math.min(100, currentVolume + action.delta));
+      const res = await hbgCore.dispatchAction("music.volume", { volume });
+      if (res.success) hbgCore.setContext("music.volume", volume);
+      return res.success
+        ? `Listo, dejé el volumen en ${volume}%.`
+        : res.error ?? "No pude cambiar el volumen.";
     }
 
     case "PLAYLIST_CREATE": {

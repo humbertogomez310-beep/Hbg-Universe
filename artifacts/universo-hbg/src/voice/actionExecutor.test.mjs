@@ -134,3 +134,36 @@ test("voice track search asks for clarification instead of playing an ambiguous 
     removePlay();
   }
 });
+
+
+test("relative voice volume commands apply to the current VIBRA level and clamp safely", async () => {
+  const previous = hbgCore.getContext("music.volume");
+  const received = [];
+  hbgCore.setContext("music.volume", 45);
+  const unregister = hbgCore.registerAction("music.volume", (payload) => {
+    received.push(payload);
+    return { success: true, data: payload };
+  });
+
+  try {
+    assert.match(await executeVoiceAction({ type: "ADJUST_VOLUME", delta: -5 }), /40%/);
+    assert.equal(hbgCore.getContext("music.volume"), 40);
+    assert.match(await executeVoiceAction({ type: "ADJUST_VOLUME", delta: 20 }), /60%/);
+    assert.equal(hbgCore.getContext("music.volume"), 60);
+    hbgCore.setContext("music.volume", 98);
+    assert.match(await executeVoiceAction({ type: "ADJUST_VOLUME", delta: 20 }), /100%/);
+    assert.deepEqual(received, [{ volume: 40 }, { volume: 60 }, { volume: 100 }]);
+  } finally {
+    unregister();
+    hbgCore.setContext("music.volume", typeof previous === "number" ? previous : undefined);
+  }
+});
+
+
+test("unknown voice requests receive contextual clarification instead of a generic error", async () => {
+  const audio = await executeVoiceAction({ type: "UNKNOWN", raw: "bájale al sonido" });
+  assert.match(audio, /subirlo, bajarlo o dejarlo en un nivel concreto/i);
+
+  const navigation = await executeVoiceAction({ type: "UNKNOWN", raw: "abre una aplicación" });
+  assert.match(navigation, /UNIVERSO, INSTINTO o VIBRA/i);
+});
