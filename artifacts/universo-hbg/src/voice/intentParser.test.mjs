@@ -89,6 +89,10 @@ test("HBG voice distinguishes persistent absolute volume changes from relative a
   assert.deepEqual(parseIntent("dale más fuerte"), { type: "ADJUST_VOLUME", delta: 10 });
   assert.deepEqual(parseIntent("dale más volumen"), { type: "ADJUST_VOLUME", delta: 10 });
   assert.deepEqual(parseIntent("más bajito"), { type: "ADJUST_VOLUME", delta: -10 });
+  assert.deepEqual(parseIntent("baja el sonido"), { type: "ADJUST_VOLUME", delta: -10 });
+  assert.deepEqual(parseIntent("ponlo más bajo"), { type: "ADJUST_VOLUME", delta: -10 });
+  assert.deepEqual(parseIntent("sube el audio"), { type: "ADJUST_VOLUME", delta: 10 });
+  assert.deepEqual(parseIntent("hazlo más fuerte"), { type: "ADJUST_VOLUME", delta: 10 });
   assert.deepEqual(parseIntent("sube el volumen a 120%"), {
     type: "UNKNOWN",
     raw: "sube el volumen a 120%",
