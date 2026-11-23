@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { hbgCore, MODULES, type ModuleId } from "../core/hbgCore";
+import { remoteApiEnabled } from "../core/apiConfig";
 import { UniversoScreen } from "../components/UniversoScreen";
 import { parseIntent } from "../voice/intentParser";
 import { executeVoiceAction } from "../voice/actionExecutor";
@@ -84,6 +85,7 @@ export function UniversoModule() {
   }, [messages]);
 
   useEffect(() => {
+    if (!remoteApiEnabled()) return;
     const controller = new AbortController();
     void fetch("/api/core/status", {
       credentials: "include",
@@ -167,6 +169,10 @@ export function UniversoModule() {
             response = "Esa operación requiere una sesión de desarrollo autorizada. El chat de uso normal no puede modificar código, permisos ni despliegues.";
             break;
           case "UNKNOWN": {
+            if (!remoteApiEnabled()) {
+              response = "Esta publicación de HBG funciona en modo Local-first. Los comandos locales siguen disponibles; la IA remota y los servicios centralizados requieren una conexión backend que no está habilitada en esta versión.";
+              break;
+            }
             if (!remoteAIStatus.available) {
               response = "La IA remota no está configurada. Puedo interpretar comandos locales compatibles, mostrar capacidades y ejecutar acciones registradas; prueba «capacidades», «abre Instinto», «pausa» o «activa modo fiesta».";
               break;
