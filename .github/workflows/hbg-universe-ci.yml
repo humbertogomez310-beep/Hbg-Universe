@@ -60,12 +60,11 @@ jobs:
       - name: Provision isolated test schema
         run: |
           pnpm --filter @workspace/db migrate
-          pnpm --filter @workspace/db migrate
 
       - name: Validate deployment and PWA scripts
         run: |
           node --check artifacts/universo-hbg/public/sw.js
-          node -e "JSON.parse(require('node:fs').readFileSync('artifacts/universo-hbg/public/manifest.webmanifest', 'utf8'))"
+          node -e "const fs=require('node:fs'); const manifest=JSON.parse(fs.readFileSync('artifacts/universo-hbg/public/manifest.webmanifest','utf8')); for (const icon of manifest.icons ?? []) { if (!fs.existsSync('artifacts/universo-hbg/public' + icon.src)) throw new Error('Missing PWA icon: ' + icon.src); }"
           bash -n scripts/post-merge.sh
 
       - name: Run API server tests
