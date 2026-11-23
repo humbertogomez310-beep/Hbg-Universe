@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useVoiceCapture } from "./useVoiceCapture";
-import { parseIntent } from "./intentParser";
+import { interpretUtterance } from "./lingua";
 import { executeVoiceAction } from "./actionExecutor";
 import { hbgCore } from "../core/hbgCore";
 import {
@@ -79,8 +79,8 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
       setDismissedError(false);
       setProcessing(true);
       try {
-        const action = parseIntent(text);
-        const response = await executeVoiceAction(action);
+        const interpretation = interpretUtterance(text);
+        const response = await executeVoiceAction(interpretation.action);
         if (isPersistentVoiceError(response)) {
           setPersistentError(response);
         } else {
