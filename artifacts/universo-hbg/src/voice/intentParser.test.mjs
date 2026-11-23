@@ -12,6 +12,27 @@ test("HBG Core navigates only to known public modules", () => {
   assert.deepEqual(parseIntent("abre un módulo desconocido"), { type: "UNKNOWN", raw: "abre un módulo desconocido" });
 });
 
+test("HBG LINGUA recognizes natural navigation aliases for public applications", () => {
+  const cases = [
+    ["quiero ir a mis notas", "instinto"],
+    ["llévame a mis letras", "instinto"],
+    ["quiero entrar en mis proyectos", "instinto"],
+    ["mándame al reproductor", "vibra"],
+    ["muéstrame Auto DJ", "vibra"],
+    ["quiero abrir el panel principal", "universo"],
+    ["abre el centro de control", "universo"],
+  ];
+  for (const [phrase, module] of cases) {
+    assert.deepEqual(parseIntent(phrase), { type: "NAVIGATE", module }, phrase);
+  }
+});
+
+test("HBG LINGUA recognizes natural questions about public applications", () => {
+  assert.deepEqual(parseIntent("háblame de INSTINTO"), { type: "APP_INFO", module: "instinto" });
+  assert.deepEqual(parseIntent("cuéntame sobre VIBRA"), { type: "APP_INFO", module: "vibra" });
+  assert.deepEqual(parseIntent("qué hay en el panel principal"), { type: "APP_INFO", module: "universo" });
+});
+
 test("HBG Core routes music commands to concrete actions", () => {
   assert.deepEqual(parseIntent("pausa"), { type: "PAUSE" });
   assert.deepEqual(parseIntent("siguiente canción"), { type: "NEXT" });
