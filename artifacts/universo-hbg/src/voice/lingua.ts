@@ -151,9 +151,9 @@ export function parseIntent(text: string): VoiceAction {
   }
 
   // Relative volume changes are persistent user preferences, not temporary voice ducking.
-  const volumeDirection = /^(?:sube|subele|aumenta|incrementa|dale mas fuerte|dale mas|mas alto|mas fuerte)(?: el)?(?: volumen)?(?: un poquito| un poco| poquito| tantito| bastante| mucho)?$/.test(n)
+  const volumeDirection = /^(?:sube|subele|subeme|aumenta|incrementa|dale mas fuerte|dale mas|mas alto|mas fuerte|ponlo mas alto|hazlo mas fuerte|que suene mas fuerte)(?: el)?(?: volumen| audio| sonido)?(?: un poquito| un poco| poquito| tantito| bastante| mucho)?$/.test(n)
     ? 1
-    : /^(?:baja|bajale|reduce|disminuye|dale menos|mas bajo|mas bajito|mas suave)(?: el)?(?: volumen)?(?: un poquito| un poco| poquito| tantito| bastante| mucho)?$/.test(n)
+    : /^(?:baja|bajale|bajame|reduce|disminuye|dale menos|mas bajo|mas bajito|mas suave|ponlo mas bajo|hazlo mas bajito|que suene mas bajo)(?: el)?(?: volumen| audio| sonido)?(?: un poquito| un poco| poquito| tantito| bastante| mucho)?$/.test(n)
       ? -1
       : 0;
   if (volumeDirection !== 0) {
