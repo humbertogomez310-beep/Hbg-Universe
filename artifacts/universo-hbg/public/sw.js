@@ -1,6 +1,6 @@
 const SW_VERSION = "hbg-pwa-v2";
 const CACHE_NAME = `hbg-shell-${SW_VERSION}`;
-const CORE_ASSETS = ["/", "/manifest.webmanifest"];
+const CORE_ASSETS = ["/", "/manifest.webmanifest", "/icons/hbg.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil((async () => {
