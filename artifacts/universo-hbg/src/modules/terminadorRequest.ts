@@ -1,3 +1,5 @@
+import { remoteApiEnabled } from "../core/apiConfig";
+
 export interface TerminadorApplication {
   id: string;
   name: string;
@@ -50,6 +52,14 @@ export async function requestTerminadorApi<T>(
   path: string,
   init?: RequestInit,
 ): Promise<TerminadorApiResult<T>> {
+  if (!remoteApiEnabled()) {
+    return {
+      ok: false,
+      status: 0,
+      code: "REMOTE_API_DISABLED",
+      error: "Las operaciones de HBG Authority requieren conexión con el servidor.",
+    };
+  }
   try {
     const headers = new Headers(init?.headers);
     headers.set("Content-Type", "application/json");
