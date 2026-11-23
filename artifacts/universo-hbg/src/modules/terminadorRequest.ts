@@ -1,4 +1,4 @@
-import { remoteApiEnabled } from "../core/apiConfig";
+import { remoteApiEnabled } from "../core/apiConfig.ts";
 
 export interface TerminadorApplication {
   id: string;
