@@ -76,3 +76,19 @@ test("VIBRA recognizes conversational pause and resume variations", () => {
     assert.deepEqual(parseIntent(phrase), { type: "RESUME" }, phrase);
   }
 });
+
+
+test("HBG voice distinguishes persistent absolute volume changes from relative adjustments", () => {
+  assert.deepEqual(parseIntent("pon volumen a 50%"), { type: "SET_VOLUME", volume: 50 });
+  assert.deepEqual(parseIntent("sube el volumen a 65"), { type: "SET_VOLUME", volume: 65 });
+  assert.deepEqual(parseIntent("baja volumen a 20%"), { type: "SET_VOLUME", volume: 20 });
+  assert.deepEqual(parseIntent("sube el volumen"), { type: "ADJUST_VOLUME", delta: 10 });
+  assert.deepEqual(parseIntent("bájale un poquito"), { type: "ADJUST_VOLUME", delta: -5 });
+  assert.deepEqual(parseIntent("baja el volumen bastante"), { type: "ADJUST_VOLUME", delta: -20 });
+  assert.deepEqual(parseIntent("dale más fuerte"), { type: "ADJUST_VOLUME", delta: 10 });
+  assert.deepEqual(parseIntent("más bajito"), { type: "ADJUST_VOLUME", delta: -10 });
+  assert.deepEqual(parseIntent("sube el volumen a 120%"), {
+    type: "UNKNOWN",
+    raw: "sube el volumen a 120%",
+  });
+});
