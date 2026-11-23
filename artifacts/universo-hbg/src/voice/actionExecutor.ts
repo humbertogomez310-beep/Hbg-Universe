@@ -178,9 +178,10 @@ export async function executeVoiceAction(action: VoiceAction): Promise<string> {
 
     case "ADJUST_VOLUME": {
       const current = hbgCore.getContext<number>("music.volume");
-      const currentVolume = typeof current === "number" && Number.isFinite(current)
-        ? Math.max(0, Math.min(100, current))
-        : 80;
+      if (typeof current !== "number" || !Number.isFinite(current)) {
+        return "No tengo el nivel actual del volumen para ajustarlo con precisión. Dime un nivel concreto, por ejemplo: déjalo al 50%.";
+      }
+      const currentVolume = Math.max(0, Math.min(100, current));
       const volume = Math.max(0, Math.min(100, currentVolume + action.delta));
       const res = await hbgCore.dispatchAction("music.volume", { volume });
       return res.success
