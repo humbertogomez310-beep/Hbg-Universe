@@ -156,3 +156,12 @@ test("relative voice volume commands apply to the current VIBRA level and clamp 
     hbgCore.setContext("music.volume", typeof previous === "number" ? previous : undefined);
   }
 });
+
+
+test("unknown voice requests receive contextual clarification instead of a generic error", async () => {
+  const audio = await executeVoiceAction({ type: "UNKNOWN", raw: "bájale al sonido" });
+  assert.match(audio, /subirlo, bajarlo o dejarlo en un nivel concreto/i);
+
+  const navigation = await executeVoiceAction({ type: "UNKNOWN", raw: "abre una aplicación" });
+  assert.match(navigation, /UNIVERSO, INSTINTO o VIBRA/i);
+});
