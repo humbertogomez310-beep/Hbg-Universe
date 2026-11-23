@@ -3,6 +3,7 @@ import { useVoiceCapture } from "./useVoiceCapture";
 import { interpretUtterance } from "./lingua";
 import { executeVoiceAction } from "./actionExecutor";
 import { beginVoiceAudioSession } from "../core/audioManager";
+import { VOICE_COMMAND_CATALOG } from "./voiceCommandCatalog";
 import {
   clampVoiceWidgetPosition,
   isPersistentVoiceError,
@@ -43,6 +44,7 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
     originX: number;
     originY: number;
   } | null>(null);
+  const [commandsOpen, setCommandsOpen] = useState(false);
   const [speechEnabled, setSpeechEnabled] = useState(() => {
     try {
       return localStorage.getItem("hbg_vibra_voice_speech_enabled") !== "false";
@@ -250,6 +252,68 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
           )}
         </div>
       )}
+      {commandsOpen && (
+        <div
+          id="hbg-voice-command-catalog"
+          role="dialog"
+          aria-label="Catálogo de comandos de voz"
+          style={{
+            position: "absolute",
+            right: 0,
+            bottom: 64,
+            width: "min(310px, calc(100vw - 24px))",
+            maxHeight: "min(62vh, 480px)",
+            overflowY: "auto",
+            background: "var(--bg-card)",
+            color: "var(--text-primary)",
+            border: `1px solid ${accentColor}55`,
+            borderRadius: 10,
+            padding: 12,
+            boxShadow: "0 12px 36px rgba(0,0,0,0.42)",
+            fontFamily: "var(--font-mono)",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <strong style={{ fontSize: 12 }}>COMANDOS DE VOZ</strong>
+            <button
+              type="button"
+              onClick={() => setCommandsOpen(false)}
+              aria-label="Cerrar catálogo de comandos"
+              style={{ border: 0, background: "transparent", color: "var(--text-muted)", cursor: "pointer", fontSize: 16 }}
+            >
+              ×
+            </button>
+          </div>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 12 }}>
+            Di cualquiera de estas frases después de activar el micrófono.
+          </div>
+          {VOICE_COMMAND_CATALOG.map((group) => (
+            <section key={group.id} style={{ marginBottom: 14 }}>
+              <div style={{ color: accentColor, fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>
+                {group.label}
+              </div>
+              <div style={{ color: "var(--text-muted)", fontSize: 9, margin: "3px 0 8px" }}>
+                {group.description}
+              </div>
+              {group.commands.map((command) => (
+                <div key={command.label} style={{ padding: "7px 0", borderTop: "1px solid var(--border-dim)" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, marginBottom: 4 }}>{command.label}</div>
+                  <div style={{ color: "var(--text-muted)", fontSize: 10, lineHeight: 1.6 }}>
+                    {command.phrases.map((phrase, index) => (
+                      <span key={phrase}>
+                        {phrase}{index < command.phrases.length - 1 ? " · " : ""}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </section>
+          ))}
+          <div style={{ color: "var(--text-muted)", fontSize: 9 }}>
+            El catálogo se ampliará cuando cada nueva acción esté implementada y probada.
+          </div>
+        </div>
+      )}
       {!supported && (
         <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", maxWidth: 150, textAlign: "right" }}>
           Voz no disponible en este navegador.
@@ -285,6 +349,26 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
           aria-label="Alternar respuesta hablada"
         >
           {speechEnabled ? "🔊" : "🔇"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setCommandsOpen((open) => !open)}
+          aria-label="Mostrar comandos de voz"
+          aria-expanded={commandsOpen}
+          aria-controls="hbg-voice-command-catalog"
+          title="Comandos disponibles"
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: "50%",
+            border: `1px solid ${commandsOpen ? accentColor : "var(--border-dim)"}`,
+            background: "var(--bg-card)",
+            color: commandsOpen ? accentColor : "var(--text-muted)",
+            cursor: "pointer",
+            fontSize: 17,
+          }}
+        >
+          ☷
         </button>
         <button
           onClick={handleMicClick}
