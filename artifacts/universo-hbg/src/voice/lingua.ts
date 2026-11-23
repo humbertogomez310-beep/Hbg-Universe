@@ -98,6 +98,7 @@ function classifyPlaybackControl(n: string): VoiceAction | null {
     /^(?:pausa|pausar|pause)$/,
     /^(?:pon|ponme) (?:en )?pausa$/,
     /^(?:pon|ponme) (?:lo|la|los|las) en pausa$/,
+    /^(?:ponlo|ponla|ponlos|ponlas) en pausa$/,
     /^(?:pon|deja) (?:la )?(?:musica|reproduccion|cancion) en pausa$/,
     /^(?:pausalo|pausala|pausalos|pausalas|pausame)$/,
     /^(?:pausa|pausame) (?:la )?(?:musica|reproduccion|cancion)$/,
