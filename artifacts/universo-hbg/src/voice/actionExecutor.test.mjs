@@ -147,7 +147,9 @@ test("relative voice volume commands apply to the current VIBRA level and clamp 
 
   try {
     assert.match(await executeVoiceAction({ type: "ADJUST_VOLUME", delta: -5 }), /40%/);
+    assert.equal(hbgCore.getContext("music.volume"), 40);
     assert.match(await executeVoiceAction({ type: "ADJUST_VOLUME", delta: 20 }), /60%/);
+    assert.equal(hbgCore.getContext("music.volume"), 60);
     hbgCore.setContext("music.volume", 98);
     assert.match(await executeVoiceAction({ type: "ADJUST_VOLUME", delta: 20 }), /100%/);
     assert.deepEqual(received, [{ volume: 40 }, { volume: 60 }, { volume: 100 }]);
