@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { UniversoScreen } from "../components/UniversoScreen";
+import { loadInstintoData, saveInstintoRecord, replaceInstintoData } from "./instintoDB";
 import {
   createInstintoBackup,
   parseInstintoBackup,
@@ -20,25 +21,25 @@ const DRAFT_KEY = "hbg_instinto_draft_v1";
 
 function browserStorage(): Storage | null {
   if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
+  try { return window.localStorage; } catch { return null; }
 }
 
-function loadCollection<T>(key: string): T[] {
+function persistLegacyValue(key: string, value: unknown): boolean {
+  const storage = browserStorage();
+  if (!storage) return false;
+  try { storage.setItem(key, JSON.stringify(value)); return true; } catch { return false; }
+}
+
+function loadLegacyCollection<T>(key: string): T[] {
   const storage = browserStorage();
   if (!storage) return [];
   try {
     const parsed: unknown = JSON.parse(storage.getItem(key) ?? "[]");
     return Array.isArray(parsed) ? parsed as T[] : [];
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 }
 
-function loadDraft(): NoteDraft {
+function loadLegacyDraft(): NoteDraft {
   const fallback: NoteDraft = { title: "", content: "", category: "notas", tags: [] };
   const storage = browserStorage();
   if (!storage) return fallback;
@@ -50,41 +51,11 @@ function loadDraft(): NoteDraft {
     return {
       title: typeof value.title === "string" ? value.title : "",
       content: typeof value.content === "string" ? value.content : "",
-      category: category === "notas" || category === "letras" || category === "ideas" || category === "reflexiones"
-        ? category
-        : "notas",
+      category: category === "notas" || category === "letras" || category === "ideas" || category === "reflexiones" ? category : "notas",
       tags: Array.isArray(value.tags) ? value.tags.filter((tag): tag is string => typeof tag === "string").slice(0, 30) : [],
     };
-  } catch {
-    return fallback;
-  }
+  } catch { return fallback; }
 }
-
-function persistValue(key: string, value: unknown): boolean {
-  const storage = browserStorage();
-  if (!storage) return false;
-  try {
-    storage.setItem(key, JSON.stringify(value));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function removeStoredValue(key: string): boolean {
-  const storage = browserStorage();
-  if (!storage) return false;
-  try {
-    storage.removeItem(key);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function loadNotes(): Note[] { return loadCollection<Note>(NOTE_KEY); }
-function loadLyrics(): Lyric[] { return loadCollection<Lyric>(LYRIC_KEY); }
-function loadProjects(): Project[] { return loadCollection<Project>(PROJECT_KEY); }
 
 const CAT_COLORS: Record<Category, string> = {
   notas: "var(--neon-cyan)", letras: "var(--neon-pink)", ideas: "#ff9100", reflexiones: "var(--neon-purple)",
@@ -106,10 +77,11 @@ function countWords(text: string) { return text.trim() ? text.trim().split(/\s+/
 function countVerses(text: string) { return text.split("\n").filter((l) => l.trim()).length; }
 
 export function InstintoModule() {
-  const [notes, setNotes] = useState<Note[]>(loadNotes);
-  const [lyrics, setLyrics] = useState<Lyric[]>(loadLyrics);
-  const [projects, setProjects] = useState<Project[]>(loadProjects);
-  const [draft] = useState<NoteDraft>(loadDraft);
+  const [notes, setNotes] = useState<Note[]>(() => loadLegacyCollection<Note>(NOTE_KEY));
+  const [lyrics, setLyrics] = useState<Lyric[]>(() => loadLegacyCollection<Lyric>(LYRIC_KEY));
+  const [projects, setProjects] = useState<Project[]>(() => loadLegacyCollection<Project>(PROJECT_KEY));
+  const [draft, setDraft] = useState<NoteDraft>(loadLegacyDraft);
+  const [storageReady, setStorageReady] = useState(false);
   const [view, setView] = useState<ViewMode>("inicio");
   const [newTitle, setNewTitle] = useState(draft.title);
   const [newContent, setNewContent] = useState(draft.content);
@@ -134,17 +106,56 @@ export function InstintoModule() {
 
   useEffect(() => { if (lyrics.length > 0 && !activeLyric) setActiveLyric(lyrics[0]); }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const data = await loadInstintoData();
+        if (cancelled) return;
+        setNotes(data.notes);
+        setLyrics(data.lyrics);
+        setProjects(data.projects);
+        setDraft(data.draft);
+        setNewTitle(data.draft.title);
+        setNewContent(data.draft.content);
+        setNewCategory(data.draft.category);
+        setActiveTags(data.draft.tags);
+        setActiveLyric(data.lyrics[0] ?? null);
+        setStorageWarning("");
+      } catch (error) {
+        if (!cancelled) {
+          setStorageWarning(error instanceof Error ? error.message : "No se pudo abrir el almacenamiento de INSTINTO.");
+        }
+      } finally {
+        if (!cancelled) setStorageReady(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const saveRecord = async (key: "notes" | "lyrics" | "projects" | "draft", value: unknown, legacyKey: string, label: string) => {
+    try {
+      await saveInstintoRecord(key, value as never);
+      setStorageWarning("");
+    } catch {
+      const saved = persistLegacyValue(legacyKey, value);
+      setStorageWarning(saved
+        ? `IndexedDB no disponible; ${label} se guardaron temporalmente en el almacenamiento anterior.`
+        : `No se pudieron guardar ${label} en este dispositivo.`);
+    }
+  };
+
   const saveNotes = (next: Note[]) => {
     setNotes(next);
-    setStorageWarning(persistValue(NOTE_KEY, next) ? "" : "No se pudieron guardar las notas en este dispositivo.");
+    void saveRecord("notes", next, NOTE_KEY, "las notas");
   };
   const saveLyrics = (next: Lyric[]) => {
     setLyrics(next);
-    setStorageWarning(persistValue(LYRIC_KEY, next) ? "" : "No se pudieron guardar las letras en este dispositivo.");
+    void saveRecord("lyrics", next, LYRIC_KEY, "las letras");
   };
   const saveProjects = (next: Project[]) => {
     setProjects(next);
-    setStorageWarning(persistValue(PROJECT_KEY, next) ? "" : "No se pudieron guardar los proyectos en este dispositivo.");
+    void saveRecord("projects", next, PROJECT_KEY, "los proyectos");
   };
 
   const addProject = () => {
@@ -166,21 +177,17 @@ export function InstintoModule() {
   useEffect(() => {
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     if (!newTitle.trim() && !newContent.trim() && activeTags.length === 0) {
-      removeStoredValue(DRAFT_KEY);
+      setDraft({ title: "", content: "", category: "notas", tags: [] });
+      void saveRecord("draft", { title: "", content: "", category: "notas", tags: [] }, DRAFT_KEY, "el borrador");
       setAutoSaved(false);
       return;
     }
 
     setAutoSaved(false);
     autoSaveTimerRef.current = setTimeout(() => {
-      const saved = persistValue(DRAFT_KEY, {
-        title: newTitle,
-        content: newContent,
-        category: newCategory,
-        tags: activeTags,
-      });
-      setAutoSaved(saved);
-      setStorageWarning(saved ? "" : "No se pudo guardar el borrador; revisa el almacenamiento del navegador.");
+      const nextDraft: NoteDraft = { title: newTitle, content: newContent, category: newCategory, tags: activeTags };
+      setDraft(nextDraft);
+      void saveRecord("draft", nextDraft, DRAFT_KEY, "el borrador").then(() => setAutoSaved(true));
     }, 800);
 
     return () => {
@@ -193,7 +200,8 @@ export function InstintoModule() {
     const now = new Date().toISOString();
     const note: Note = { id: Date.now().toString(), title: newTitle || "Sin título", content: newContent.trim(), category: newCategory, createdAt: now, updatedAt: now, pinned: false, favorite: false, tags: activeTags, deleted: false };
     saveNotes([note, ...notes]);
-    removeStoredValue(DRAFT_KEY);
+    setDraft({ title: "", content: "", category: "notas", tags: [] });
+    void saveRecord("draft", { title: "", content: "", category: "notas", tags: [] }, DRAFT_KEY, "el borrador");
     setAutoSaved(false);
     setNewContent(""); setNewTitle(""); setActiveTags([]);
   };
@@ -309,26 +317,12 @@ export function InstintoModule() {
         `Se reemplazarán los datos locales de INSTINTO. Notas: ${backup.notes.length}; letras: ${backup.lyrics.length}; proyectos: ${backup.projects.length}. ¿Continuar?`,
       )) return;
 
-      const storage = browserStorage();
-      if (!storage) throw new Error("El almacenamiento local no está disponible.");
-      const keys = [NOTE_KEY, LYRIC_KEY, PROJECT_KEY, DRAFT_KEY];
-      const previous = new Map(keys.map((key) => [key, storage.getItem(key)]));
-      try {
-        storage.setItem(NOTE_KEY, JSON.stringify(backup.notes));
-        storage.setItem(LYRIC_KEY, JSON.stringify(backup.lyrics));
-        storage.setItem(PROJECT_KEY, JSON.stringify(backup.projects));
-        storage.setItem(DRAFT_KEY, JSON.stringify(backup.draft));
-      } catch (error) {
-        for (const [key, value] of previous) {
-          try {
-            if (value === null) storage.removeItem(key);
-            else storage.setItem(key, value);
-          } catch {
-            // Best-effort rollback if the browser storage quota is exhausted.
-          }
-        }
-        throw error;
-      }
+      await replaceInstintoData({
+        notes: backup.notes,
+        lyrics: backup.lyrics,
+        projects: backup.projects,
+        draft: backup.draft,
+      });
 
       setNotes(backup.notes);
       setLyrics(backup.lyrics);
@@ -337,6 +331,7 @@ export function InstintoModule() {
       setNewContent(backup.draft.content);
       setNewCategory(backup.draft.category);
       setActiveTags(backup.draft.tags);
+      setDraft(backup.draft);
       setActiveLyric(backup.lyrics[0] ?? null);
       setStorageWarning("");
       setBackupStatus(`Respaldo restaurado: ${backup.notes.length} notas, ${backup.lyrics.length} letras y ${backup.projects.length} proyectos.`);
@@ -365,6 +360,10 @@ export function InstintoModule() {
     { id: "ideas", label: "IDEAS" }, { id: "proyectos", label: "PROYECTOS" }, { id: "exportar", label: "EXPORTAR" },
     { id: "universo", label: "UNIVERSO HBG" },
   ];
+
+  if (!storageReady) {
+    return <div role="status" style={{ padding: 24, color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 12 }}>Preparando almacenamiento local de INSTINTO…</div>;
+  }
 
   return (
     <div>
