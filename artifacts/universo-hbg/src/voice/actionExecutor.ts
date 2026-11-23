@@ -1,5 +1,6 @@
 import { hbgCore } from "../core/hbgCore.ts";
 import type { VoiceAction } from "./intentParser";
+import { clarifyUtterance } from "./lingua";
 
 const MOOD_LABELS: Record<string, string> = {
   party: "fiesta",
@@ -58,7 +59,7 @@ function selectVerifiedTrack(
 export async function executeVoiceAction(action: VoiceAction): Promise<string> {
   switch (action.type) {
     case "UNKNOWN":
-      return "No entendí el comando.";
+      return clarifyUtterance(action.raw);
 
     case "GREETING":
       return "Hola. Estoy listo para ayudarte a navegar y controlar las funciones locales del Universo HBG.";
