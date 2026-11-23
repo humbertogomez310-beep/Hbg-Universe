@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - replit-agent
+      - migration/**
   pull_request:
     branches:
       - main
@@ -78,3 +79,6 @@ jobs:
 
       - name: Build production workspace
         run: pnpm build
+
+      - name: Build portable deployment container
+        run: docker build --tag universo-hbg:ci .
