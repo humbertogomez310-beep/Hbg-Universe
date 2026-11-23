@@ -20,7 +20,7 @@ Documentación oficial:
 - Build command:
 
 ```bash
-pnpm install --frozen-lockfile && VITE_HBG_API_ENABLED=false pnpm --dir artifacts/universo-hbg run build
+corepack enable && corepack prepare pnpm@10 --activate && pnpm install --frozen-lockfile && VITE_HBG_API_ENABLED=false pnpm --dir artifacts/universo-hbg run build
 ```
 
 - Build output directory: `artifacts/universo-hbg/dist/public`
