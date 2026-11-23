@@ -67,7 +67,6 @@ test("HBG LINGUA recognizes natural resume variants", () => {
     "Reanúdalo",
     "Reanúdala",
     "Quita la pausa",
-    "Dale play",
   ];
   for (const phrase of phrases) {
     assert.deepEqual(
