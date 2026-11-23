@@ -1,1 +1,1 @@
-HBG_UNIVERSE_INSPECTION_20260916_052521.txt filter=lfs diff=lfs merge=lfs -text
+# Deployment branch: no Git LFS assets are required by the static PWA build.
