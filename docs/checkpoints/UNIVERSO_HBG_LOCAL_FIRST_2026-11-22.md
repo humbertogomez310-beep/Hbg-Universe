@@ -1,5 +1,5 @@
 # Checkpoint oficial — Finalización Universo HBG Local-first
-**Fecha:** 2026-11-22  
+**Fecha de actualización:** 2026-11-23  
 **Estado:** trabajo pausado por solicitud del usuario; continuar desde este checkpoint.
 
 ## 1. Decisión arquitectónica que se retoma
@@ -21,8 +21,8 @@ No se debe volver a presentar PWA/offline como una arquitectura nueva: es la dir
 - Rama principal: `main`
 - SHA de `main` en la comparación más reciente: `77ae22b2432fe5fa435b485454c6b06b8dff7a31`
 - Rama de trabajo Local-first: `local-first/pwa-completion`
-- Último SHA confirmado por CI: `bba06966597bd7f82ad2c24993b11f365400b060`
-- Comparación: 14 commits por delante de `main`, 0 por detrás.
+- Último SHA confirmado por CI: `10f7a2fa43b13c64d81e7e359b25b2c53c910bfc`
+- Comparación: 20 commits por delante de `main`, 0 por detrás.
 - Rama: https://github.com/humbertogomez310-beep/Hbg-Universe/tree/local-first/pwa-completion
 
 **Protección:** `main` no se ha modificado, no se ha abierto PR, no se ha hecho merge y no se ha publicado una versión nueva.
@@ -89,6 +89,39 @@ El siguiente trabajo técnico debe corregir la resolución/importación para el 
 
 Una ejecución anterior de la rama `migration/cloud-hosting-pilot` tuvo otro fallo independiente de Docker build (`TS6305` en la compilación de dependencias internas). Ese problema pertenece al piloto de contenedor y no es el fallo de la rama Local-first actual.
 
+
+## 5.1. Verificación posterior — 2026-11-23
+
+Ejecución CI aprobada:
+https://github.com/humbertogomez310-beep/Hbg-Universe/actions/runs/45104741493
+
+- Run ID: `45104741493`
+- Job ID: `137463337972`
+- Commit probado: `10f7a2fa43b13c64d81e7e359b25b2c53c910bfc`
+- Resultado: **success**.
+- API server tests: success.
+- Tests de Universo HBG: success.
+- Typecheck del workspace: success.
+- Build de producción: success.
+- Build estático Local-first PWA: success.
+- Se corrigió el import ESM de TERMINADOR agregando la extensión explícita `.ts` a `apiConfig`.
+- El Service Worker ahora precarga también `/icons/hbg.svg`; su prueba automatizada verifica que el icono quede disponible offline.
+- CI comprueba que los iconos declarados por el manifest existan en los recursos públicos.
+- Se eliminó una ejecución duplicada de migraciones en el workflow de CI.
+- VIBRA ahora espera a que la transacción IndexedDB termine antes de resolver la operación; los errores y abortos cierran la conexión y rechazan la operación.
+
+Advertencia no bloqueante del build: el bundle JavaScript principal supera 500 kB minificado (aprox. 671 kB; 170 kB gzip). No se realizó code splitting porque antes hay que garantizar que los módulos diferidos también queden disponibles offline. Conviene medir el arranque en el teléfono antes de decidir la optimización.
+
+## 5.2. Pendientes para probar en dispositivo
+
+- No hay deployment nuevo. El deployment antiguo de Replit sigue sin ser fuente válida para probar esta rama.
+- Aún no se han realizado pruebas manuales de instalación, uso offline, persistencia tras reinicio ni actualización del Service Worker en un teléfono real.
+- INSTINTO todavía utiliza localStorage para colecciones y contenido; la migración a IndexedDB sigue pendiente. El módulo cuenta con respaldo/exportación, pero no se ha certificado el comportamiento con grandes volúmenes o cuotas agotadas.
+- VIBRA usa IndexedDB para archivos de audio; su operación real debe comprobarse en el dispositivo, incluida recuperación y cuota.
+- La PWA requiere un hosting HTTPS de vista previa. Vercel fue sugerido como vía de publicación de preview; no está conectado ni se ha creado ningún deployment.
+- Antes de instalar, confirmar si el teléfono es Android o iPhone para aplicar el flujo correcto y revisar compatibilidad de iconos/instalación.
+- No activar Replit Core ni pagar servicios. No publicar producción, modificar `main`, fusionar ramas, tocar DB real o configurar secretos.
+
 ## 6. Próximos pasos al reanudar
 
 1. Corregir el fallo ESM de `apiConfig` y verificar que los dos tests de TERMINADOR vuelvan a pasar.
@@ -118,6 +151,6 @@ Una ejecución anterior de la rama `migration/cloud-hosting-pilot` tuvo otro fal
 
 ## 8. Punto exacto para continuar
 
-Retomar en la rama `local-first/pwa-completion`, desde el commit `bba06966597bd7f82ad2c24993b11f365400b060` (o el HEAD posterior si el checkpoint se acaba de registrar), comenzando por corregir la importación ESM de `apiConfig` y hacer que CI quede verde.
+Retomar en la rama `local-first/pwa-completion`, desde el commit `10f7a2fa43b13c64d81e7e359b25b2c53c910bfc` (o el HEAD posterior si el checkpoint se acaba de registrar). La importación ESM de `apiConfig` está corregida y CI está verde; el siguiente objetivo es preparar una vista previa HTTPS para instalación móvil y ejecutar pruebas reales en el teléfono.
 
 **Objetivo final:** concluir Universo HBG siguiendo la arquitectura Local-first original: PWA instalable, persistencia local confiable, funciones locales operativas offline, capacidades remotas claramente delimitadas y HBG Authority protegiendo toda operación privilegiada.
