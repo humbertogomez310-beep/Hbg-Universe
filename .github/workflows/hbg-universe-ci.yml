@@ -79,3 +79,11 @@ jobs:
 
       - name: Build production workspace
         run: pnpm build
+
+      - name: Build static Local-first PWA
+        run: |
+          VITE_HBG_API_ENABLED=false pnpm --dir artifacts/universo-hbg run build
+          test -f artifacts/universo-hbg/dist/public/index.html
+          test -f artifacts/universo-hbg/dist/public/sw.js
+          test -f artifacts/universo-hbg/dist/public/manifest.webmanifest
+          test -f artifacts/universo-hbg/dist/public/_headers
