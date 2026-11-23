@@ -36,16 +36,39 @@ function openDB(): Promise<IDBDatabase> {
 async function tx(
   storeName: string,
   mode: IDBTransactionMode,
-  fn: (store: IDBObjectStore) => IDBRequest
+  fn: (store: IDBObjectStore) => IDBRequest,
 ): Promise<unknown> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(storeName, mode);
-    const store = transaction.objectStore(storeName);
-    const req = fn(store);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-    transaction.oncomplete = () => db.close();
+    let settled = false;
+    let result: unknown;
+    const close = () => db.close();
+    const fail = (error: DOMException | Error | null) => {
+      if (settled) return;
+      settled = true;
+      close();
+      reject(error ?? new Error("La operación IndexedDB no pudo completarse."));
+    };
+
+    let transaction: IDBTransaction;
+    try {
+      transaction = db.transaction(storeName, mode);
+      const request = fn(transaction.objectStore(storeName));
+      request.onsuccess = () => {
+        result = request.result;
+      };
+      request.onerror = () => fail(request.error);
+      transaction.oncomplete = () => {
+        if (settled) return;
+        settled = true;
+        close();
+        resolve(result);
+      };
+      transaction.onerror = () => fail(transaction.error);
+      transaction.onabort = () => fail(transaction.error);
+    } catch (error) {
+      fail(error instanceof Error ? error : new Error("No se pudo iniciar la transacción IndexedDB."));
+    }
   });
 }
 
@@ -67,15 +90,7 @@ export async function saveTrackMeta(meta: TrackMeta): Promise<void> {
 }
 
 export async function getAllTrackMeta(): Promise<TrackMeta[]> {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_META, "readonly");
-    const store = transaction.objectStore(STORE_META);
-    const req = store.getAll();
-    req.onsuccess = () => resolve(req.result as TrackMeta[]);
-    req.onerror = () => reject(req.error);
-    transaction.oncomplete = () => db.close();
-  });
+  return (await tx(STORE_META, "readonly", (store) => store.getAll())) as TrackMeta[];
 }
 
 export async function deleteTrackMeta(id: string): Promise<void> {
