@@ -116,7 +116,7 @@ function classifyPlaybackControl(n: string): VoiceAction | null {
     /^(?:sacalo|sacala) de pausa$/,
     /^(?:dale|pon) (?:al )?play$/,
     /^(?:vuelve a reproducir|vuelve a poner musica)$/,
-    /^(?:continualo|continuala|reanudalo|rean udala)$/,
+    /^(?:continualo|continuala|reanudalo|reanudala)$/,
   ];
   if (resumeRequests.some((pattern) => pattern.test(n))) return { type: "RESUME" };
 
