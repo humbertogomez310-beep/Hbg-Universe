@@ -27,18 +27,7 @@ export type VoiceAction =
   | { type: "PLAY_TRACK"; query: string }
   | { type: "UNKNOWN"; raw: string };
 
-function normalize(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\\u0300-\\u036f]/g, "")
-    .replace(/[^\\p{L}\\p{N}\\s]/gu, " ")
-    .replace(/\\s+/g, " ")
-    .trim()
-    // A recognized wake phrase may be included in the same transcript as its command.
-    .replace(/^(?:oye|hey|hola) hbg\\b\\s*/, "")
-    .trim();
-}
+import { normalizeUtterance } from "./lingua.ts";
 
 function resolvePublicModule(text: string): "universo" | "instinto" | "vibra" | null {
   if (/\b(instinto|notas|letras|creatividad)\b/.test(text)) return "instinto";
@@ -66,7 +55,7 @@ const MOOD_WORDS: Record<string, string> = {
 
 export function parseIntent(text: string): VoiceAction {
   const raw = text;
-  const n = normalize(text);
+  const n = normalizeUtterance(text);
   if (!n) return { type: "UNKNOWN", raw };
 
   // Closed-set refusal: natural-language instructions never grant development
