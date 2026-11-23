@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - replit-agent
+      - local-first/**
   pull_request:
     branches:
       - main
