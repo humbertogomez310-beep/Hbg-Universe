@@ -21,8 +21,8 @@ No se debe volver a presentar PWA/offline como una arquitectura nueva: es la dir
 - Rama principal: `main`
 - SHA de `main` en la comparación más reciente: `77ae22b2432fe5fa435b485454c6b06b8dff7a31`
 - Rama de trabajo Local-first: `local-first/pwa-completion`
-- Último SHA confirmado por CI: `10f7a2fa43b13c64d81e7e359b25b2c53c910bfc`
-- Comparación: 20 commits por delante de `main`, 0 por detrás.
+- Último SHA confirmado por CI: `024ed49c74be1f1188bb59c340cc1b2ab5a24e70`
+- Comparación: La rama está por delante de `main` y no tiene commits pendientes de incorporar desde `main`.
 - Rama: https://github.com/humbertogomez310-beep/Hbg-Universe/tree/local-first/pwa-completion
 
 **Protección:** `main` no se ha modificado, no se ha abierto PR, no se ha hecho merge y no se ha publicado una versión nueva.
@@ -93,11 +93,11 @@ Una ejecución anterior de la rama `migration/cloud-hosting-pilot` tuvo otro fal
 ## 5.1. Verificación posterior — 2026-11-23
 
 Ejecución CI aprobada:
-https://github.com/humbertogomez310-beep/Hbg-Universe/actions/runs/45104741493
+https://github.com/humbertogomez310-beep/Hbg-Universe/actions/runs/45104899239
 
-- Run ID: `45104741493`
-- Job ID: `137463337972`
-- Commit probado: `10f7a2fa43b13c64d81e7e359b25b2c53c910bfc`
+- Run ID: `45104899239`
+- Job ID: `137463810909`
+- Commit probado: `024ed49c74be1f1188bb59c340cc1b2ab5a24e70`
 - Resultado: **success**.
 - API server tests: success.
 - Tests de Universo HBG: success.
@@ -151,6 +151,6 @@ Advertencia no bloqueante del build: el bundle JavaScript principal supera 500 k
 
 ## 8. Punto exacto para continuar
 
-Retomar en la rama `local-first/pwa-completion`, desde el commit `10f7a2fa43b13c64d81e7e359b25b2c53c910bfc` (o el HEAD posterior si el checkpoint se acaba de registrar). La importación ESM de `apiConfig` está corregida y CI está verde; el siguiente objetivo es preparar una vista previa HTTPS para instalación móvil y ejecutar pruebas reales en el teléfono.
+Retomar en la rama `local-first/pwa-completion`, desde el commit `024ed49c74be1f1188bb59c340cc1b2ab5a24e70` (o el HEAD posterior si el checkpoint se acaba de registrar). La importación ESM de `apiConfig` está corregida y CI está verde; el siguiente objetivo es preparar una vista previa HTTPS para instalación móvil y ejecutar pruebas reales en el teléfono.
 
 **Objetivo final:** concluir Universo HBG siguiendo la arquitectura Local-first original: PWA instalable, persistencia local confiable, funciones locales operativas offline, capacidades remotas claramente delimitadas y HBG Authority protegiendo toda operación privilegiada.
