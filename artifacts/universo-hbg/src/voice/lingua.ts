@@ -140,7 +140,7 @@ export function parseIntent(text: string): VoiceAction {
   if (/^que cancion (esta )?sonando$/.test(n) || /^que suena$/.test(n)) return { type: "NOW_PLAYING" };
 
   // Explicit levels take precedence over relative volume language.
-  const volumeMatch = n.match(/^(?:(?:pon|ajusta|cambia|deja|fija) (?:el )?volumen|(?:sube|baja|aumenta|disminuye) (?:el )?volumen) (?:a )?(\d{1,3})%?$/);
+  const volumeMatch = n.match(/^(?:(?:pon|ajusta|cambia|deja|fija) (?:el )?volumen|(?:sube|baja|aumenta|disminuye) (?:el )?volumen) (?:(?:a|al) )?(\d{1,3})%?$/);
   if (volumeMatch) {
     const volume = Number(volumeMatch[1]);
     return volume <= 100
