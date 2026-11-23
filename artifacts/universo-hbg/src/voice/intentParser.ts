@@ -31,9 +31,12 @@ function normalize(text: string): string {
   return text
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
-    .replace(/\s+/g, " ")
+    .replace(/[\\u0300-\\u036f]/g, "")
+    .replace(/[^\\p{L}\\p{N}\\s]/gu, " ")
+    .replace(/\\s+/g, " ")
+    .trim()
+    // A recognized wake phrase may be included in the same transcript as its command.
+    .replace(/^(?:oye|hey|hola) hbg\\b\\s*/, "")
     .trim();
 }
 
