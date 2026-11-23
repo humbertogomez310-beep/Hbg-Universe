@@ -175,6 +175,7 @@ export function InstintoModule() {
   };
 
   useEffect(() => {
+    if (!storageReady) return;
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     if (!newTitle.trim() && !newContent.trim() && activeTags.length === 0) {
       setDraft({ title: "", content: "", category: "notas", tags: [] });
@@ -193,7 +194,7 @@ export function InstintoModule() {
     return () => {
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     };
-  }, [newTitle, newContent, newCategory, activeTags]);
+  }, [storageReady, newTitle, newContent, newCategory, activeTags]);
 
   const addNote = () => {
     if (!newContent.trim()) return;
