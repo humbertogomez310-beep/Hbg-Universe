@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPoi
 import { useVoiceCapture } from "./useVoiceCapture";
 import { interpretUtterance } from "./lingua";
 import { executeVoiceAction } from "./actionExecutor";
-import { hbgCore } from "../core/hbgCore";
+import { beginVoiceAudioSession } from "../core/audioManager";
 import {
   clampVoiceWidgetPosition,
   isPersistentVoiceError,
@@ -52,16 +52,26 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
   });
 
   const speak = useCallback(
-    (text: string) => {
-      if (!speechEnabled) return;
-      if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-      try {
+    (text: string): Promise<void> => {
+      if (!speechEnabled) return Promise.resolve();
+      if (typeof window === "undefined" || !("speechSynthesis" in window)) return Promise.resolve();
+      return new Promise((resolve) => {
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = "es-ES";
-        window.speechSynthesis.speak(utterance);
-      } catch {
-        /* unavailable */
-      }
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          resolve();
+        };
+        utterance.onend = finish;
+        utterance.onerror = finish;
+        try {
+          window.speechSynthesis.speak(utterance);
+        } catch {
+          finish();
+        }
+      });
     },
     [speechEnabled]
   );
@@ -86,7 +96,7 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
         } else {
           setLastResponseText(response);
         }
-        speak(response);
+        await speak(response);
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : "Falló la ejecución de la orden.";
         setPersistentError(message);
@@ -100,30 +110,13 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
 
   const { supported, listening, error, start, cancel } = useVoiceCapture(handleResult);
 
-  const setVoiceDucking = useCallback((active: boolean) => {
-    return hbgCore.dispatchAction(
-      "music.voiceCapture",
-      { active },
-      { timeoutMs: 1000 }
-    );
-  }, []);
-  const previousListeningRef = useRef(false);
-
+  // Keep app-owned audio ducked across capture, command execution and spoken response.
+  // The manager restores the user's persistent volume when the complete voice session ends.
+  const voiceSessionActive = listening || processing;
   useEffect(() => {
-    // Do not dispatch a redundant "restore" action on first render, when VIBRA
-    // may not be mounted. Dispatch false only after an actual listening session.
-    if (!listening && !previousListeningRef.current) return;
-    previousListeningRef.current = listening;
-    let active = true;
-    void setVoiceDucking(listening).then((result) => {
-      if (active && !result.success) {
-        setPersistentError(
-          result.error ?? "No se pudo ajustar temporalmente el volumen para la captura de voz."
-        );
-      }
-    });
-    return () => { active = false; };
-  }, [listening, setVoiceDucking]);
+    if (!voiceSessionActive) return;
+    return beginVoiceAudioSession();
+  }, [voiceSessionActive]);
 
   useEffect(() => {
     try {
