@@ -1,14 +1,48 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useVoiceCapture } from "./useVoiceCapture";
 import { parseIntent } from "./intentParser";
 import { executeVoiceAction } from "./actionExecutor";
 import { hbgCore } from "../core/hbgCore";
+import {
+  clampVoiceWidgetPosition,
+  isPersistentVoiceError,
+  readVoiceWidgetPosition,
+  VOICE_RESPONSE_DISMISS_MS,
+  VOICE_WIDGET_POSITION_STORAGE_KEY,
+  type VoiceWidgetPosition,
+} from "./voiceCommandUi";
+
+function getInitialWidgetPosition(): VoiceWidgetPosition {
+  const viewport = {
+    width: typeof window === "undefined" ? 1024 : window.innerWidth,
+    height: typeof window === "undefined" ? 768 : window.innerHeight,
+  };
+  let stored: string | null = null;
+  try {
+    stored = typeof window === "undefined"
+      ? null
+      : window.localStorage.getItem(VOICE_WIDGET_POSITION_STORAGE_KEY);
+  } catch {
+    // Position persistence is optional; use a safe visible default.
+  }
+  return readVoiceWidgetPosition(stored, viewport);
+}
 
 export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
   const [processing, setProcessing] = useState(false);
   const processingRef = useRef(false);
   const [lastRecognizedText, setLastRecognizedText] = useState<string | null>(null);
   const [lastResponseText, setLastResponseText] = useState<string | null>(null);
+  const [persistentError, setPersistentError] = useState<string | null>(null);
+  const [dismissedError, setDismissedError] = useState(false);
+  const [widgetPosition, setWidgetPosition] = useState<VoiceWidgetPosition>(getInitialWidgetPosition);
+  const dragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+  } | null>(null);
   const [speechEnabled, setSpeechEnabled] = useState(() => {
     try {
       return localStorage.getItem("hbg_vibra_voice_speech_enabled") !== "false";
@@ -40,15 +74,22 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
       }
       processingRef.current = true;
       setLastRecognizedText(text);
+      setLastResponseText(null);
+      setPersistentError(null);
+      setDismissedError(false);
       setProcessing(true);
       try {
         const action = parseIntent(text);
         const response = await executeVoiceAction(action);
-        setLastResponseText(response);
+        if (isPersistentVoiceError(response)) {
+          setPersistentError(response);
+        } else {
+          setLastResponseText(response);
+        }
         speak(response);
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : "Falló la ejecución de la orden.";
-        setLastResponseText(message);
+        setPersistentError(message);
       } finally {
         processingRef.current = false;
         setProcessing(false);
@@ -66,12 +107,17 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
       { timeoutMs: 1000 }
     );
   }, []);
+  const previousListeningRef = useRef(false);
 
   useEffect(() => {
+    // Do not dispatch a redundant "restore" action on first render, when VIBRA
+    // may not be mounted. Dispatch false only after an actual listening session.
+    if (!listening && !previousListeningRef.current) return;
+    previousListeningRef.current = listening;
     let active = true;
     void setVoiceDucking(listening).then((result) => {
       if (active && !result.success) {
-        setLastResponseText(
+        setPersistentError(
           result.error ?? "No se pudo ajustar temporalmente el volumen para la captura de voz."
         );
       }
@@ -87,20 +133,128 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
     }
   }, [speechEnabled]);
 
+  // Successful confirmations disappear only after the requested action has completed.
+  // Recognition, permission and execution errors remain until explicitly dismissed.
+  useEffect(() => {
+    if (!lastResponseText || processing) return;
+    const timeout = window.setTimeout(() => {
+      setLastResponseText(null);
+      setLastRecognizedText(null);
+    }, VOICE_RESPONSE_DISMISS_MS);
+    return () => window.clearTimeout(timeout);
+  }, [lastResponseText, processing]);
+
+  // Keep the floating voice controls visible after viewport changes and persist their position.
+  useEffect(() => {
+    const handleResize = () => {
+      setWidgetPosition((current) => clampVoiceWidgetPosition(current, {
+        width: window.innerWidth,
+        height: window.innerHeight,
+      }));
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(VOICE_WIDGET_POSITION_STORAGE_KEY, JSON.stringify(widgetPosition));
+    } catch {
+      /* Position persistence is optional. */
+    }
+  }, [widgetPosition]);
+
   const handleMicClick = () => {
     if (!supported || processingRef.current) return;
+    setPersistentError(null);
+    setDismissedError(false);
     if (listening) cancel();
     else start();
   };
 
-  const statusText = error ?? lastResponseText ?? lastRecognizedText;
+  const handleDragStart = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture is an enhancement; pointer events still work without it.
+    }
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: widgetPosition.x,
+      originY: widgetPosition.y,
+    };
+  };
+
+  const handleDragMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    setWidgetPosition(clampVoiceWidgetPosition({
+      x: drag.originX + event.clientX - drag.startX,
+      y: drag.originY + event.clientY - drag.startY,
+    }, {
+      width: window.innerWidth,
+      height: window.innerHeight,
+    }));
+  };
+
+  const handleDragEnd = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (dragRef.current?.pointerId === event.pointerId) dragRef.current = null;
+  };
+
+  const visibleError = persistentError ?? error;
+  const statusText = visibleError
+    ? (dismissedError ? null : visibleError)
+    : lastResponseText ?? lastRecognizedText;
 
   return (
-    <div style={{ position: "fixed", right: 16, bottom: 90, zIndex: 50, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
+    <div style={{
+      position: "fixed",
+      left: widgetPosition.x,
+      top: widgetPosition.y,
+      zIndex: 50,
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "flex-end",
+      gap: 8,
+    }}>
       {statusText && (
-        <div style={{ maxWidth: 220, background: "var(--bg-card)", border: `1px solid ${accentColor}40`, borderRadius: 4, padding: "8px 10px", fontFamily: "var(--font-mono)", fontSize: 10 }}>
-          {lastRecognizedText && <div style={{ color: "var(--text-muted)", marginBottom: 4 }}>&ldquo;{lastRecognizedText}&rdquo;</div>}
-          <div style={{ color: error ? "var(--neon-pink)" : "var(--text-primary)" }}>{statusText}</div>
+        <div style={{
+          maxWidth: 240,
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 8,
+          background: "var(--bg-card)",
+          border: `1px solid ${accentColor}40`,
+          borderRadius: 4,
+          padding: "8px 10px",
+          fontFamily: "var(--font-mono)",
+          fontSize: 10,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.28)",
+        }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {lastRecognizedText && !visibleError && (
+              <div style={{ color: "var(--text-muted)", marginBottom: 4 }}>
+                &ldquo;{lastRecognizedText}&rdquo;
+              </div>
+            )}
+            <div style={{ color: visibleError ? "var(--neon-pink)" : "var(--text-primary)" }}>
+              {statusText}
+            </div>
+          </div>
+          {visibleError && !dismissedError && (
+            <button
+              type="button"
+              onClick={() => setDismissedError(true)}
+              aria-label="Cerrar aviso de voz"
+              style={{ border: 0, background: "transparent", color: "var(--text-muted)", cursor: "pointer", padding: "0 2px" }}
+            >
+              ✕
+            </button>
+          )}
         </div>
       )}
       {!supported && (
@@ -109,6 +263,29 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
         </div>
       )}
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <button
+          type="button"
+          onPointerDown={handleDragStart}
+          onPointerMove={handleDragMove}
+          onPointerUp={handleDragEnd}
+          onPointerCancel={handleDragEnd}
+          aria-label="Mover controles de voz"
+          title="Arrastrar para mover"
+          style={{
+            width: 24,
+            height: 32,
+            borderRadius: 16,
+            border: "1px solid var(--border-dim)",
+            background: "var(--bg-card)",
+            color: "var(--text-muted)",
+            cursor: "grab",
+            touchAction: "none",
+            fontSize: 14,
+            padding: 0,
+          }}
+        >
+          ⠿
+        </button>
         <button
           onClick={() => setSpeechEnabled((v) => !v)}
           style={{ width: 32, height: 32, borderRadius: "50%", border: "1px solid var(--border-dim)", background: "var(--bg-card)", color: "var(--text-muted)", cursor: "pointer", fontSize: 12 }}
