@@ -11,7 +11,6 @@ export type HBGActionName =
   | "music.mood"
   | "music.playTrack"
   | "music.volume"
-  | "music.voiceCapture"
   | "music.direct"
   | "music.autoDj"
   | "music.party"
