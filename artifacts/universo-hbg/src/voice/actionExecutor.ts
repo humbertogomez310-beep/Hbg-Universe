@@ -1,6 +1,6 @@
 import { hbgCore } from "../core/hbgCore.ts";
 import type { VoiceAction } from "./intentParser";
-import { clarifyUtterance } from "./lingua";
+import { clarifyUtterance } from "./lingua.ts";
 
 const MOOD_LABELS: Record<string, string> = {
   party: "fiesta",
