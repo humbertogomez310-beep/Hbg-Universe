@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readLegacyInstintoData } from "./instintoDB.ts";
 
-function createStorage(values: Record<string, string>) {
+function createStorage(values) {
   return {
     getItem(key: string) { return values[key] ?? null; },
     removeItem(key: string) { delete values[key]; },
