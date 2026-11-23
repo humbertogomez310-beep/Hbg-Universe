@@ -4,8 +4,8 @@ import { readLegacyInstintoData } from "./instintoDB.ts";
 
 function createStorage(values) {
   return {
-    getItem(key: string) { return values[key] ?? null; },
-    removeItem(key: string) { delete values[key]; },
+    getItem(key) { return values[key] ?? null; },
+    removeItem(key) { delete values[key]; },
   };
 }
 
