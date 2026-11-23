@@ -134,3 +134,25 @@ test("voice track search asks for clarification instead of playing an ambiguous 
     removePlay();
   }
 });
+
+
+test("relative voice volume commands apply to the current VIBRA level and clamp safely", async () => {
+  const previous = hbgCore.getContext("music.volume");
+  const received = [];
+  hbgCore.setContext("music.volume", 45);
+  const unregister = hbgCore.registerAction("music.volume", (payload) => {
+    received.push(payload);
+    return { success: true, data: payload };
+  });
+
+  try {
+    assert.match(await executeVoiceAction({ type: "ADJUST_VOLUME", delta: -5 }), /40%/);
+    assert.match(await executeVoiceAction({ type: "ADJUST_VOLUME", delta: 20 }), /60%/);
+    hbgCore.setContext("music.volume", 98);
+    assert.match(await executeVoiceAction({ type: "ADJUST_VOLUME", delta: 20 }), /100%/);
+    assert.deepEqual(received, [{ volume: 40 }, { volume: 60 }, { volume: 100 }]);
+  } finally {
+    unregister();
+    hbgCore.setContext("music.volume", typeof previous === "number" ? previous : undefined);
+  }
+});
