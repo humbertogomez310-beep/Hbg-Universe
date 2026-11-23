@@ -176,6 +176,18 @@ export async function executeVoiceAction(action: VoiceAction): Promise<string> {
         : res.error ?? "No se pudo cambiar el volumen.";
     }
 
+    case "ADJUST_VOLUME": {
+      const current = hbgCore.getContext<number>("music.volume");
+      const currentVolume = typeof current === "number" && Number.isFinite(current)
+        ? Math.max(0, Math.min(100, current))
+        : 80;
+      const volume = Math.max(0, Math.min(100, currentVolume + action.delta));
+      const res = await hbgCore.dispatchAction("music.volume", { volume });
+      return res.success
+        ? `Listo, dejé el volumen en ${volume}%.`
+        : res.error ?? "No pude cambiar el volumen.";
+    }
+
     case "PLAYLIST_CREATE": {
       const res = await hbgCore.dispatchAction("music.playlist", {
         mode: "create",
