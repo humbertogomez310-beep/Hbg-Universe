@@ -107,8 +107,13 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
       { timeoutMs: 1000 }
     );
   }, []);
+  const previousListeningRef = useRef(false);
 
   useEffect(() => {
+    // Do not dispatch a redundant "restore" action on first render, when VIBRA
+    // may not be mounted. Dispatch false only after an actual listening session.
+    if (!listening && !previousListeningRef.current) return;
+    previousListeningRef.current = listening;
     let active = true;
     void setVoiceDucking(listening).then((result) => {
       if (active && !result.success) {
