@@ -154,3 +154,29 @@ Advertencia no bloqueante del build: el bundle JavaScript principal supera 500 k
 Retomar en la rama `local-first/pwa-completion`, desde el commit `024ed49c74be1f1188bb59c340cc1b2ab5a24e70` (o el HEAD posterior si el checkpoint se acaba de registrar). La importación ESM de `apiConfig` está corregida y CI está verde; el siguiente objetivo es preparar una vista previa HTTPS para instalación móvil y ejecutar pruebas reales en el teléfono.
 
 **Objetivo final:** concluir Universo HBG siguiendo la arquitectura Local-first original: PWA instalable, persistencia local confiable, funciones locales operativas offline, capacidades remotas claramente delimitadas y HBG Authority protegiendo toda operación privilegiada.
+
+
+## 5.3. Verificación PWA multiplataforma — 2026-11-23
+
+Ejecución CI aprobada:
+https://github.com/humbertogomez310-beep/Hbg-Universe/actions/runs/45105401573
+
+- Run ID: `45105401573`
+- Job ID: `137465403271`
+- Commit probado: `0c47859c0939fbc28b0ec870395877697f41900d`
+- Resultado: **success**.
+- Se completaron correctamente todos los pasos: instalación de dependencias, provisionamiento del esquema aislado de pruebas, validación de scripts, tests del API, tests de Universo HBG, typecheck, build de producción y build estático Local-first PWA.
+- Cambios asociados al commit: icono Apple Touch PNG, referencia desde HTML, viewport sin bloqueo de zoom, actualización de versión del Service Worker y comprobaciones de los recursos de iconos en CI.
+- Comparación Git: `local-first/pwa-completion` está 23 commits por delante de `main` y 0 commits por detrás. SHA actual: `0c47859c0939fbc28b0ec870395877697f41900d`; SHA de `main`: `77ae22b2432fe5fa435b485454c6b06b8dff7a31`.
+- `main` continúa intacta; no se abrió PR, no hubo merge y no se publicó deployment.
+
+**Alcance de esta evidencia:** CI demuestra que los tests y builds automatizados terminaron correctamente. No demuestra instalación ni comportamiento real en Android, iOS o escritorio. Tampoco certifica persistencia offline integral por módulo.
+
+## 5.4. Siguiente trabajo técnico
+
+1. Continuar auditoría offline por módulo, empezando por INSTINTO (actualmente conserva colecciones/contenido en localStorage) y validando cuotas, persistencia y recuperación.
+2. Validar VIBRA IndexedDB en dispositivo, incluyendo lectura/escritura, audio local, metadatos y recuperación tras reinicio.
+3. Revisar HBG Core y TERMINADOR offline: las funciones locales deben seguir disponibles y las operaciones privilegiadas deben permanecer bloqueadas sin autorización online de HBG Authority.
+4. Preparar una vista previa HTTPS estática aislada para pruebas de instalación. Cloudflare Pages o Vercel son opciones; todavía no hay proyecto ni deployment configurado.
+5. Realizar primero prueba real en Android; después iPhone Safari y escritorio. Comprobar instalación, apertura, persistencia, modo avión, reinicio y actualización del Service Worker.
+6. No crear deployment, conectar proveedor externo, modificar `main`, fusionar, tocar DB ni activar servicios de pago sin autorización explícita. No activar Replit Core ni incurrir en gastos.
