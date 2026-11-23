@@ -11,15 +11,15 @@ export interface NormalizedUtterance {
   wakePhrasePresent: boolean;
 }
 
-const WAKE_PREFIX = /^(?:oye|hey|hola) hbg\b\s*/;
+const WAKE_PREFIX = /^(?:oye|hey|hola) hbg\\b\\s*/;
 
 function normalizeBase(input: string): string {
   return input
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
-    .replace(/\s+/g, " ")
+    .replace(/[\\u0300-\\u036f]/g, "")
+    .replace(/[^\\p{L}\\p{N}\\s]/gu, " ")
+    .replace(/\\s+/g, " ")
     .trim();
 }
 
@@ -32,7 +32,7 @@ export function inspectUtterance(input: string): NormalizedUtterance {
   return {
     raw: input,
     text: normalized.replace(WAKE_PREFIX, "").trim(),
-    wakePhrasePresent: /^(?:oye|hey|hola) hbg\b/.test(normalized),
+    wakePhrasePresent: /^(?:oye|hey|hola) hbg\\b/.test(normalized),
   };
 }
 
@@ -68,9 +68,9 @@ export type VoiceAction =
 function resolvePublicModule(text: string): "universo" | "instinto" | "vibra" | null {
   // Public aliases map only to existing applications; sub-features are not
   // treated as executable operations unless an app action is registered.
-  if (/\b(instinto|notas|letras|creatividad|proyectos|mis notas|mis letras|mis proyectos|bloc de notas)\b/.test(text)) return "instinto";
-  if (/\b(vibra|musica|reproductor|audio|auto dj|dj vibra|playlist|playlists|biblioteca musical)\b/.test(text)) return "vibra";
-  if (/\b(universo|hbg core|core|inicio|panel principal|centro de control)\b/.test(text)) return "universo";
+  if (/\\b(instinto|notas|letras|creatividad|proyectos|mis notas|mis letras|mis proyectos|bloc de notas)\\b/.test(text)) return "instinto";
+  if (/\\b(vibra|musica|reproductor|audio|auto dj|dj vibra|playlist|playlists|biblioteca musical)\\b/.test(text)) return "vibra";
+  if (/\\b(universo|hbg core|core|inicio|panel principal|centro de control)\\b/.test(text)) return "universo";
   return null;
 }
 
@@ -91,6 +91,41 @@ const MOOD_WORDS: Record<string, string> = {
   normal: "normal",
 };
 
+function classifyPlaybackControl(n: string): VoiceAction | null {
+  // Playback controls are classified before song-title matching. This prevents
+  // phrases such as "páusalo" and "pon pausa" from becoming track searches.
+  const pauseRequests = [
+    /^(?:pausa|pausar|pause)$/,
+    /^(?:pon|ponme) (?:en )?pausa$/,
+    /^(?:pon|ponme) (?:lo|la|los|las) en pausa$/,
+    /^(?:pon|deja) (?:la )?(?:musica|reproduccion|cancion) en pausa$/,
+    /^(?:pausalo|pausala|pausalos|pausalas|pausame)$/,
+    /^(?:pausa|pausame) (?:la )?(?:musica|reproduccion|cancion)$/,
+    /^(?:deten|detiene|para) (?:la )?(?:musica|reproduccion|cancion|esto|eso)$/,
+    /^(?:quiero que|puedes|podrias) (?:pauses|pausar|detengas|pares) (?:la )?(?:musica|reproduccion|cancion|esto|eso)$/,
+    /^(?:quiero|quisiera) pausar(?:lo|la|la musica|la reproduccion|la cancion)?$/,
+  ];
+  if (pauseRequests.some((pattern) => pattern.test(n))) return { type: "PAUSE" };
+
+  const resumeRequests = [
+    /^(?:continua|continuar|sigue|seguir|resume|reanuda|reanudar|retoma|retomar)$/,
+    /^(?:continua|sigue|reanuda|retoma) (?:con )?(?:la )?(?:musica|reproduccion|cancion)$/,
+    /^(?:continua|sigue) reproduciendo$/,
+    /^(?:reanuda|retoma) (?:la )?(?:musica|reproduccion|cancion)$/,
+    /^(?:quita|quita la) pausa$/,
+    /^(?:sacalo|sacala) de pausa$/,
+    /^(?:dale|pon) (?:al )?play$/,
+    /^(?:vuelve a reproducir|vuelve a poner musica)$/,
+    /^(?:continualo|continuala|rean udalo|rean udala)$/,
+  ];
+  if (resumeRequests.some((pattern) => pattern.test(n))) return { type: "RESUME" };
+
+  if (/^(?:detener|deten|stop|para por completo|deten por completo la musica|deten la reproduccion por completo)$/.test(n)) {
+    return { type: "STOP" };
+  }
+  return null;
+}
+
 export function parseIntent(text: string): VoiceAction {
   const raw = text;
   const n = normalizeUtterance(text);
@@ -99,13 +134,16 @@ export function parseIntent(text: string): VoiceAction {
   // Closed-set refusal: natural-language instructions never grant development
   // authority or enable filesystem, shell, security, or deployment operations.
   if (
-    /\b(codigo|archivo|filesystem|shell|terminal|comando|permisos|seguridad|guard|despliegue|publicacion)\b/.test(n) &&
-    /\b(modifica|modificar|cambia|cambiar|escribe|escribir|borra|borrar|elimina|eliminar|ejecuta|ejecutar|desactiva|desactivar|publica|publicar|ignora|otorga|concede)\b/.test(n)
+    /\\b(codigo|archivo|filesystem|shell|terminal|comando|permisos|seguridad|guard|despliegue|publicacion)\\b/.test(n) &&
+    /\\b(modifica|modificar|cambia|cambiar|escribe|escribir|borra|borrar|elimina|eliminar|ejecuta|ejecutar|desactiva|desactivar|publica|publicar|ignora|otorga|concede)\\b/.test(n)
   ) {
     return { type: "BLOCKED_DEVELOPMENT" };
   }
 
   if (/^(hola|hey|buenas)( .*)?$/.test(n)) return { type: "GREETING" };
+
+  const playbackControl = classifyPlaybackControl(n);
+  if (playbackControl) return playbackControl;
 
   if (
     /^(que puedo hacer|que puedes hacer|ayuda|funciones|capacidades|que hace esta aplicacion|para que sirve esta aplicacion)( .*)?$/.test(n)
@@ -129,7 +167,7 @@ export function parseIntent(text: string): VoiceAction {
 
   const songRequest = /^(?:hazme|haz|crea|crear|escribe|escribeme|compone|compon|quiero) (?:una )?(?:cancion|letra)(?: (?:sobre|llamada|titulada|de) .+)?$/.exec(n);
   if (songRequest) {
-    const subject = /(?:sobre|llamada|titulada|de)\s+(.+)$/i.exec(raw)?.[1]?.trim();
+    const subject = /(?:sobre|llamada|titulada|de)\\s+(.+)$/i.exec(raw)?.[1]?.trim();
     return { type: "CREATE_SONG", title: subject || "Nueva canción" };
   }
 
@@ -142,7 +180,7 @@ export function parseIntent(text: string): VoiceAction {
   if (/^que cancion (esta )?sonando$/.test(n) || /^que suena$/.test(n)) return { type: "NOW_PLAYING" };
 
   // Explicit levels take precedence over relative volume language.
-  const volumeMatch = n.match(/^(?:(?:pon|ajusta|cambia|deja|fija) (?:el )?volumen|(?:sube|baja|aumenta|disminuye) (?:el )?volumen) (?:(?:a|al) )?(\d{1,3})%?$/);
+  const volumeMatch = n.match(/^(?:(?:pon|ajusta|cambia|deja|fija) (?:el )?volumen|(?:sube|baja|aumenta|disminuye) (?:el )?volumen) (?:(?:a|al) )?(\\d{1,3})%?$/);
   if (volumeMatch) {
     const volume = Number(volumeMatch[1]);
     return volume <= 100
@@ -188,30 +226,27 @@ export function parseIntent(text: string): VoiceAction {
     /^(?:play|reproduce|reproducir)$/
   ];
   if (playRequests.some((pattern) => pattern.test(n))) return { type: "PLAY" };
-  if (/^(?:pausa|pausar|pause|pon en pausa|deten la musica|para la musica)$/.test(n)) return { type: "PAUSE" };
-  if (/^(?:continua|continuar|sigue|seguir|resume|reanuda|reanudar|retoma|retomar)(?: la musica| la reproduccion)?$/.test(n)) return { type: "RESUME" };
-  if (/^(siguiente cancion|siguiente|next)$/.test(n)) return { type: "NEXT" };
-  if (/^(cancion anterior|anterior|previous)$/.test(n)) return { type: "PREVIOUS" };
-  if (/^(detener|deten|para|stop|deten la reproduccion|para la musica por completo)$/.test(n)) return { type: "STOP" };
+  if (/^(?:siguiente cancion|siguiente|next)$/.test(n)) return { type: "NEXT" };
+  if (/^(?:cancion anterior|anterior|previous)$/.test(n)) return { type: "PREVIOUS" };
 
   if (/^(activa|activar) (el )?(aleatorio|shuffle)$/.test(n)) return { type: "SET_SHUFFLE", value: true };
   if (/^(desactiva|desactivar) (el )?(aleatorio|shuffle)$/.test(n)) return { type: "SET_SHUFFLE", value: false };
   if (/^(activa|activar) (la )?(repetir|repeticion)$/.test(n)) return { type: "SET_REPEAT", value: true };
   if (/^(desactiva|desactivar) (la )?(repetir|repeticion)$/.test(n)) return { type: "SET_REPEAT", value: false };
 
-  const moodMatch = n.match(/^(?:activa|pon|cambia a) (?:el )?modo (\w+)$/);
+  const moodMatch = n.match(/^(?:activa|pon|cambia a) (?:el )?modo (\\w+)$/);
   if (moodMatch && MOOD_WORDS[moodMatch[1]]) {
     return { type: "SET_MOOD", mood: MOOD_WORDS[moodMatch[1]] };
   }
 
   if (
-    /^(?:pon|quiero|ahora quiero|hazlo|mant[eé]n|manten)\b/.test(n) &&
-    /\b(musica|noventa|ochenta|90s|80s|romantica|bailable|cantar|vieja|energia|estilo)\b/.test(n)
+    /^(?:pon|quiero|ahora quiero|hazlo|mant[eé]n|manten)\\b/.test(n) &&
+    /\\b(musica|noventa|ochenta|90s|80s|romantica|bailable|cantar|vieja|energia|estilo)\\b/.test(n)
   ) {
     return { type: "SET_DIRECTION", text };
   }
 
-  const playTrackMatch = n.match(/^(?:reproduce|reproducir|pon)\s+(.+)$/);
+  const playTrackMatch = n.match(/^(?:reproduce|reproducir|pon)\\s+(.+)$/);
   if (playTrackMatch) {
     const query = playTrackMatch[1].trim();
     if (query && query !== "musica") {
@@ -253,13 +288,13 @@ export function interpretUtterance(input: string): LinguaInterpretation {
 export function clarifyUtterance(input: string): string {
   const normalized = normalizeUtterance(input);
 
-  if (/\b(volumen|audio|sonido|musica)\b/.test(normalized)) {
+  if (/\\b(volumen|audio|sonido|musica)\\b/.test(normalized)) {
     return "Creo que quieres ajustar el audio, pero no capté cómo. ¿Quieres subirlo, bajarlo o dejarlo en un nivel concreto?";
   }
-  if (/\b(abre|entrar|ir a|aplicacion|app|modulo)\b/.test(normalized)) {
+  if (/\\b(abre|entrar|ir a|aplicacion|app|modulo)\\b/.test(normalized)) {
     return "¿Qué parte quieres abrir: UNIVERSO, INSTINTO o VIBRA?";
   }
-  if (/\b(cancion|letra|componer|crear)\b/.test(normalized)) {
+  if (/\\b(cancion|letra|componer|crear)\\b/.test(normalized)) {
     return "Quiero asegurarme de hacerlo bien. ¿Quieres crear una canción, escribir una letra o reproducir una canción?";
   }
   return "No estoy seguro de lo que quieres hacer. ¿Me lo dices de otra forma?";
