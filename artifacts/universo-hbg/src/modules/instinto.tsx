@@ -1,5 +1,12 @@
 import { useState, useRef, useEffect } from "react";
 import { UniversoScreen } from "../components/UniversoScreen";
+import { hbgCore } from "../core/hbgCore";
+import {
+  generateInstintoHook,
+  generateInstintoIdea,
+  resolveInstintoMood,
+  type InstintoMood,
+} from "./instintoInspiration";
 import { loadInstintoData, saveInstintoRecord, replaceInstintoData } from "./instintoDB";
 import {
   createInstintoBackup,
@@ -63,13 +70,6 @@ const CAT_COLORS: Record<Category, string> = {
 const SEC_COLORS: Record<string, string> = {
   intro: "var(--neon-purple)", verso: "var(--neon-cyan)", coro: "var(--neon-pink)", puente: "#ff9100", outro: "var(--neon-green)",
 };
-const RHYME_HOOKS = [
-  "El fuego no se apaga, se renueva / move the crowd, mueve la ciudad",
-  "Del caos nace la obra maestra / soy el arquitecto de mi propia orquesta",
-  "La mente clara, el camino abierto / nada está cerrado lo que fue descubierto",
-  "Crea sin miedo, arde sin quema / el arte que fluye nunca se frena",
-  "Cada palabra un disparo de luz / en el universo HBG soy la voz y la cruz",
-];
 const STATUS_COLORS = { borrador: "var(--text-muted)", en_progreso: "var(--neon-cyan)", completado: "var(--neon-green)" };
 const STATUS_LABEL = { borrador: "BORRADOR", en_progreso: "EN PROGRESO", completado: "COMPLETADO" };
 
@@ -103,6 +103,21 @@ export function InstintoModule() {
   const backupFileRef = useRef<HTMLInputElement>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [creativeMood, setCreativeMood] = useState<InstintoMood>(() =>
+    resolveInstintoMood(hbgCore.recall("core.mood")),
+  );
+
+  useEffect(() => {
+    hbgCore.init();
+    const refreshMood = () => {
+      setCreativeMood(resolveInstintoMood(hbgCore.recall("core.mood")));
+    };
+    refreshMood();
+    return hbgCore.subscribeMemory((key) => {
+      if (key === "core.mood") refreshMood();
+    });
+  }, []);
 
   useEffect(() => { if (lyrics.length > 0 && !activeLyric) setActiveLyric(lyrics[0]); }, []);
 
@@ -377,7 +392,7 @@ export function InstintoModule() {
         <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
           {autoSaved && <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--neon-green)", alignSelf: "center" }}>✓ borrador guardado</span>}
           {storageWarning && <span role="status" style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--neon-pink)", alignSelf: "center" }}>{storageWarning}</span>}
-          <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 9 }} onClick={() => { setNewContent(RHYME_HOOKS[Math.floor(Math.random() * RHYME_HOOKS.length)]); setView("bloc"); setTimeout(() => textRef.current?.focus(), 100); }}>♪ RIMA</button>
+          <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 9 }} onClick={() => { setNewContent(generateInstintoHook(creativeMood)); setView("bloc"); setTimeout(() => textRef.current?.focus(), 100); }}>♪ RIMA</button>
           <button className="hbg-btn hbg-btn-primary" style={{ fontSize: 9 }} onClick={() => { setView("bloc"); setTimeout(() => textRef.current?.focus(), 100); }}>+ NUEVA NOTA</button>
         </div>
       </div>
@@ -609,10 +624,10 @@ export function InstintoModule() {
           <div className="hbg-grid hbg-grid-2" style={{ gap: 12, marginBottom: 16 }}>
             <div className="hbg-card">
               <div className="section-title">// generador de inspiración</div>
-              <button className="hbg-btn hbg-btn-primary w-full" style={{ marginBottom: 8 }} onClick={() => { const hooks = ["App de productividad gamificada con ritmo — cada tarea completada genera un beat", "Mapa mental visual sincronizado con el estado de ánimo en tiempo real", "Sistema de notas que cambia de color según el humor detectado", "Arte generativo basado en patrones de hábitos diarios"]; setNewContent(hooks[Math.floor(Math.random() * hooks.length)]); setNewCategory("ideas"); setView("bloc"); setTimeout(() => textRef.current?.focus(), 100); }}>
+              <button className="hbg-btn hbg-btn-primary w-full" style={{ marginBottom: 8 }} onClick={() => { setNewContent(generateInstintoIdea(creativeMood)); setNewCategory("ideas"); setView("bloc"); setTimeout(() => textRef.current?.focus(), 100); }}>
                 ◈ GENERAR IDEA
               </button>
-              <button className="hbg-btn hbg-btn-ghost w-full" onClick={() => { setNewContent(RHYME_HOOKS[Math.floor(Math.random() * RHYME_HOOKS.length)]); setNewCategory("notas"); setView("bloc"); setTimeout(() => textRef.current?.focus(), 100); }}>
+              <button className="hbg-btn hbg-btn-ghost w-full" onClick={() => { setNewContent(generateInstintoHook(creativeMood)); setNewCategory("notas"); setView("bloc"); setTimeout(() => textRef.current?.focus(), 100); }}>
                 ♪ HOOK DE RIMA
               </button>
             </div>
