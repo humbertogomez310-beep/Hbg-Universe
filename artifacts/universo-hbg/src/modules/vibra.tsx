@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { UniversoScreen } from "../components/UniversoScreen";
 import { hbgCore, type HBGActionResult } from "../core/hbgCore";
-import { getCurrentAudioDuckingFactor, registerAudioOutput } from "../core/audioManager";
+import { calculateEffectiveAudioVolume, getCurrentAudioDuckingFactor, registerAudioOutput } from "../core/audioManager";
 import {
   saveAudioBlob,
   getAudioBlob,
@@ -236,6 +236,8 @@ export function VibraModule() {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const playbackGainRef = useRef<GainNode | null>(null);
+  const volumeRef = useRef(volume);
   const equalizerFiltersRef = useRef<BiquadFilterNode[]>([]);
   const [audioAnalyser, setAudioAnalyser] = useState<AnalyserNode | null>(null);
   const currentUrlRef = useRef<string | null>(null);
@@ -252,6 +254,23 @@ export function VibraModule() {
   const autoAdvanceRef = useRef<() => void>(() => undefined);
   tracksRef.current = tracks;
   currentIdRef.current = currentId;
+  volumeRef.current = volume;
+
+  // Apply user volume and temporary voice ducking at the final Web Audio output.
+  // HTMLMediaElement.volume remains the fallback when Web Audio is unavailable.
+  const applyVibraVolume = (factor: number) => {
+    const effectiveVolume = calculateEffectiveAudioVolume(volumeRef.current, factor);
+    const gain = playbackGainRef.current;
+    const context = audioContextRef.current;
+    if (gain && context && context.state !== "closed") {
+      const now = context.currentTime;
+      gain.gain.cancelScheduledValues(now);
+      gain.gain.setTargetAtTime(effectiveVolume, now, 0.04);
+      if (audioRef.current) audioRef.current.volume = 1;
+      return;
+    }
+    if (audioRef.current) audioRef.current.volume = effectiveVolume;
+  };
 
   const mood = MOODS.find((m) => m.mode === activeMode)!;
   const currentTrack = tracks.find((t) => t.id === currentId) ?? null;
@@ -282,6 +301,7 @@ export function VibraModule() {
   }, [activeMode]);
   useEffect(() => {
     hbgCore.setContext("music.volume", volume);
+    applyVibraVolume(getCurrentAudioDuckingFactor());
     if (!writeStoredValue(STORAGE_KEYS.volume, String(volume))) setError("No se pudo guardar el volumen en este dispositivo.");
   }, [volume]);
   useEffect(() => {
@@ -338,7 +358,7 @@ export function VibraModule() {
       const audio = audioRef.current!;
       if (!audio) throw new Error("El reproductor de audio no está disponible");
       audio.src = url;
-      audio.volume = (volume / 100) * getCurrentAudioDuckingFactor();
+      applyVibraVolume(getCurrentAudioDuckingFactor());
 
       await new Promise<void>((resolve, reject) => {
         let settled = false;
@@ -383,7 +403,7 @@ export function VibraModule() {
     } finally {
       if (requestId === loadGenerationRef.current) setLoading(false);
     }
-  }, [volume]);
+  }, []);
   loadTrackRef.current = loadTrack;
 
   // Setup one persistent Web Audio graph for playback, EQ, and the real frequency visualizer.
@@ -407,12 +427,20 @@ export function VibraModule() {
       });
       const analyser = context.createAnalyser();
       analyser.fftSize = 64;
+      const outputGain = context.createGain();
+      outputGain.gain.value = calculateEffectiveAudioVolume(
+        volumeRef.current,
+        getCurrentAudioDuckingFactor(),
+      );
       source.connect(filters[0]);
       filters.forEach((filter, index) => {
         if (index < filters.length - 1) filter.connect(filters[index + 1]);
         else filter.connect(analyser);
       });
-      analyser.connect(context.destination);
+      analyser.connect(outputGain);
+      outputGain.connect(context.destination);
+      playbackGainRef.current = outputGain;
+      audio.volume = 1;
       audioContextRef.current = context;
       equalizerFiltersRef.current = filters;
       setAudioAnalyser(analyser);
@@ -420,12 +448,14 @@ export function VibraModule() {
       // If graph construction fails after creating the media source, reconnect it
       // directly so the browser can still play audio without EQ or spectrum.
       equalizerFiltersRef.current = [];
+      playbackGainRef.current = null;
       setAudioAnalyser(null);
       if (context && source) {
         try {
           source.disconnect();
           source.connect(context.destination);
           audioContextRef.current = context;
+          applyVibraVolume(getCurrentAudioDuckingFactor());
         } catch {
           audioContextRef.current = null;
           void context.close().catch(() => undefined);
@@ -473,6 +503,7 @@ export function VibraModule() {
       audio.removeEventListener("pause", onPause);
       if (currentUrlRef.current) URL.revokeObjectURL(currentUrlRef.current);
       audioRef.current = null;
+      playbackGainRef.current = null;
       equalizerFiltersRef.current = [];
       setAudioAnalyser(null);
       const context = audioContextRef.current;
@@ -481,15 +512,8 @@ export function VibraModule() {
     };
   }, []);
 
-  // Register VIBRA playback with the central HBG audio coordinator.
-  // User volume remains persistent; voice ducking is a temporary independent factor.
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    return registerAudioOutput("vibra.playback", (factor) => {
-      audio.volume = Math.max(0, Math.min(1, (volume / 100) * factor));
-    });
-  }, [volume]);
+  // Register VIBRA once. The callback reads the latest user volume through volumeRef.
+  useEffect(() => registerAudioOutput("vibra.playback", applyVibraVolume), []);
 
   // Restore last track on mount (after tracks load)
   const restoredRef = useRef(false);
