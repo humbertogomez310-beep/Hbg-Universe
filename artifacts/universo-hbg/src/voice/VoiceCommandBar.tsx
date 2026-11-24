@@ -54,6 +54,7 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
     }
   });
   const [commandsOpen, setCommandsOpen] = useState(false);
+  const voiceSessionReleaseRef = useRef<(() => void) | null>(null);
 
   const speak = useCallback(
     (text: string): Promise<void> => {
@@ -117,13 +118,27 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
 
   const { supported, listening, error, start, cancel } = useVoiceCapture(handleResult);
 
-  // Keep app-owned audio ducked across capture, command execution and spoken response.
-  // The manager restores the user's persistent volume when the complete voice session ends.
+  // Acquire audio ducking synchronously in the microphone click handler, before
+  // SpeechRecognition starts and the browser can take microphone/audio focus.
+  const ensureVoiceAudioSession = useCallback(() => {
+    if (!voiceSessionReleaseRef.current) {
+      voiceSessionReleaseRef.current = beginVoiceAudioSession();
+    }
+  }, []);
+  const releaseVoiceAudioSession = useCallback(() => {
+    const release = voiceSessionReleaseRef.current;
+    voiceSessionReleaseRef.current = null;
+    release?.();
+  }, []);
+
+  // Keep the same session alive across capture, command execution and spoken response.
   const voiceSessionActive = listening || processing;
   useEffect(() => {
-    if (!voiceSessionActive) return;
-    return beginVoiceAudioSession();
-  }, [voiceSessionActive]);
+    if (voiceSessionActive) ensureVoiceAudioSession();
+    else releaseVoiceAudioSession();
+  }, [voiceSessionActive, ensureVoiceAudioSession, releaseVoiceAudioSession]);
+
+  useEffect(() => () => releaseVoiceAudioSession(), [releaseVoiceAudioSession]);
 
   useEffect(() => {
     try {
@@ -169,7 +184,10 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
     setPersistentError(null);
     setDismissedError(false);
     if (listening) cancel();
-    else start();
+    else {
+      ensureVoiceAudioSession();
+      start();
+    }
   };
 
   const handleDragStart = (event: ReactPointerEvent<HTMLButtonElement>) => {

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { UniversoScreen } from "../components/UniversoScreen";
 import { hbgCore, type HBGActionResult } from "../core/hbgCore";
-import { calculateEffectiveAudioVolume, getCurrentAudioDuckingFactor, registerAudioOutput } from "../core/audioManager";
+import { calculateEffectiveAudioVolume, getCurrentAudioDuckingFactor, registerAudioOutput, registerAudioSessionLifecycle, preventVoiceSessionPlaybackRestore } from "../core/audioManager";
 import {
   saveAudioBlob,
   getAudioBlob,
@@ -238,6 +238,8 @@ export function VibraModule() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const playbackGainRef = useRef<GainNode | null>(null);
   const volumeRef = useRef(volume);
+  const playbackPositionRef = useRef(0);
+  const voicePlaybackSnapshotRef = useRef<{ wasPlaying: boolean; currentTime: number } | null>(null);
   const equalizerFiltersRef = useRef<BiquadFilterNode[]>([]);
   const [audioAnalyser, setAudioAnalyser] = useState<AnalyserNode | null>(null);
   const currentUrlRef = useRef<string | null>(null);
@@ -468,6 +470,7 @@ export function VibraModule() {
 
     const onTimeUpdate = () => {
       if (audio.duration && isFinite(audio.duration)) {
+        playbackPositionRef.current = audio.currentTime;
         setCurrentTime(audio.currentTime);
         setProgress(audio.currentTime / audio.duration);
       }
@@ -475,6 +478,7 @@ export function VibraModule() {
     const onDurationChange = () => { if (isFinite(audio.duration)) setDuration(audio.duration); };
     const onEnded = () => {
       setIsPlaying(false);
+      playbackPositionRef.current = 0;
       setProgress(0);
       setCurrentTime(0);
       autoAdvanceRef.current();
@@ -484,7 +488,10 @@ export function VibraModule() {
       setIsPlaying(false);
     };
     const onPlay = () => setIsPlaying(true);
-    const onPause = () => setIsPlaying(false);
+    const onPause = () => {
+      playbackPositionRef.current = audio.currentTime || playbackPositionRef.current;
+      setIsPlaying(false);
+    };
 
     audio.addEventListener("timeupdate", onTimeUpdate);
     audio.addEventListener("durationchange", onDurationChange);
@@ -515,6 +522,43 @@ export function VibraModule() {
   // Register VIBRA once. The callback reads the latest user volume through volumeRef.
   useEffect(() => registerAudioOutput("vibra.playback", applyVibraVolume), []);
 
+  // Mobile speech capture can interrupt browser media focus. Remember whether VIBRA
+  // was playing and restore that same media position when the complete voice session ends.
+  useEffect(() => registerAudioSessionLifecycle("vibra.playback", {
+    onStart: () => {
+      const audio = audioRef.current;
+      voicePlaybackSnapshotRef.current = audio
+        ? { wasPlaying: !audio.paused && !audio.ended, currentTime: audio.currentTime || 0 }
+        : null;
+      void audioContextRef.current?.resume().catch(() => undefined);
+    },
+    onEnd: (shouldRestorePlayback) => {
+      const snapshot = voicePlaybackSnapshotRef.current;
+      voicePlaybackSnapshotRef.current = null;
+      const audio = audioRef.current;
+      if (!shouldRestorePlayback || !snapshot?.wasPlaying || !audio || !audio.paused || audio.ended) return;
+
+      // Some mobile browsers reset the media position when microphone capture takes focus.
+      if (audio.currentTime + 1 < snapshot.currentTime) {
+        try {
+          audio.currentTime = snapshot.currentTime;
+          playbackPositionRef.current = snapshot.currentTime;
+        } catch {
+          // The media may no longer be seekable; still attempt an in-place resume.
+        }
+      }
+      void (async () => {
+        try {
+          await audioContextRef.current?.resume();
+          await audio.play();
+        } catch {
+          // The browser may retain audio focus until its capture pipeline fully closes.
+          // The next explicit play command will retry without reloading the track.
+        }
+      })();
+    },
+  }), []);
+
   // Restore last track on mount (after tracks load)
   const restoredRef = useRef(false);
   useEffect(() => {
@@ -530,6 +574,27 @@ export function VibraModule() {
       restoredRef.current = true;
     }
   }, [tracks, loadTrack]);
+
+  const resumePlayback = async (): Promise<boolean> => {
+    const audio = audioRef.current;
+    if (!audio) return false;
+
+    if (audio.src && audio.src !== window.location.href) {
+      try {
+        await audioContextRef.current?.resume();
+        await audio.play();
+        setIsPlaying(true);
+        return true;
+      } catch {
+        setError("No se pudo reanudar la canción desde su posición actual.");
+        return false;
+      }
+    }
+
+    const id = currentIdRef.current;
+    if (!id) return false;
+    return loadTrackRef.current(id, true, playbackPositionRef.current);
+  };
 
   const togglePlay = async () => {
     manualSelectionGenerationRef.current += 1;
@@ -549,12 +614,7 @@ export function VibraModule() {
       if (isPlaying) {
         audio.pause();
       } else {
-        try {
-          await audioContextRef.current?.resume();
-          await audio.play();
-        } catch {
-          setError("No se pudo reproducir — revisa el formato del audio o los permisos del navegador.");
-        }
+        await resumePlayback();
       }
     } else if (currentId) {
       await loadTrack(currentId, true);
@@ -776,12 +836,13 @@ export function VibraModule() {
 
     const unregister = [
       hbgCore.registerAction("music.play", async () => {
-        const before = isPlaying;
-        await togglePlay();
+        const alreadyPlaying = audioRef.current?.paused === false;
+        const started = alreadyPlaying || await resumePlayback();
         const playing = audioRef.current?.paused === false;
-        return result(!before ? playing : !playing, { isPlaying: playing }, playing === !before ? undefined : "No se pudo cambiar la reproducción");
+        return result(started && playing, { isPlaying: playing }, started && playing ? undefined : "No se pudo reanudar la reproducción");
       }),
       hbgCore.registerAction("music.pause", () => {
+        preventVoiceSessionPlaybackRestore();
         manualSelectionGenerationRef.current += 1;
         loadGenerationRef.current += 1;
         cancelPendingLoadRef.current?.();
@@ -997,6 +1058,7 @@ export function VibraModule() {
     if (!audio || !duration) return;
     const t = Number(e.target.value) / 100 * duration;
     audio.currentTime = t;
+    playbackPositionRef.current = t;
     setCurrentTime(t);
     setProgress(t / duration);
   };

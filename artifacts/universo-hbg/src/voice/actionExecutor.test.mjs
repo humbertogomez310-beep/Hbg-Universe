@@ -167,3 +167,37 @@ test("unknown voice requests receive contextual clarification instead of a gener
   const navigation = await executeVoiceAction({ type: "UNKNOWN", raw: "abre una aplicación" });
   assert.match(navigation, /UNIVERSO, INSTINTO o VIBRA/i);
 });
+
+test("voice play always asks VIBRA to resume even when the cached context says playing", async () => {
+  const previous = hbgCore.getContext("music.isPlaying");
+  let calls = 0;
+  hbgCore.setContext("music.isPlaying", true);
+  const unregister = hbgCore.registerAction("music.play", () => {
+    calls += 1;
+    return { success: true };
+  });
+  try {
+    assert.equal(await executeVoiceAction({ type: "RESUME" }), "Reproduciendo.");
+    assert.equal(calls, 1);
+  } finally {
+    unregister();
+    hbgCore.setContext("music.isPlaying", previous);
+  }
+});
+
+test("voice pause always dispatches explicit pause intent even when cached context says paused", async () => {
+  const previous = hbgCore.getContext("music.isPlaying");
+  let calls = 0;
+  hbgCore.setContext("music.isPlaying", false);
+  const unregister = hbgCore.registerAction("music.pause", () => {
+    calls += 1;
+    return { success: true };
+  });
+  try {
+    assert.equal(await executeVoiceAction({ type: "PAUSE" }), "Pausado.");
+    assert.equal(calls, 1);
+  } finally {
+    unregister();
+    hbgCore.setContext("music.isPlaying", previous);
+  }
+});

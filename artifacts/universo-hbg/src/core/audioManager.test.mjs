@@ -5,6 +5,8 @@ import {
   calculateEffectiveAudioVolume,
   getCurrentAudioDuckingFactor,
   registerAudioOutput,
+  registerAudioSessionLifecycle,
+  preventVoiceSessionPlaybackRestore,
 } from "./audioManager.ts";
 
 test("HBG audio manager ducks registered outputs and restores their prior level", () => {
@@ -56,6 +58,25 @@ test("voice session release is idempotent and a late output receives current duc
     release();
     release();
     assert.deepEqual(factors, [0.55, 1]);
+  } finally {
+    unregister();
+  }
+});
+
+test("voice session lifecycle restores interrupted playback unless the user explicitly paused", () => {
+  const events = [];
+  const lifecycle = {
+    onStart: () => events.push("start"),
+    onEnd: (shouldRestore) => events.push(shouldRestore ? "restore" : "keep-paused"),
+  };
+  const unregister = registerAudioSessionLifecycle("lifecycle-test", lifecycle);
+  try {
+    const release = beginVoiceAudioSession();
+    release();
+    const secondRelease = beginVoiceAudioSession();
+    preventVoiceSessionPlaybackRestore();
+    secondRelease();
+    assert.deepEqual(events, ["start", "restore", "start", "keep-paused"]);
   } finally {
     unregister();
   }
