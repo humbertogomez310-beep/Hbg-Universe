@@ -178,7 +178,7 @@ export function parseIntent(text: string): VoiceAction {
     return { type: "INSTINTO_IDEA", context: ideaRequest[1]?.trim() ?? "" };
   }
 
-  const hookRequest = /^(?:genera|generame|dame|prepara|escribe) (?:un|una )?(?:hook|coro|rima)(?: sobre (.+))?$/;
+  const hookRequest = /^(?:genera|generame|dame|prepara|escribe) (?:un |una )?(?:hook|coro|rima)(?: sobre (.+))?$/;
   if (hookRequest.test(n)) return { type: "INSTINTO_HOOK" };
 
   if (/^(activa|activar|enciende) (el )?auto dj$/.test(n)) return { type: "SET_AUTO_DJ", enabled: true };
