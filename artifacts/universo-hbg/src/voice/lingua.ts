@@ -175,7 +175,11 @@ export function parseIntent(text: string): VoiceAction {
 
   const ideaRequest = /^(?:genera|generame|dame|prepara|crea|hazme) (?:una )?(?:nueva )?idea(?: sobre (.+))?$/.exec(n);
   if (ideaRequest) {
-    return { type: "INSTINTO_IDEA", context: ideaRequest[1]?.trim() ?? "" };
+    const context =
+      /(?:sobre)\s+(.+)$/i.exec(raw)?.[1]?.trim() ??
+      ideaRequest[1]?.trim() ??
+      "";
+    return { type: "INSTINTO_IDEA", context };
   }
 
   const hookRequest = /^(?:genera|generame|dame|prepara|escribe) (?:un |una )?(?:hook|coro|rima)(?: sobre (.+))?$/;
