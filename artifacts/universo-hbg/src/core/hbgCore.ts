@@ -183,6 +183,11 @@ export class HBGCore implements HBGActionRouter {
     return this.requestProcessor.subscribeActions(subscriber);
   }
 
+  /** Publish a notification between modules; notifications never authorize actions. */
+  publishEvent<T = unknown>(channel: string, payload: T): void {
+    this.events.publish(channel, payload);
+  }
+
   /** Subscribe to lifecycle notifications; event payloads never include action data. */
   subscribeEvent<T = unknown>(
     channel: string,
