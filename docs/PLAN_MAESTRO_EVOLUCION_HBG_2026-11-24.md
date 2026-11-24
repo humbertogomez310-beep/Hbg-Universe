@@ -46,7 +46,8 @@ Universo HBG es una aplicación modular para explorar música, creatividad y her
 |---|---|
 | Producción Render | `universo-hbg-pwa-public`, rama `deploy/pwa-render`, URL `https://universo-hbg-pwa-public.onrender.com` |
 | Staging Render | `universo-hbg-pr14-test`, rama `local-first/instinto-reuse-integration`, URL `https://universo-hbg-pr14-test.onrender.com` |
-| Commit de staging auditado | `380639c1c1fb409f52d091ac6cb49ed2bd10e79c` |
+| Commit base auditado | `380639c1c1fb409f52d091ac6cb49ed2bd10e79c` |
+| Commit actual con preparación PWA | `d0bd8326fac1f614e84174271ff5aa00d27c2f6b` (staging LIVE) |
 | PR #14 | Abierta; no fusionar sin pruebas y aprobación del OWNER |
 | API remota | Deshabilitada en los sitios estáticos consultados |
 | Backend / PostgreSQL Render | No desplegados en el workspace auditado |
@@ -197,9 +198,9 @@ La beta puede invitar usuarios cuando se cumpla todo lo siguiente:
 
 ## 7. Orden de trabajo inmediato
 
-1. Completar el botón global y la compatibilidad de instalación PWA en staging.
-2. Ejecutar tests, typecheck y build completos.
-3. Verificar despliegue staging y hacer pruebas físicas de instalación.
+1. **Hecho en staging:** botón global de instalación, fallback de instrucciones, iconos PNG 192/512, manifest y caché Service Worker v4.
+2. **Hecho en staging:** 103 pruebas aprobadas, typecheck y build de producción completados.
+3. **Pendiente:** pruebas físicas de instalación y apertura standalone en Android/Chrome, iOS/Safari y escritorio.
 4. Probar como usuario público: entrar, navegar, usar VIBRA, usar INSTINTO, recargar, cerrar y abrir desde el icono.
 5. Registrar errores y comentarios; corregir únicamente lo que falle.
 6. Presentar resultados al OWNER.
