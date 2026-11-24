@@ -65,6 +65,7 @@ export const HBG_CORE_EVENTS = {
   ACTION_REQUESTED: "hbg_core.action_requested",
   ACTION_SUCCEEDED: "hbg_core.action_succeeded",
   ACTION_FAILED: "hbg_core.action_failed",
+  MOOD_CHANGED: "hbg_core.mood_changed",
 } as const;
 
 export interface HBGActionLifecycleEvent {
@@ -243,6 +244,9 @@ export class HBGCore implements HBGActionRouter {
 
   remember(key: string, value: unknown): void {
     this.memory.remember(key, value);
+    if (key === "core.mood") {
+      this.events.publish(HBG_CORE_EVENTS.MOOD_CHANGED, { mood: value });
+    }
   }
 
   recall<T>(key: string): T | undefined {
