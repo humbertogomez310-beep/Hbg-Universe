@@ -58,3 +58,18 @@ test("HBG Core exposes active event channels and unsubscribe", () => {
   unsubscribe();
   assert.deepEqual(core.getActiveEventChannels(), []);
 });
+
+test("HBG Core shared action router preserves lifecycle notifications", async () => {
+  const core = new HBGCore();
+  const completed = [];
+  core.subscribeEvent(HBG_CORE_EVENTS.ACTION_SUCCEEDED, (event) => completed.push(event));
+  const router = core.getActionRouter();
+  router.registerAction("music.next", () => ({ success: true }));
+
+  const result = await router.dispatchAction("music.next");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(result.success, true);
+  assert.equal(completed.length, 1);
+  assert.equal(completed[0].payload.action, "music.next");
+});
