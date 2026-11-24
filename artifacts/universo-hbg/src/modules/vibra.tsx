@@ -1293,8 +1293,8 @@ export function VibraModule() {
 
       {/* PLAYER */}
       {view === "player" && (
-        <div>
-          <div className="hbg-card hbg-card-accent" style={{ "--card-color": mood.color } as React.CSSProperties}>
+        <div style={{ width: "100%", maxWidth: 680, margin: "0 auto", boxSizing: "border-box" }}>
+          <div className="hbg-card hbg-card-accent" style={{ "--card-color": mood.color, width: "100%", boxSizing: "border-box" } as React.CSSProperties}>
             {/* Visualizer */}
             <div style={{ background: "var(--bg-deep)", borderRadius: 3, marginBottom: 14, overflow: "hidden" }}>
               <VisualizerBars active={isPlaying} color={mood.color} analyser={audioAnalyser} />
@@ -1329,18 +1329,18 @@ export function VibraModule() {
             )}
 
             {/* Progress bar */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, width: "100%", minWidth: 0, boxSizing: "border-box" }}>
               <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", minWidth: 32 }}>
                 {formatDuration(currentTime)}
               </span>
               <input
                 type="range" min={0} max={100} value={progressPct}
                 onChange={seek}
-                style={{ flex: 1, accentColor: mood.color, cursor: "pointer", height: 4 }}
+                style={{ flex: 1, minWidth: 0, accentColor: mood.color, cursor: "pointer", height: 4 }}
                 disabled={!currentTrack || loading}
               />
               <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", minWidth: 32 }}>
-                {formatDuration(duration)}
+                {formatDuration(duration > 0 ? duration : (currentTrack?.duration ?? 0))}
               </span>
             </div>
 
