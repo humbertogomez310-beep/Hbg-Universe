@@ -73,3 +73,16 @@ test("HBG Core shared action router preserves lifecycle notifications", async ()
   assert.equal(completed.length, 1);
   assert.equal(completed[0].payload.action, "music.next");
 });
+
+test("HBG Core publishes module notifications without treating them as actions", async () => {
+  const core = new HBGCore();
+  const received = [];
+  core.subscribeEvent("instinto.note_saved", (event) => received.push(event));
+
+  core.publishEvent("instinto.note_saved", { noteId: "note-1" });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(received.length, 1);
+  assert.deepEqual(received[0].payload, { noteId: "note-1" });
+  assert.deepEqual(core.getRegisteredActions(), []);
+});
