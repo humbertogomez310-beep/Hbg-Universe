@@ -1,11 +1,18 @@
-
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#FF3C00"/>
-  <text x="256" y="292"
-        text-anchor="middle"
-        font-family="Arial, Helvetica, sans-serif"
-        font-size="142"
-        font-weight="800"
-        letter-spacing="-8"
-        fill="#FFFFFF">HBG</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Universo HBG</title>
+  <defs>
+    <linearGradient id="infinity" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#00eaff"/>
+      <stop offset=".48" stop-color="#176cff"/>
+      <stop offset="1" stop-color="#a13cff"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="9" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#050b1d"/>
+  <path d="M256 256 C206 188 167 142 111 160 C48 181 55 282 111 320 C167 358 206 324 256 256 C306 188 345 142 401 160 C464 181 457 282 401 320 C345 358 306 324 256 256Z"
+    fill="none" stroke="url(#infinity)" stroke-width="34" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  <circle cx="256" cy="256" r="12" fill="#fff"/>
 </svg>
