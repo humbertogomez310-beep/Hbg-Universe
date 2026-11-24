@@ -67,8 +67,8 @@ export function PWAUpdateButton() {
         if (installingWorker) {
           await waitForActivation(installingWorker);
         }
-        if (registration.waiting) {
-          const waitingWorker = registration.waiting;
+        const waitingWorker = registration.waiting as ServiceWorker | null;
+        if (waitingWorker) {
           waitingWorker.postMessage({ type: "SKIP_WAITING" });
           await waitForActivation(waitingWorker);
         }
