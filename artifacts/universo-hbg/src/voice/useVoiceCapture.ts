@@ -68,6 +68,27 @@ export function useVoiceCapture(onResult: (text: string) => void, lang = "es-ES"
   const discardResultRef = useRef(false);
   onResultRef.current = onResult;
 
+  const clearCaptureTimeout = () => {
+    if (captureTimeoutRef.current !== null) {
+      clearTimeout(captureTimeoutRef.current);
+      captureTimeoutRef.current = null;
+    }
+  };
+
+  const armCaptureTimeout = (recognition: SpeechRecognitionLike) => {
+    clearCaptureTimeout();
+    captureTimeoutRef.current = setTimeout(() => {
+      captureTimeoutRef.current = null;
+      discardResultRef.current = true;
+      setError("Se agotó el tiempo de captura de voz.");
+      try {
+        recognition.abort();
+      } catch {
+        setListening(false);
+      }
+    }, 15000);
+  };
+
   const Ctor = getSpeechRecognitionCtor();
   const supported = Ctor !== null;
 
@@ -81,28 +102,20 @@ export function useVoiceCapture(onResult: (text: string) => void, lang = "es-ES"
       recognition.onresult = (event) => {
         const transcript = event.results[0]?.[0]?.transcript ?? "";
         setListening(false);
-        if (captureTimeoutRef.current) clearTimeout(captureTimeoutRef.current);
+        clearCaptureTimeout();
         if (transcript && !discardResultRef.current) onResultRef.current(transcript);
       };
       recognition.onerror = (event) => {
         setListening(false);
-        if (captureTimeoutRef.current) clearTimeout(captureTimeoutRef.current);
+        clearCaptureTimeout();
         if (!discardResultRef.current) setError(mapError(event.error));
       };
       recognition.onend = () => {
         setListening(false);
-        if (captureTimeoutRef.current) clearTimeout(captureTimeoutRef.current);
+        clearCaptureTimeout();
       };
       recognition.onstart = () => {
-        captureTimeoutRef.current = setTimeout(() => {
-          discardResultRef.current = true;
-          setError("Se agotó el tiempo de captura de voz.");
-          try {
-            recognition.abort();
-          } catch {
-            setListening(false);
-          }
-        }, 15000);
+        armCaptureTimeout(recognition);
       };
       recognitionRef.current = recognition;
     }
@@ -121,8 +134,9 @@ export function useVoiceCapture(onResult: (text: string) => void, lang = "es-ES"
     try {
       recognition.start();
       setListening(true);
+      if (captureTimeoutRef.current === null) armCaptureTimeout(recognition);
     } catch {
-      if (captureTimeoutRef.current) clearTimeout(captureTimeoutRef.current);
+      clearCaptureTimeout();
       setListening(false);
       setError("No se pudo iniciar el reconocimiento de voz.");
     }
@@ -139,7 +153,7 @@ export function useVoiceCapture(onResult: (text: string) => void, lang = "es-ES"
   }, []);
 
   const cancel = useCallback(() => {
-    if (captureTimeoutRef.current) clearTimeout(captureTimeoutRef.current);
+    clearCaptureTimeout();
     discardResultRef.current = true;
     const recognition = recognitionRef.current;
     if (!recognition) {
@@ -156,7 +170,7 @@ export function useVoiceCapture(onResult: (text: string) => void, lang = "es-ES"
 
   useEffect(() => {
     return () => {
-      if (captureTimeoutRef.current) clearTimeout(captureTimeoutRef.current);
+      clearCaptureTimeout();
       const recognition = recognitionRef.current;
       if (recognition) {
         try {
