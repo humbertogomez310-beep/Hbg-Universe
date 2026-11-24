@@ -19,11 +19,61 @@ test("global voice executor explains capabilities and module information", async
   assert.match(info, /VIBRA/i);
 });
 
-test("global voice executor opens INSTINTO without claiming it created a lyric", async () => {
-  const result = await executeVoiceAction({ type: "CREATE_SONG", title: "La Voz del Lobo" });
-  assert.equal(hbgCore.getModule(), "instinto");
-  assert.match(result, /todavía no se ha creado/i);
-  hbgCore.setModule("universo");
+test("global voice executor prepares an INSTINTO lyric draft without saving it", async () => {
+  const received = [];
+  const unregister = hbgCore.registerAction("instinto.createLyricDraft", (payload) => {
+    received.push(payload);
+    return { success: true, data: { draft: true } };
+  });
+
+  try {
+    const result = await executeVoiceAction({ type: "CREATE_SONG", title: "La Voz del Lobo" });
+    assert.equal(hbgCore.getModule(), "instinto");
+    assert.match(result, /borrador de letra/i);
+    assert.deepEqual(received, [{ title: "La Voz del Lobo" }]);
+  } finally {
+    unregister();
+    hbgCore.setModule("universo");
+  }
+});
+
+test("global voice executor sends idea generation to the INSTINTO action", async () => {
+  const received = [];
+  const unregister = hbgCore.registerAction("instinto.generateIdea", (payload) => {
+    received.push(payload);
+    return { success: true, data: { category: "ideas" } };
+  });
+
+  try {
+    const result = await executeVoiceAction({
+      type: "INSTINTO_IDEA",
+      context: "mi próximo proyecto",
+    });
+    assert.equal(hbgCore.getModule(), "instinto");
+    assert.match(result, /idea en el borrador/i);
+    assert.deepEqual(received, [{ context: "mi próximo proyecto" }]);
+  } finally {
+    unregister();
+    hbgCore.setModule("universo");
+  }
+});
+
+test("global voice executor sends hook generation to the INSTINTO action", async () => {
+  let calls = 0;
+  const unregister = hbgCore.registerAction("instinto.generateHook", () => {
+    calls += 1;
+    return { success: true, data: { category: "letras" } };
+  });
+
+  try {
+    const result = await executeVoiceAction({ type: "INSTINTO_HOOK" });
+    assert.equal(hbgCore.getModule(), "instinto");
+    assert.match(result, /hook en el borrador/i);
+    assert.equal(calls, 1);
+  } finally {
+    unregister();
+    hbgCore.setModule("universo");
+  }
 });
 
 test("global voice executor refuses development operations in use mode", async () => {
