@@ -196,6 +196,9 @@ export class HBGCore implements HBGActionRouter {
 
   /** Publish a notification between modules; notifications never authorize actions. */
   publishEvent<T = unknown>(channel: string, payload: T): void {
+    if (channel.startsWith("hbg_core.")) {
+      throw new Error("Los canales hbg_core.* están reservados para eventos internos de HBG Core.");
+    }
     this.events.publish(channel, payload);
   }
 
