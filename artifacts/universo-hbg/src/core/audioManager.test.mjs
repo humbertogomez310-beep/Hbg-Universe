@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   beginVoiceAudioSession,
+  calculateEffectiveAudioVolume,
   getCurrentAudioDuckingFactor,
   registerAudioOutput,
 } from "./audioManager.ts";
@@ -12,10 +13,10 @@ test("HBG audio manager ducks registered outputs and restores their prior level"
   try {
     assert.equal(getCurrentAudioDuckingFactor(), 1);
     const release = beginVoiceAudioSession();
-    assert.equal(getCurrentAudioDuckingFactor(), 0.25);
+    assert.equal(getCurrentAudioDuckingFactor(), 0.55);
     release();
     assert.equal(getCurrentAudioDuckingFactor(), 1);
-    assert.deepEqual(factors, [1, 0.25, 1]);
+    assert.deepEqual(factors, [1, 0.55, 1]);
   } finally {
     unregister();
   }
@@ -28,13 +29,21 @@ test("overlapping voice sessions keep audio ducked until the final session ends"
     const releaseFirst = beginVoiceAudioSession();
     const releaseSecond = beginVoiceAudioSession();
     releaseFirst();
-    assert.equal(getCurrentAudioDuckingFactor(), 0.25);
+    assert.equal(getCurrentAudioDuckingFactor(), 0.55);
     releaseSecond();
     assert.equal(getCurrentAudioDuckingFactor(), 1);
-    assert.deepEqual(factors, [1, 0.25, 1]);
+    assert.deepEqual(factors, [1, 0.55, 1]);
   } finally {
     unregister();
   }
+});
+
+test("effective output volume combines the persistent level and temporary ducking safely", () => {
+  assert.equal(calculateEffectiveAudioVolume(0.8, 0.55), 0.44);
+  assert.equal(calculateEffectiveAudioVolume(0.8, 1), 0.8);
+  assert.equal(calculateEffectiveAudioVolume(2, 0.5), 0.5);
+  assert.equal(calculateEffectiveAudioVolume(-1, 0.5), 0);
+  assert.equal(calculateEffectiveAudioVolume(Number.NaN, 0.5), 0);
 });
 
 test("voice session release is idempotent and a late output receives current ducking", () => {
@@ -42,11 +51,11 @@ test("voice session release is idempotent and a late output receives current duc
   const factors = [];
   const unregister = registerAudioOutput("late-output", (factor) => factors.push(factor));
   try {
-    assert.equal(getCurrentAudioDuckingFactor(), 0.25);
-    assert.deepEqual(factors, [0.25]);
+    assert.equal(getCurrentAudioDuckingFactor(), 0.55);
+    assert.deepEqual(factors, [0.55]);
     release();
     release();
-    assert.deepEqual(factors, [0.25, 1]);
+    assert.deepEqual(factors, [0.55, 1]);
   } finally {
     unregister();
   }
