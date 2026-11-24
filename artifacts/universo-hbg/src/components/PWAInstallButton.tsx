@@ -70,14 +70,16 @@ export function PWAInstallButton() {
     window.addEventListener("appinstalled", markInstalled);
 
     const displayMode = window.matchMedia?.("(display-mode: standalone)");
-    displayMode?.addEventListener?.("change", () => {
+    const handleDisplayModeChange = () => {
       if (isStandalone()) markInstalled();
-    });
+    };
+    displayMode?.addEventListener?.("change", handleDisplayModeChange);
 
     return () => {
       window.removeEventListener("hbg-install-available", updateAvailability);
       window.removeEventListener("hbg-app-installed", markInstalled);
       window.removeEventListener("appinstalled", markInstalled);
+      displayMode?.removeEventListener?.("change", handleDisplayModeChange);
     };
   }, []);
 
