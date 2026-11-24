@@ -158,6 +158,12 @@ export function resolveInstintoMood(value: unknown): InstintoMood {
       return "relaxed";
     case "neutral":
     case "normal":
+      return "neutral";
+    case undefined:
+    case null:
+    case "":
+      // Universo HBG's current default mood is "enfocado".
+      return "focused";
     default:
       return "neutral";
   }
