@@ -254,6 +254,12 @@ export function VibraModule() {
   const currentIdRef = useRef(currentId);
   const loadTrackRef = useRef<(id: string, autoPlay?: boolean, startTime?: number) => Promise<boolean>>(async () => false);
   const autoAdvanceRef = useRef<() => void>(() => undefined);
+  const mediaSessionActionsRef = useRef({
+    play: () => undefined,
+    pause: () => undefined,
+    next: () => undefined,
+    previous: () => undefined,
+  });
   tracksRef.current = tracks;
   currentIdRef.current = currentId;
   volumeRef.current = volume;
@@ -818,6 +824,69 @@ export function VibraModule() {
     if (activeSequence) return playSequenceFrom(activeSequence, activeSequence.indexOf(previousId));
     return playTrack(previousId);
   };
+
+  // Expose the active VIBRA track and four supported transport actions to
+  // the operating system media controls (Android lock screen / notification).
+  // The browser Media Session API has no standard repeat action; repeat remains
+  // controlled in the in-app player until a native Android bridge exists.
+  mediaSessionActionsRef.current = {
+    play: () => { void resumePlayback(); },
+    pause: () => {
+      preventVoiceSessionPlaybackRestore();
+      audioRef.current?.pause();
+    },
+    next: () => { void nextTrack(); },
+    previous: () => { void prevTrack(); },
+  };
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    const mediaSession = navigator.mediaSession;
+    const handlers: Array<[MediaSessionAction, () => void]> = [
+      ["play", () => mediaSessionActionsRef.current.play()],
+      ["pause", () => mediaSessionActionsRef.current.pause()],
+      ["nexttrack", () => mediaSessionActionsRef.current.next()],
+      ["previoustrack", () => mediaSessionActionsRef.current.previous()],
+    ];
+    for (const [action, handler] of handlers) {
+      try { mediaSession.setActionHandler(action, handler); } catch {
+        // Some browsers expose Media Session but omit individual actions.
+      }
+    }
+    return () => {
+      for (const [action] of handlers) {
+        try { mediaSession.setActionHandler(action, null); } catch { /* unsupported */ }
+      }
+      mediaSession.metadata = null;
+      mediaSession.playbackState = "none";
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    const mediaSession = navigator.mediaSession;
+    if (currentTrack && typeof MediaMetadata !== "undefined") {
+      mediaSession.metadata = new MediaMetadata({
+        title: currentTrack.title,
+        artist: currentTrack.artist || "Artista desconocido",
+        album: currentTrack.album || "VIBRA PRO",
+      });
+    } else {
+      mediaSession.metadata = null;
+    }
+    mediaSession.playbackState = isPlaying ? "playing" : currentTrack ? "paused" : "none";
+    if (duration > 0 && Number.isFinite(currentTime)) {
+      try {
+        mediaSession.setPositionState({
+          duration,
+          playbackRate: audioRef.current?.playbackRate || 1,
+          position: Math.max(0, Math.min(currentTime, duration)),
+        });
+      } catch {
+        // Position reporting is optional and varies across browsers.
+      }
+    }
+  }, [currentTrack, isPlaying, currentTime, duration]);
 
   const playTrackSequence = async (trackIds: string[]) => {
     const sequence = trackIds.map((id) => tracks.find((track) => track.id === id)).filter((track): track is TrackMeta => Boolean(track));
