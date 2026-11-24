@@ -13,56 +13,70 @@ export function PWAUpdateButton() {
 
     setChecking(true);
     setNotice("");
-    const currentController = navigator.serviceWorker.controller;
-    let reloadStarted = false;
-    const reloadOnChange = () => {
-      reloadStarted = true;
-      window.location.reload();
-    };
-    navigator.serviceWorker.addEventListener("controllerchange", reloadOnChange, { once: true });
 
     try {
       const registration = await navigator.serviceWorker.getRegistration("/");
       if (!registration) {
-        navigator.serviceWorker.removeEventListener("controllerchange", reloadOnChange);
         setNotice("No se encontró el Service Worker. Recarga la aplicación con Internet.");
         return;
       }
 
-      await registration.update();
-      if (registration.waiting) {
-        registration.waiting.postMessage({ type: "SKIP_WAITING" });
-      }
-
-      if (registration.installing) {
-        await new Promise<void>((resolve) => {
-          const worker = registration.installing!;
+      // Listen before asking the browser to check, so a newly installing
+      // worker cannot be missed between update() and listener registration.
+      let installingWorker: ServiceWorker | null = registration.installing;
+      const waitForActivation = (worker: ServiceWorker) =>
+        new Promise<void>((resolve) => {
           if (worker.state === "activated" || worker.state === "redundant") {
             resolve();
             return;
           }
-          const timeout = window.setTimeout(resolve, 12000);
-          worker.addEventListener("statechange", () => {
+
+          const timeout = window.setTimeout(resolve, 20000);
+          const finishIfSettled = () => {
             if (worker.state === "activated" || worker.state === "redundant") {
               window.clearTimeout(timeout);
+              worker.removeEventListener("statechange", finishIfSettled);
               resolve();
             }
-          });
+          };
+          worker.addEventListener("statechange", finishIfSettled);
         });
+
+      const updateFound = new Promise<void>((resolve) => {
+        const onUpdateFound = () => {
+          installingWorker = registration.installing;
+          registration.removeEventListener("updatefound", onUpdateFound);
+          resolve();
+        };
+        registration.addEventListener("updatefound", onUpdateFound, { once: true });
+        window.setTimeout(() => {
+          registration.removeEventListener("updatefound", onUpdateFound);
+          resolve();
+        }, 5000);
+      });
+
+      await registration.update();
+
+      if (registration.waiting) {
+        registration.waiting.postMessage({ type: "SKIP_WAITING" });
+      } else {
+        if (!installingWorker) await updateFound;
+        installingWorker = registration.installing || installingWorker;
+        if (installingWorker) {
+          await waitForActivation(installingWorker);
+        }
+        if (registration.waiting) {
+          registration.waiting.postMessage({ type: "SKIP_WAITING" });
+        }
       }
 
-      if (navigator.serviceWorker.controller !== currentController) {
-        window.location.reload();
-        return;
-      }
-
-      navigator.serviceWorker.removeEventListener("controllerchange", reloadOnChange);
-      if (!reloadStarted) setNotice("La aplicación ya tiene la versión más reciente.");
+      // Always reload after an explicit update request. Navigation is
+      // network-first in sw.js, so this fetches the current HTML entrypoint
+      // even when the service-worker script itself has not changed.
+      window.location.reload();
     } catch (error) {
-      navigator.serviceWorker.removeEventListener("controllerchange", reloadOnChange);
       console.error("No se pudo actualizar UNIVERSO HBG:", error);
       setNotice("No se pudo comprobar la actualización. Verifica tu conexión e inténtalo otra vez.");
-    } finally {
       setChecking(false);
     }
   };
@@ -78,7 +92,7 @@ export function PWAUpdateButton() {
         title="Actualizar aplicación"
         style={{ padding: "4px 8px", fontSize: 9 }}
       >
-        {checking ? "COMPROBANDO..." : "↻ ACTUALIZAR"}
+        {checking ? "ACTUALIZANDO..." : "↻ ACTUALIZAR"}
       </button>
       {notice && (
         <div
