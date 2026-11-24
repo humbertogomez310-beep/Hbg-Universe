@@ -4,8 +4,8 @@ import { HBGCore, HBG_CORE_EVENTS } from "./hbgCore.ts";
 
 test("HBG Core emits action requested and succeeded lifecycle events", async () => {
   const core = new HBGCore();
-  const requested: Array<{ payload: Record<string, unknown> }> = [];
-  const succeeded: Array<{ payload: Record<string, unknown> }> = [];
+  const requested = [];
+  const succeeded = [];
 
   core.subscribeEvent(HBG_CORE_EVENTS.ACTION_REQUESTED, (event) => requested.push(event));
   core.subscribeEvent(HBG_CORE_EVENTS.ACTION_SUCCEEDED, (event) => succeeded.push(event));
@@ -30,7 +30,7 @@ test("HBG Core emits action requested and succeeded lifecycle events", async () 
 
 test("HBG Core emits a failed lifecycle event with a safe error code", async () => {
   const core = new HBGCore();
-  const failed: Array<{ payload: Record<string, unknown> }> = [];
+  const failed = [];
   core.subscribeEvent(HBG_CORE_EVENTS.ACTION_FAILED, (event) => failed.push(event));
   core.registerAction("music.pause", () => ({
     success: false,
