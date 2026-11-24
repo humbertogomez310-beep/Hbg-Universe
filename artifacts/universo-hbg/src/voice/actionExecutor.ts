@@ -81,9 +81,41 @@ export async function executeVoiceAction(action: VoiceAction): Promise<string> {
       return `Abriendo ${hbgCore.getModuleConfig(action.module).label}.`;
     }
 
-    case "CREATE_SONG":
+    case "CREATE_SONG": {
       hbgCore.setModule("instinto");
-      return `Abriendo INSTINTO. La letra "${action.title}" todavía no se ha creado; entra en LETRAS para escribirla y guardarla.`;
+      const result = await hbgCore.dispatchAction(
+        "instinto.createLyricDraft",
+        { title: action.title },
+        { timeoutMs: 8_000 },
+      );
+      return result.success
+        ? `Preparé el borrador de letra "${action.title}" en INSTINTO. Revísalo y guárdalo cuando esté listo.`
+        : result.error ?? "No se pudo preparar el borrador de letra.";
+    }
+
+    case "INSTINTO_IDEA": {
+      hbgCore.setModule("instinto");
+      const result = await hbgCore.dispatchAction(
+        "instinto.generateIdea",
+        { context: action.context },
+        { timeoutMs: 8_000 },
+      );
+      return result.success
+        ? "Preparé una idea en el borrador de INSTINTO. Revísala y guárdala cuando esté lista."
+        : result.error ?? "No se pudo generar la idea en INSTINTO.";
+    }
+
+    case "INSTINTO_HOOK": {
+      hbgCore.setModule("instinto");
+      const result = await hbgCore.dispatchAction(
+        "instinto.generateHook",
+        {},
+        { timeoutMs: 8_000 },
+      );
+      return result.success
+        ? "Preparé un hook en el borrador de INSTINTO. Puedes editarlo antes de guardarlo."
+        : result.error ?? "No se pudo generar el hook en INSTINTO.";
+    }
 
     case "BLOCKED_DEVELOPMENT":
       return "Esa operación requiere una sesión de desarrollo autorizada. El modo de uso no puede modificar código, permisos ni despliegues.";
