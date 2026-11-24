@@ -41,6 +41,8 @@ export type VoiceAction =
   | { type: "APP_INFO"; module: "universo" | "instinto" | "vibra" }
   | { type: "CAPABILITIES" }
   | { type: "CREATE_SONG"; title: string }
+  | { type: "INSTINTO_IDEA"; context: string }
+  | { type: "INSTINTO_HOOK" }
   | { type: "BLOCKED_DEVELOPMENT" }
   | { type: "GREETING" }
   | { type: "PLAY" }
@@ -91,6 +93,41 @@ const MOOD_WORDS: Record<string, string> = {
   normal: "normal",
 };
 
+function classifyPlaybackControl(n: string): VoiceAction | null {
+  // Playback controls are classified before song-title matching. This prevents
+  // phrases such as "páusalo" and "pon pausa" from becoming track searches.
+  const pauseRequests = [
+    /^(?:pausa|pausar|pause)$/,
+    /^(?:pon|ponme) (?:en )?pausa$/,
+    /^(?:pon|ponme) (?:lo|la|los|las) en pausa$/,
+    /^(?:ponlo|ponla|ponlos|ponlas) en pausa$/,
+    /^(?:pon|deja) (?:la )?(?:musica|reproduccion|cancion) en pausa$/,
+    /^(?:pausalo|pausala|pausalos|pausalas|pausame)$/,
+    /^(?:pausa|pausame) (?:la )?(?:musica|reproduccion|cancion)$/,
+    /^(?:deten|detiene|para) (?:la )?(?:musica|reproduccion|cancion|esto|eso)$/,
+    /^(?:quiero que|puedes|podrias) (?:pauses|pausar|detengas|pares) (?:la )?(?:musica|reproduccion|cancion|esto|eso)$/,
+    /^(?:quiero|quisiera) pausar(?:lo|la|la musica|la reproduccion|la cancion)?$/,
+  ];
+  if (pauseRequests.some((pattern) => pattern.test(n))) return { type: "PAUSE" };
+
+  const resumeRequests = [
+    /^(?:continua|continuar|sigue|seguir|resume|reanuda|reanudar|retoma|retomar)$/,
+    /^(?:continua|sigue|reanuda|retoma) (?:con )?(?:la )?(?:musica|reproduccion|cancion)$/,
+    /^(?:continua|sigue) reproduciendo$/,
+    /^(?:reanuda|retoma) (?:la )?(?:musica|reproduccion|cancion)$/,
+    /^(?:quita|quita la) pausa$/,
+    /^(?:sacalo|sacala) de pausa$/,
+    /^(?:vuelve a reproducir|vuelve a poner musica)$/,
+    /^(?:continualo|continuala|reanudalo|reanudala)$/,
+  ];
+  if (resumeRequests.some((pattern) => pattern.test(n))) return { type: "RESUME" };
+
+  if (/^(?:detener|deten|stop|para por completo|deten por completo la musica|deten la reproduccion por completo)$/.test(n)) {
+    return { type: "STOP" };
+  }
+  return null;
+}
+
 export function parseIntent(text: string): VoiceAction {
   const raw = text;
   const n = normalizeUtterance(text);
@@ -106,6 +143,9 @@ export function parseIntent(text: string): VoiceAction {
   }
 
   if (/^(hola|hey|buenas)( .*)?$/.test(n)) return { type: "GREETING" };
+
+  const playbackControl = classifyPlaybackControl(n);
+  if (playbackControl) return playbackControl;
 
   if (
     /^(que puedo hacer|que puedes hacer|ayuda|funciones|capacidades|que hace esta aplicacion|para que sirve esta aplicacion)( .*)?$/.test(n)
@@ -132,6 +172,18 @@ export function parseIntent(text: string): VoiceAction {
     const subject = /(?:sobre|llamada|titulada|de)\s+(.+)$/i.exec(raw)?.[1]?.trim();
     return { type: "CREATE_SONG", title: subject || "Nueva canción" };
   }
+
+  const ideaRequest = /^(?:genera|generame|dame|prepara|crea|hazme) (?:una )?(?:nueva )?idea(?: sobre (.+))?$/.exec(n);
+  if (ideaRequest) {
+    const context =
+      /(?:sobre)\s+(.+)$/i.exec(raw)?.[1]?.trim() ??
+      ideaRequest[1]?.trim() ??
+      "";
+    return { type: "INSTINTO_IDEA", context };
+  }
+
+  const hookRequest = /^(?:genera|generame|dame|prepara|escribe) (?:un |una )?(?:hook|coro|rima)(?: sobre (.+))?$/;
+  if (hookRequest.test(n)) return { type: "INSTINTO_HOOK" };
 
   if (/^(activa|activar|enciende) (el )?auto dj$/.test(n)) return { type: "SET_AUTO_DJ", enabled: true };
   if (/^(desactiva|desactivar|apaga) (el )?auto dj$/.test(n)) return { type: "SET_AUTO_DJ", enabled: false };
@@ -188,11 +240,8 @@ export function parseIntent(text: string): VoiceAction {
     /^(?:play|reproduce|reproducir)$/
   ];
   if (playRequests.some((pattern) => pattern.test(n))) return { type: "PLAY" };
-  if (/^(?:pausa|pausar|pause|pon en pausa|deten la musica|para la musica)$/.test(n)) return { type: "PAUSE" };
-  if (/^(?:continua|continuar|sigue|seguir|resume|reanuda|reanudar|retoma|retomar)(?: la musica| la reproduccion)?$/.test(n)) return { type: "RESUME" };
-  if (/^(siguiente cancion|siguiente|next)$/.test(n)) return { type: "NEXT" };
-  if (/^(cancion anterior|anterior|previous)$/.test(n)) return { type: "PREVIOUS" };
-  if (/^(detener|deten|para|stop|deten la reproduccion|para la musica por completo)$/.test(n)) return { type: "STOP" };
+  if (/^(?:siguiente cancion|siguiente|next)$/.test(n)) return { type: "NEXT" };
+  if (/^(?:cancion anterior|anterior|previous)$/.test(n)) return { type: "PREVIOUS" };
 
   if (/^(activa|activar) (el )?(aleatorio|shuffle)$/.test(n)) return { type: "SET_SHUFFLE", value: true };
   if (/^(desactiva|desactivar) (el )?(aleatorio|shuffle)$/.test(n)) return { type: "SET_SHUFFLE", value: false };

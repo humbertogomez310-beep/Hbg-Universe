@@ -11,7 +11,8 @@ if (
 ) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
-      .register("/sw.js")
+      .register("/sw.js", { updateViaCache: "none" })
+      .then((registration) => registration.update())
       .catch((error) => {
         console.error(
           "No se pudo registrar el Service Worker:",

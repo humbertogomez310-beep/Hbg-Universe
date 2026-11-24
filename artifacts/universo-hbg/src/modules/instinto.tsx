@@ -1,5 +1,12 @@
 import { useState, useRef, useEffect } from "react";
 import { UniversoScreen } from "../components/UniversoScreen";
+import { hbgCore, HBG_CORE_EVENTS } from "../core/hbgCore";
+import {
+  generateInstintoHook,
+  generateInstintoIdea,
+  resolveInstintoMood,
+  type InstintoMood,
+} from "./instintoInspiration";
 import { loadInstintoData, saveInstintoRecord, replaceInstintoData } from "./instintoDB";
 import {
   createInstintoBackup,
@@ -63,13 +70,6 @@ const CAT_COLORS: Record<Category, string> = {
 const SEC_COLORS: Record<string, string> = {
   intro: "var(--neon-purple)", verso: "var(--neon-cyan)", coro: "var(--neon-pink)", puente: "#ff9100", outro: "var(--neon-green)",
 };
-const RHYME_HOOKS = [
-  "El fuego no se apaga, se renueva / move the crowd, mueve la ciudad",
-  "Del caos nace la obra maestra / soy el arquitecto de mi propia orquesta",
-  "La mente clara, el camino abierto / nada está cerrado lo que fue descubierto",
-  "Crea sin miedo, arde sin quema / el arte que fluye nunca se frena",
-  "Cada palabra un disparo de luz / en el universo HBG soy la voz y la cruz",
-];
 const STATUS_COLORS = { borrador: "var(--text-muted)", en_progreso: "var(--neon-cyan)", completado: "var(--neon-green)" };
 const STATUS_LABEL = { borrador: "BORRADOR", en_progreso: "EN PROGRESO", completado: "COMPLETADO" };
 
@@ -104,6 +104,22 @@ export function InstintoModule() {
   const textRef = useRef<HTMLTextAreaElement>(null);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [creativeMood, setCreativeMood] = useState<InstintoMood>(() =>
+    resolveInstintoMood(hbgCore.recall("core.mood")),
+  );
+
+  useEffect(() => {
+    hbgCore.init();
+    const refreshMood = () => {
+      setCreativeMood(resolveInstintoMood(hbgCore.recall("core.mood")));
+    };
+    refreshMood();
+    return hbgCore.subscribeEvent<{ mood?: unknown }>(
+      HBG_CORE_EVENTS.MOOD_CHANGED,
+      (event) => setCreativeMood(resolveInstintoMood(event.payload.mood)),
+    );
+  }, []);
+
   useEffect(() => { if (lyrics.length > 0 && !activeLyric) setActiveLyric(lyrics[0]); }, []);
 
   useEffect(() => {
@@ -137,17 +153,26 @@ export function InstintoModule() {
     try {
       await saveInstintoRecord(key, value as never);
       setStorageWarning("");
+      return true;
     } catch {
       const saved = persistLegacyValue(legacyKey, value);
       setStorageWarning(saved
         ? `IndexedDB no disponible; ${label} se guardaron temporalmente en el almacenamiento anterior.`
         : `No se pudieron guardar ${label} en este dispositivo.`);
+      return saved;
     }
   };
 
-  const saveNotes = (next: Note[]) => {
+  const saveNotes = (next: Note[], newlySavedNote?: Note) => {
     setNotes(next);
-    void saveRecord("notes", next, NOTE_KEY, "las notas");
+    void saveRecord("notes", next, NOTE_KEY, "las notas").then((persisted) => {
+      if (persisted && newlySavedNote) {
+        hbgCore.publishEvent("instinto.note_saved", {
+          noteId: newlySavedNote.id,
+          category: newlySavedNote.category,
+        });
+      }
+    });
   };
   const saveLyrics = (next: Lyric[]) => {
     setLyrics(next);
@@ -200,12 +225,65 @@ export function InstintoModule() {
     if (!newContent.trim()) return;
     const now = new Date().toISOString();
     const note: Note = { id: Date.now().toString(), title: newTitle || "Sin título", content: newContent.trim(), category: newCategory, createdAt: now, updatedAt: now, pinned: false, favorite: false, tags: activeTags, deleted: false };
-    saveNotes([note, ...notes]);
+    saveNotes([note, ...notes], note);
     setDraft({ title: "", content: "", category: "notas", tags: [] });
     void saveRecord("draft", { title: "", content: "", category: "notas", tags: [] }, DRAFT_KEY, "el borrador");
     setAutoSaved(false);
     setNewContent(""); setNewTitle(""); setActiveTags([]);
   };
+
+  const prepareIdeaDraft = () => {
+    setNewContent(generateInstintoIdea(creativeMood));
+    setNewCategory("ideas");
+    setView("bloc");
+    setTimeout(() => textRef.current?.focus(), 100);
+    hbgCore.publishEvent("instinto.idea_generated", { mood: creativeMood });
+  };
+
+  const prepareRhymeDraft = (category?: Category) => {
+    setNewContent(generateInstintoHook(creativeMood));
+    if (category) setNewCategory(category);
+    setView("bloc");
+    setTimeout(() => textRef.current?.focus(), 100);
+    hbgCore.publishEvent("instinto.rhyme_generated", { mood: creativeMood });
+  };
+
+  // Expose only bounded local draft operations to HBG Core. Nothing is saved as
+  // a note or lyric until the user explicitly presses the corresponding Save button.
+  useEffect(() => {
+    if (!storageReady) return;
+
+    const unregister = [
+      hbgCore.registerAction("instinto.generateIdea", (payload) => {
+        const context = typeof payload?.context === "string"
+          ? payload.context.trim().slice(0, 240)
+          : "";
+        setNewContent(generateInstintoIdea(creativeMood, context));
+        setNewCategory("ideas");
+        setView("bloc");
+        hbgCore.publishEvent("instinto.idea_generated", { mood: creativeMood });
+        return { success: true, data: { category: "ideas" } };
+      }),
+      hbgCore.registerAction("instinto.generateHook", () => {
+        setNewContent(generateInstintoHook(creativeMood));
+        setNewCategory("letras");
+        setView("bloc");
+        hbgCore.publishEvent("instinto.rhyme_generated", { mood: creativeMood });
+        return { success: true, data: { category: "letras" } };
+      }),
+      hbgCore.registerAction("instinto.createLyricDraft", (payload) => {
+        const title = typeof payload?.title === "string" ? payload.title.trim() : "";
+        if (!title || title.length > 80) {
+          return { success: false, error: "El título de la letra debe tener entre 1 y 80 caracteres." };
+        }
+        setNewLyricTitle(title);
+        setView("letras");
+        return { success: true, data: { draft: true } };
+      }),
+    ];
+
+    return () => unregister.forEach((remove) => remove());
+  }, [storageReady, creativeMood]);
 
   const deleteNote = (id: string) => saveNotes(notes.map((n) => n.id === id ? { ...n, deleted: true } : n));
   const restoreNote = (id: string) => saveNotes(notes.map((n) => n.id === id ? { ...n, deleted: false } : n));
@@ -377,7 +455,7 @@ export function InstintoModule() {
         <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
           {autoSaved && <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--neon-green)", alignSelf: "center" }}>✓ borrador guardado</span>}
           {storageWarning && <span role="status" style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--neon-pink)", alignSelf: "center" }}>{storageWarning}</span>}
-          <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 9 }} onClick={() => { setNewContent(RHYME_HOOKS[Math.floor(Math.random() * RHYME_HOOKS.length)]); setView("bloc"); setTimeout(() => textRef.current?.focus(), 100); }}>♪ RIMA</button>
+          <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 9 }} onClick={() => prepareRhymeDraft()}>♪ RIMA</button>
           <button className="hbg-btn hbg-btn-primary" style={{ fontSize: 9 }} onClick={() => { setView("bloc"); setTimeout(() => textRef.current?.focus(), 100); }}>+ NUEVA NOTA</button>
         </div>
       </div>
@@ -609,10 +687,10 @@ export function InstintoModule() {
           <div className="hbg-grid hbg-grid-2" style={{ gap: 12, marginBottom: 16 }}>
             <div className="hbg-card">
               <div className="section-title">// generador de inspiración</div>
-              <button className="hbg-btn hbg-btn-primary w-full" style={{ marginBottom: 8 }} onClick={() => { const hooks = ["App de productividad gamificada con ritmo — cada tarea completada genera un beat", "Mapa mental visual sincronizado con el estado de ánimo en tiempo real", "Sistema de notas que cambia de color según el humor detectado", "Arte generativo basado en patrones de hábitos diarios"]; setNewContent(hooks[Math.floor(Math.random() * hooks.length)]); setNewCategory("ideas"); setView("bloc"); setTimeout(() => textRef.current?.focus(), 100); }}>
+              <button className="hbg-btn hbg-btn-primary w-full" style={{ marginBottom: 8 }} onClick={prepareIdeaDraft}>
                 ◈ GENERAR IDEA
               </button>
-              <button className="hbg-btn hbg-btn-ghost w-full" onClick={() => { setNewContent(RHYME_HOOKS[Math.floor(Math.random() * RHYME_HOOKS.length)]); setNewCategory("notas"); setView("bloc"); setTimeout(() => textRef.current?.focus(), 100); }}>
+              <button className="hbg-btn hbg-btn-ghost w-full" onClick={() => prepareRhymeDraft("notas")}>
                 ♪ HOOK DE RIMA
               </button>
             </div>

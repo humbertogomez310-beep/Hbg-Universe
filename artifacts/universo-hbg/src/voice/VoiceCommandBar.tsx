@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPoi
 import { useVoiceCapture } from "./useVoiceCapture";
 import { interpretUtterance } from "./lingua";
 import { executeVoiceAction } from "./actionExecutor";
-import { hbgCore } from "../core/hbgCore";
+import { beginVoiceAudioSession } from "../core/audioManager";
+import { VOICE_COMMAND_CATALOG } from "./voiceCommandCatalog";
 import {
   clampVoiceWidgetPosition,
   isPersistentVoiceError,
@@ -11,6 +12,8 @@ import {
   VOICE_WIDGET_POSITION_STORAGE_KEY,
   type VoiceWidgetPosition,
 } from "./voiceCommandUi";
+
+const SPEECH_WATCHDOG_MS = 60_000;
 
 function getInitialWidgetPosition(): VoiceWidgetPosition {
   const viewport = {
@@ -50,18 +53,33 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
       return true;
     }
   });
+  const [commandsOpen, setCommandsOpen] = useState(false);
+  const voiceSessionReleaseRef = useRef<(() => void) | null>(null);
 
   const speak = useCallback(
-    (text: string) => {
-      if (!speechEnabled) return;
-      if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-      try {
+    (text: string): Promise<void> => {
+      if (!speechEnabled) return Promise.resolve();
+      if (typeof window === "undefined" || !("speechSynthesis" in window)) return Promise.resolve();
+      return new Promise((resolve) => {
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = "es-ES";
-        window.speechSynthesis.speak(utterance);
-      } catch {
-        /* unavailable */
-      }
+        let settled = false;
+        let watchdog: number | null = null;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          if (watchdog !== null) window.clearTimeout(watchdog);
+          resolve();
+        };
+        utterance.onend = finish;
+        utterance.onerror = finish;
+        watchdog = window.setTimeout(finish, SPEECH_WATCHDOG_MS);
+        try {
+          window.speechSynthesis.speak(utterance);
+        } catch {
+          finish();
+        }
+      });
     },
     [speechEnabled]
   );
@@ -86,7 +104,7 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
         } else {
           setLastResponseText(response);
         }
-        speak(response);
+        await speak(response);
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : "Falló la ejecución de la orden.";
         setPersistentError(message);
@@ -100,30 +118,27 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
 
   const { supported, listening, error, start, cancel } = useVoiceCapture(handleResult);
 
-  const setVoiceDucking = useCallback((active: boolean) => {
-    return hbgCore.dispatchAction(
-      "music.voiceCapture",
-      { active },
-      { timeoutMs: 1000 }
-    );
+  // Acquire audio ducking synchronously in the microphone click handler, before
+  // SpeechRecognition starts and the browser can take microphone/audio focus.
+  const ensureVoiceAudioSession = useCallback(() => {
+    if (!voiceSessionReleaseRef.current) {
+      voiceSessionReleaseRef.current = beginVoiceAudioSession();
+    }
   }, []);
-  const previousListeningRef = useRef(false);
+  const releaseVoiceAudioSession = useCallback(() => {
+    const release = voiceSessionReleaseRef.current;
+    voiceSessionReleaseRef.current = null;
+    release?.();
+  }, []);
 
+  // Keep the same session alive across capture, command execution and spoken response.
+  const voiceSessionActive = listening || processing;
   useEffect(() => {
-    // Do not dispatch a redundant "restore" action on first render, when VIBRA
-    // may not be mounted. Dispatch false only after an actual listening session.
-    if (!listening && !previousListeningRef.current) return;
-    previousListeningRef.current = listening;
-    let active = true;
-    void setVoiceDucking(listening).then((result) => {
-      if (active && !result.success) {
-        setPersistentError(
-          result.error ?? "No se pudo ajustar temporalmente el volumen para la captura de voz."
-        );
-      }
-    });
-    return () => { active = false; };
-  }, [listening, setVoiceDucking]);
+    if (voiceSessionActive) ensureVoiceAudioSession();
+    else releaseVoiceAudioSession();
+  }, [voiceSessionActive, ensureVoiceAudioSession, releaseVoiceAudioSession]);
+
+  useEffect(() => () => releaseVoiceAudioSession(), [releaseVoiceAudioSession]);
 
   useEffect(() => {
     try {
@@ -169,7 +184,10 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
     setPersistentError(null);
     setDismissedError(false);
     if (listening) cancel();
-    else start();
+    else {
+      ensureVoiceAudioSession();
+      start();
+    }
   };
 
   const handleDragStart = (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -257,6 +275,68 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
           )}
         </div>
       )}
+      {commandsOpen && (
+        <div
+          id="hbg-voice-command-catalog"
+          role="dialog"
+          aria-label="Catálogo de comandos de voz"
+          style={{
+            position: "absolute",
+            right: 0,
+            bottom: 64,
+            width: "min(310px, calc(100vw - 24px))",
+            maxHeight: "min(62vh, 480px)",
+            overflowY: "auto",
+            background: "var(--bg-card)",
+            color: "var(--text-primary)",
+            border: `1px solid ${accentColor}55`,
+            borderRadius: 10,
+            padding: 12,
+            boxShadow: "0 12px 36px rgba(0,0,0,0.42)",
+            fontFamily: "var(--font-mono)",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <strong style={{ fontSize: 12 }}>COMANDOS DE VOZ</strong>
+            <button
+              type="button"
+              onClick={() => setCommandsOpen(false)}
+              aria-label="Cerrar catálogo de comandos"
+              style={{ border: 0, background: "transparent", color: "var(--text-muted)", cursor: "pointer", fontSize: 16 }}
+            >
+              ×
+            </button>
+          </div>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 12 }}>
+            Di cualquiera de estas frases después de activar el micrófono.
+          </div>
+          {VOICE_COMMAND_CATALOG.map((group) => (
+            <section key={group.id} style={{ marginBottom: 14 }}>
+              <div style={{ color: accentColor, fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>
+                {group.label}
+              </div>
+              <div style={{ color: "var(--text-muted)", fontSize: 9, margin: "3px 0 8px" }}>
+                {group.description}
+              </div>
+              {group.commands.map((command) => (
+                <div key={command.label} style={{ padding: "7px 0", borderTop: "1px solid var(--border-dim)" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, marginBottom: 4 }}>{command.label}</div>
+                  <div style={{ color: "var(--text-muted)", fontSize: 10, lineHeight: 1.6 }}>
+                    {command.phrases.map((phrase, index) => (
+                      <span key={phrase}>
+                        {phrase}{index < command.phrases.length - 1 ? " · " : ""}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </section>
+          ))}
+          <div style={{ color: "var(--text-muted)", fontSize: 9 }}>
+            El catálogo se ampliará cuando cada nueva acción esté implementada y probada.
+          </div>
+        </div>
+      )}
       {!supported && (
         <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", maxWidth: 150, textAlign: "right" }}>
           Voz no disponible en este navegador.
@@ -292,6 +372,26 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
           aria-label="Alternar respuesta hablada"
         >
           {speechEnabled ? "🔊" : "🔇"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setCommandsOpen((open) => !open)}
+          aria-label="Mostrar comandos de voz"
+          aria-expanded={commandsOpen}
+          aria-controls="hbg-voice-command-catalog"
+          title="Comandos disponibles"
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: "50%",
+            border: `1px solid ${commandsOpen ? accentColor : "var(--border-dim)"}`,
+            background: "var(--bg-card)",
+            color: commandsOpen ? accentColor : "var(--text-muted)",
+            cursor: "pointer",
+            fontSize: 17,
+          }}
+        >
+          ☷
         </button>
         <button
           onClick={handleMicClick}

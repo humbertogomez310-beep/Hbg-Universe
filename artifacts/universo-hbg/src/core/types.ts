@@ -11,14 +11,15 @@ export type HBGActionName =
   | "music.mood"
   | "music.playTrack"
   | "music.volume"
-  | "music.voiceCapture"
   | "music.direct"
   | "music.autoDj"
   | "music.party"
   | "music.favorite"
   | "music.playlist"
   | "universe.navigate"
-  | "instinto.createLyricDraft";
+  | "instinto.createLyricDraft"
+  | "instinto.generateIdea"
+  | "instinto.generateHook";
 
 export type HBGPermissionScope = "USE" | "DEVELOP" | "SENSITIVE";
 
