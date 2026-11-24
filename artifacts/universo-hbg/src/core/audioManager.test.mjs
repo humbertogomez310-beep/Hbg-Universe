@@ -39,7 +39,7 @@ test("overlapping voice sessions keep audio ducked until the final session ends"
 });
 
 test("effective output volume combines the persistent level and temporary ducking safely", () => {
-  assert.equal(calculateEffectiveAudioVolume(0.8, 0.55), 0.44);
+  assert.ok(Math.abs(calculateEffectiveAudioVolume(0.8, 0.55) - 0.44) < 1e-12);
   assert.equal(calculateEffectiveAudioVolume(0.8, 1), 0.8);
   assert.equal(calculateEffectiveAudioVolume(2, 0.5), 0.5);
   assert.equal(calculateEffectiveAudioVolume(-1, 0.5), 0);
