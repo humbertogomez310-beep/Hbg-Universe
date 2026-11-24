@@ -76,6 +76,16 @@ export interface HBGActionLifecycleEvent {
 
 type ModuleSubscriber = (module: ModuleId) => void;
 const STORAGE_KEY = "hbg_active_module";
+const VALID_CORE_MOODS = new Set([
+  "relajado",
+  "feliz",
+  "nostalgico",
+  "triste",
+  "energia",
+  "enfocado",
+  "creativo",
+  "neutral",
+]);
 const VALID_MODULES = new Set<ModuleId>([
   "universo",
   "instinto",
@@ -244,7 +254,7 @@ export class HBGCore implements HBGActionRouter {
 
   remember(key: string, value: unknown): void {
     this.memory.remember(key, value);
-    if (key === "core.mood") {
+    if (key === "core.mood" && typeof value === "string" && VALID_CORE_MOODS.has(value)) {
       this.events.publish(HBG_CORE_EVENTS.MOOD_CHANGED, { mood: value });
     }
   }
