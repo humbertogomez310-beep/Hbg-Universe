@@ -12,6 +12,8 @@ import {
   type VoiceWidgetPosition,
 } from "./voiceCommandUi";
 
+const SPEECH_WATCHDOG_MS = 60_000;
+
 function getInitialWidgetPosition(): VoiceWidgetPosition {
   const viewport = {
     width: typeof window === "undefined" ? 1024 : window.innerWidth,
@@ -59,13 +61,16 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = "es-ES";
         let settled = false;
+        let watchdog: number | null = null;
         const finish = () => {
           if (settled) return;
           settled = true;
+          if (watchdog !== null) window.clearTimeout(watchdog);
           resolve();
         };
         utterance.onend = finish;
         utterance.onerror = finish;
+        watchdog = window.setTimeout(finish, SPEECH_WATCHDOG_MS);
         try {
           window.speechSynthesis.speak(utterance);
         } catch {
