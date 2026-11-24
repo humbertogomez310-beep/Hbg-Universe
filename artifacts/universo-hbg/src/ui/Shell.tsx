@@ -197,8 +197,9 @@ export function Shell() {
 
       <div className="hbg-shell">
         <header className="hbg-topbar">
-          <span className="hbg-logo" {...logoGesture}>
-            UNIVERSO HBG
+          <span className="hbg-logo" {...logoGesture} aria-label="UNIVERSO HBG">
+            <img className="hbg-logo-mark" src="/icons/hbg.svg" alt="" aria-hidden="true" />
+            <span>UNIVERSO HBG</span>
           </span>
 
           {isMobile && !showMenu && (
