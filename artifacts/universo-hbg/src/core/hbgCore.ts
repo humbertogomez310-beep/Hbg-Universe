@@ -204,7 +204,8 @@ export class HBGCore implements HBGActionRouter {
   }
 
   getActionRouter(): HBGActionRouter {
-    return this.requestProcessor;
+    // Preserve lifecycle notifications for consumers using the shared router API.
+    return this;
   }
 
   setContext(key: string, value: unknown): void {
