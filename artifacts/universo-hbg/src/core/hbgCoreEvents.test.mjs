@@ -99,6 +99,8 @@ test("HBG Core emits mood changes through the shared event bus", async () => {
   assert.deepEqual(moodEvents[0].payload, { mood: "creativo" });
 
   core.remember("unrelated.preference", "value");
+  core.remember("core.mood", { unexpected: true });
+  core.remember("core.mood", "unknown-mood");
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.equal(moodEvents.length, 1);
 });
