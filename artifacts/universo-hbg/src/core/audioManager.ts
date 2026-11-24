@@ -3,11 +3,17 @@
  * This controls only registered in-app media; it cannot change device volume.
  */
 export type AudioDuckingTarget = (factor: number) => void;
+export interface AudioSessionLifecycle {
+  onStart?: () => void;
+  onEnd?: (shouldRestorePlayback: boolean) => void;
+}
 
 const VOICE_DUCK_FACTOR = 0.55;
 const outputs = new Map<string, AudioDuckingTarget>();
+const sessionLifecycles = new Map<string, AudioSessionLifecycle>();
 const voiceSessions = new Set<symbol>();
 let lastAppliedFactor = 1;
+let suppressVoicePlaybackRestore = false;
 
 export function getCurrentAudioDuckingFactor(): number {
   return voiceSessions.size > 0 ? VOICE_DUCK_FACTOR : 1;
@@ -50,8 +56,37 @@ export function registerAudioOutput(id: string, target: AudioDuckingTarget): () 
   };
 }
 
+/** Registers optional media lifecycle hooks for browser-level capture interruptions. */
+export function registerAudioSessionLifecycle(
+  id: string,
+  lifecycle: AudioSessionLifecycle,
+): () => void {
+  if (!id.trim()) throw new Error("El identificador de ciclo de audio es obligatorio.");
+  sessionLifecycles.set(id, lifecycle);
+  return () => {
+    if (sessionLifecycles.get(id) === lifecycle) sessionLifecycles.delete(id);
+  };
+}
+
+/** Prevents automatic playback restoration after an explicit user pause command. */
+export function preventVoiceSessionPlaybackRestore(): void {
+  if (voiceSessions.size > 0) suppressVoicePlaybackRestore = true;
+}
+
 /** Starts a temporary voice session and returns an idempotent release function. */
 export function beginVoiceAudioSession(): () => void {
+  const isFirstSession = voiceSessions.size === 0;
+  if (isFirstSession) {
+    suppressVoicePlaybackRestore = false;
+    for (const lifecycle of sessionLifecycles.values()) {
+      try {
+        lifecycle.onStart?.();
+      } catch {
+        // Lifecycle hooks are best-effort and cannot block voice capture.
+      }
+    }
+  }
+
   const token = Symbol("hbg-voice-audio-session");
   voiceSessions.add(token);
   applyFactor();
@@ -62,5 +97,17 @@ export function beginVoiceAudioSession(): () => void {
     released = true;
     voiceSessions.delete(token);
     applyFactor();
+
+    if (voiceSessions.size === 0) {
+      const shouldRestorePlayback = !suppressVoicePlaybackRestore;
+      for (const lifecycle of sessionLifecycles.values()) {
+        try {
+          lifecycle.onEnd?.(shouldRestorePlayback);
+        } catch {
+          // One output's recovery must not prevent other outputs from recovering.
+        }
+      }
+      suppressVoicePlaybackRestore = false;
+    }
   };
 }
