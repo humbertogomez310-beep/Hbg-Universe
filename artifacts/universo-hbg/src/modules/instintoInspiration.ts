@@ -191,7 +191,7 @@ export function generateInstintoVerse(
   const words = extractKeywords(topic);
   const safeLineCount = Math.max(1, Math.min(8, Math.floor(lines) || 1));
   return Array.from({ length: safeLineCount }, (_, index) =>
-    generateInstintoRhyme(words[index % words.length] ?? topic.trim() || "alma", mood, random),
+    generateInstintoRhyme(words[index % words.length] ?? (topic.trim() || "alma"), mood, random),
   ).join("\n");
 }
 
