@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { hbgCore, MODULES, type ModuleId } from "../core/hbgCore";
 import { remoteApiEnabled } from "../core/apiConfig";
 import { UniversoScreen } from "../components/UniversoScreen";
-import { parseIntent } from "../voice/intentParser";
+import { interpretUtterance } from "../voice/lingua";
 import { executeVoiceAction } from "../voice/actionExecutor";
 
 type ViewMode = "core" | "memoria" | "mood" | "recomendaciones" | "nodos" | "sincronizacion" | "universo";
@@ -146,80 +146,47 @@ export function UniversoModule() {
     void (async () => {
       let response = "";
       try {
-        const action = parseIntent(input);
-        switch (action.type) {
-          case "GREETING":
-            response = "Hola. Estoy listo para navegar el Universo HBG y ejecutar las capacidades locales conectadas.";
-            break;
-          case "CAPABILITIES":
-            response = `Módulos públicos: ${MODULES.filter((module) => module.id !== "terminador").map((module) => module.label).join(", ")}. Acciones registradas ahora: ${registeredActions.length ? registeredActions.join(", ") : "ninguna"}.`;
-            break;
-          case "APP_INFO": {
-            const module = hbgCore.getModuleConfig(action.module);
-            response = `${module.label}: ${module.description}.`;
-            break;
+        // Chat and microphone share the same HBG LINGUA interpretation and action executor.
+        const interpretation = interpretUtterance(input);
+        const action = interpretation.action;
+
+        if (action.type === "UNKNOWN" && remoteApiEnabled() && remoteAIStatus.available) {
+          const conversation = [
+            ...messages,
+            { from: "user" as const, text: input, time },
+          ].slice(-12);
+          const apiResponse = await fetch("/api/core/chat", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              messages: conversation.map((message) => ({
+                role: message.from === "user" ? "user" : "assistant",
+                content: message.text,
+              })),
+            }),
+          });
+          const result: unknown = await apiResponse.json().catch(() => null);
+          if (
+            !apiResponse.ok ||
+            typeof result !== "object" ||
+            result === null ||
+            !("success" in result) ||
+            result.success !== true ||
+            !("text" in result) ||
+            typeof result.text !== "string"
+          ) {
+            const message =
+              typeof result === "object" && result !== null && "error" in result && typeof result.error === "string"
+                ? result.error
+                : "No se pudo completar la respuesta de HBG CORE.";
+            throw new Error(message);
           }
-          case "NAVIGATE":
-            response = `Abriendo ${hbgCore.getModuleConfig(action.module).label}.`;
-            break;
-          case "CREATE_SONG":
-            response = `Abriendo INSTINTO. La letra "${action.title}" no se ha creado todavía; entra en LETRAS para crearla y guardarla.`;
-            break;
-          case "BLOCKED_DEVELOPMENT":
-            response = "Esa operación requiere una sesión de desarrollo autorizada. El chat de uso normal no puede modificar código, permisos ni despliegues.";
-            break;
-          case "UNKNOWN": {
-            if (!remoteApiEnabled()) {
-              response = "Esta publicación de HBG funciona en modo Local-first. Los comandos locales siguen disponibles; la IA remota y los servicios centralizados requieren una conexión backend que no está habilitada en esta versión.";
-              break;
-            }
-            if (!remoteAIStatus.available) {
-              response = "La IA remota no está configurada. Puedo interpretar comandos locales compatibles, mostrar capacidades y ejecutar acciones registradas; prueba «capacidades», «abre Instinto», «pausa» o «activa modo fiesta».";
-              break;
-            }
-            const conversation = [
-              ...messages,
-              { from: "user" as const, text: input, time },
-            ].slice(-12);
-            const apiResponse = await fetch("/api/core/chat", {
-              method: "POST",
-              credentials: "include",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                messages: conversation.map((message) => ({
-                  role: message.from === "user" ? "user" : "assistant",
-                  content: message.text,
-                })),
-              }),
-            });
-            const result: unknown = await apiResponse.json().catch(() => null);
-            if (
-              !apiResponse.ok ||
-              typeof result !== "object" ||
-              result === null ||
-              !("success" in result) ||
-              result.success !== true ||
-              !("text" in result) ||
-              typeof result.text !== "string"
-            ) {
-              const message =
-                typeof result === "object" && result !== null && "error" in result && typeof result.error === "string"
-                  ? result.error
-                  : "No se pudo completar la respuesta de HBG CORE.";
-              throw new Error(message);
-            }
-            response = result.text;
-            break;
-          }
-          default:
-            if (action.type === "SET_MOOD") {
-              const matched = (Object.entries(MOOD_TO_MUSIC) as [MoodState, string][]).find(([, value]) => value === action.mood)?.[0];
-              if (matched) {
-                setMood(matched);
-                hbgCore.remember("core.mood", matched);
-              }
-            }
-            response = await executeVoiceAction(action);
+          response = result.text;
+        } else {
+          // Unsupported local requests receive a contextual clarification, not a misleading
+          // generic backend warning. Remote AI remains optional and is never simulated.
+          response = await executeVoiceAction(action);
         }
       } catch (cause) {
         response = cause instanceof Error ? cause.message : "No se pudo procesar la solicitud.";
@@ -228,10 +195,6 @@ export function UniversoModule() {
       const responseTime = new Date().toLocaleTimeString("es-ES", { hour12: false, hour: "2-digit", minute: "2-digit" });
       setMessages((prev) => [...prev, { from: "core", text: response, time: responseTime }]);
       setProcessing(false);
-
-      const navigationAction = parseIntent(input);
-      if (navigationAction.type === "NAVIGATE") hbgCore.setModule(navigationAction.module);
-      if (navigationAction.type === "CREATE_SONG") hbgCore.setModule("instinto");
     })();
   };
 
