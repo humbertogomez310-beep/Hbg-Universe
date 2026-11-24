@@ -82,10 +82,14 @@ test("PWA installation caches the shell, manifest, and built JavaScript/CSS asse
   assert.ok(harness.stored.has("https://hbg.test/"));
   assert.ok(harness.stored.has("https://hbg.test/manifest.webmanifest"));
   assert.ok(harness.stored.has("https://hbg.test/icons/hbg.svg"));
+  assert.ok(harness.stored.has("https://hbg.test/icons/hbg-192.png"));
+  assert.ok(harness.stored.has("https://hbg.test/icons/hbg-512.png"));
   assert.ok(harness.stored.has("https://hbg.test/assets/app-123.js"));
   assert.ok(harness.stored.has("https://hbg.test/assets/app-123.css"));
   assert.ok(requested.includes("/"));
   assert.ok(requested.includes("/icons/hbg.svg"));
+  assert.ok(requested.includes("/icons/hbg-192.png"));
+  assert.ok(requested.includes("/icons/hbg-512.png"));
 });
 
 test("PWA activation removes only old HBG shell caches", async () => {
