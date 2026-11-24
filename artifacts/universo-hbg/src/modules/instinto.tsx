@@ -152,17 +152,26 @@ export function InstintoModule() {
     try {
       await saveInstintoRecord(key, value as never);
       setStorageWarning("");
+      return true;
     } catch {
       const saved = persistLegacyValue(legacyKey, value);
       setStorageWarning(saved
         ? `IndexedDB no disponible; ${label} se guardaron temporalmente en el almacenamiento anterior.`
         : `No se pudieron guardar ${label} en este dispositivo.`);
+      return saved;
     }
   };
 
-  const saveNotes = (next: Note[]) => {
+  const saveNotes = (next: Note[], newlySavedNote?: Note) => {
     setNotes(next);
-    void saveRecord("notes", next, NOTE_KEY, "las notas");
+    void saveRecord("notes", next, NOTE_KEY, "las notas").then((persisted) => {
+      if (persisted && newlySavedNote) {
+        hbgCore.publishEvent("instinto.note_saved", {
+          noteId: newlySavedNote.id,
+          category: newlySavedNote.category,
+        });
+      }
+    });
   };
   const saveLyrics = (next: Lyric[]) => {
     setLyrics(next);
@@ -215,11 +224,27 @@ export function InstintoModule() {
     if (!newContent.trim()) return;
     const now = new Date().toISOString();
     const note: Note = { id: Date.now().toString(), title: newTitle || "Sin título", content: newContent.trim(), category: newCategory, createdAt: now, updatedAt: now, pinned: false, favorite: false, tags: activeTags, deleted: false };
-    saveNotes([note, ...notes]);
+    saveNotes([note, ...notes], note);
     setDraft({ title: "", content: "", category: "notas", tags: [] });
     void saveRecord("draft", { title: "", content: "", category: "notas", tags: [] }, DRAFT_KEY, "el borrador");
     setAutoSaved(false);
     setNewContent(""); setNewTitle(""); setActiveTags([]);
+  };
+
+  const prepareIdeaDraft = () => {
+    setNewContent(generateInstintoIdea(creativeMood));
+    setNewCategory("ideas");
+    setView("bloc");
+    setTimeout(() => textRef.current?.focus(), 100);
+    hbgCore.publishEvent("instinto.idea_generated", { mood: creativeMood });
+  };
+
+  const prepareRhymeDraft = (category?: Category) => {
+    setNewContent(generateInstintoHook(creativeMood));
+    if (category) setNewCategory(category);
+    setView("bloc");
+    setTimeout(() => textRef.current?.focus(), 100);
+    hbgCore.publishEvent("instinto.rhyme_generated", { mood: creativeMood });
   };
 
   const deleteNote = (id: string) => saveNotes(notes.map((n) => n.id === id ? { ...n, deleted: true } : n));
@@ -392,7 +417,7 @@ export function InstintoModule() {
         <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
           {autoSaved && <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--neon-green)", alignSelf: "center" }}>✓ borrador guardado</span>}
           {storageWarning && <span role="status" style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--neon-pink)", alignSelf: "center" }}>{storageWarning}</span>}
-          <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 9 }} onClick={() => { setNewContent(generateInstintoHook(creativeMood)); setView("bloc"); setTimeout(() => textRef.current?.focus(), 100); }}>♪ RIMA</button>
+          <button className="hbg-btn hbg-btn-ghost" style={{ fontSize: 9 }} onClick={() => prepareRhymeDraft()}>♪ RIMA</button>
           <button className="hbg-btn hbg-btn-primary" style={{ fontSize: 9 }} onClick={() => { setView("bloc"); setTimeout(() => textRef.current?.focus(), 100); }}>+ NUEVA NOTA</button>
         </div>
       </div>
@@ -624,10 +649,10 @@ export function InstintoModule() {
           <div className="hbg-grid hbg-grid-2" style={{ gap: 12, marginBottom: 16 }}>
             <div className="hbg-card">
               <div className="section-title">// generador de inspiración</div>
-              <button className="hbg-btn hbg-btn-primary w-full" style={{ marginBottom: 8 }} onClick={() => { setNewContent(generateInstintoIdea(creativeMood)); setNewCategory("ideas"); setView("bloc"); setTimeout(() => textRef.current?.focus(), 100); }}>
+              <button className="hbg-btn hbg-btn-primary w-full" style={{ marginBottom: 8 }} onClick={prepareIdeaDraft}>
                 ◈ GENERAR IDEA
               </button>
-              <button className="hbg-btn hbg-btn-ghost w-full" onClick={() => { setNewContent(generateInstintoHook(creativeMood)); setNewCategory("notas"); setView("bloc"); setTimeout(() => textRef.current?.focus(), 100); }}>
+              <button className="hbg-btn hbg-btn-ghost w-full" onClick={() => prepareRhymeDraft("notas")}>
                 ♪ HOOK DE RIMA
               </button>
             </div>
