@@ -90,16 +90,15 @@ export async function executeVoiceAction(action: VoiceAction): Promise<string> {
 
     case "PLAY":
     case "RESUME": {
-      const playing = hbgCore.getContext<boolean>("music.isPlaying");
-      if (playing) return "Ya está reproduciendo.";
+      // Do not trust a potentially stale React context flag after browser audio-focus changes.
+      // VIBRA's play action is idempotent and resumes the current media position in place.
       const res = await hbgCore.dispatchAction("music.play");
-      return res.success ? "Reproduciendo." : res.error ?? "No se pudo reproducir.";
+      return res.success ? "Reproduciendo." : res.error ?? "No se pudo reanudar la reproducción.";
     }
 
     case "PAUSE":
     case "STOP": {
-      const playing = hbgCore.getContext<boolean>("music.isPlaying");
-      if (playing === false) return "Ya estaba en pausa.";
+      // Always dispatch the explicit pause intent so VIBRA can suppress automatic recovery.
       const res = await hbgCore.dispatchAction("music.pause");
       return res.success ? "Pausado." : res.error ?? "No se pudo pausar.";
     }
