@@ -16,7 +16,7 @@ test("INSTINTO maps HBG Core mood values to creative moods safely", () => {
   assert.equal(resolveInstintoMood("relajado"), "relaxed");
   assert.equal(resolveInstintoMood("neutral"), "neutral");
   assert.equal(resolveInstintoMood("triste"), "neutral");
-  assert.equal(resolveInstintoMood(undefined), "neutral");
+  assert.equal(resolveInstintoMood(undefined), "focused");
 });
 
 test("INSTINTO generates an idea for the selected mood and can use context", () => {
