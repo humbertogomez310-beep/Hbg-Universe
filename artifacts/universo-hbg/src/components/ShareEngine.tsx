@@ -10,7 +10,7 @@ interface ShareEngineProps {
 
 // Enlace público oficial de Universo HBG.
 export const PUBLIC_APP_URL =
-  "https://hbg-universe--humbertogomez31.replit.app";
+  "https://universo-hbg-pwa-public.onrender.com";
 
 function qrImageUrl(text: string): string {
   return `https://api.qrserver.com/v1/create-qr-code/?size=196x196&margin=8&data=${encodeURIComponent(text)}`;
