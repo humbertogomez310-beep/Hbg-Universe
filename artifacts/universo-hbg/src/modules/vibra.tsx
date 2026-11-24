@@ -481,7 +481,16 @@ export function VibraModule() {
       playbackPositionRef.current = 0;
       setProgress(0);
       setCurrentTime(0);
-      autoAdvanceRef.current();
+
+      // Let React commit the stopped state before selecting the next item.
+      // Read the latest queue/config refs after the media element has ended.
+      autoAdvanceInProgressRef.current = false;
+      const endedTrackId = currentIdRef.current;
+      window.setTimeout(() => {
+        if (audioRef.current !== audio || currentIdRef.current !== endedTrackId) return;
+        if (!audio.ended) return;
+        autoAdvanceRef.current();
+      }, 0);
     };
     const onError = () => {
       setError("Error de reproducción — intenta reimportar el archivo");
