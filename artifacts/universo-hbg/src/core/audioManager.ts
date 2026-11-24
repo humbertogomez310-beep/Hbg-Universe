@@ -4,13 +4,23 @@
  */
 export type AudioDuckingTarget = (factor: number) => void;
 
-const VOICE_DUCK_FACTOR = 0.25;
+const VOICE_DUCK_FACTOR = 0.55;
 const outputs = new Map<string, AudioDuckingTarget>();
 const voiceSessions = new Set<symbol>();
 let lastAppliedFactor = 1;
 
 export function getCurrentAudioDuckingFactor(): number {
   return voiceSessions.size > 0 ? VOICE_DUCK_FACTOR : 1;
+}
+
+/** Combines the user's persistent level with temporary voice attenuation. */
+export function calculateEffectiveAudioVolume(
+  baseVolume: number,
+  duckingFactor: number = getCurrentAudioDuckingFactor(),
+): number {
+  const clamp = (value: number) =>
+    Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+  return clamp(baseVolume) * clamp(duckingFactor);
 }
 
 function applyFactor(): void {
