@@ -37,6 +37,10 @@ export function PWAUpdateButton() {
       if (registration.installing) {
         await new Promise<void>((resolve) => {
           const worker = registration.installing!;
+          if (worker.state === "activated" || worker.state === "redundant") {
+            resolve();
+            return;
+          }
           const timeout = window.setTimeout(resolve, 12000);
           worker.addEventListener("statechange", () => {
             if (worker.state === "activated" || worker.state === "redundant") {
