@@ -86,3 +86,19 @@ test("HBG Core publishes module notifications without treating them as actions",
   assert.deepEqual(received[0].payload, { noteId: "note-1" });
   assert.deepEqual(core.getRegisteredActions(), []);
 });
+
+test("HBG Core emits mood changes through the shared event bus", async () => {
+  const core = new HBGCore();
+  const moodEvents = [];
+  core.subscribeEvent(HBG_CORE_EVENTS.MOOD_CHANGED, (event) => moodEvents.push(event));
+
+  core.remember("core.mood", "creativo");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(moodEvents.length, 1);
+  assert.deepEqual(moodEvents[0].payload, { mood: "creativo" });
+
+  core.remember("unrelated.preference", "value");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(moodEvents.length, 1);
+});
