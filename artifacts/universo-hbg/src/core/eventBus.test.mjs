@@ -4,7 +4,7 @@ import { HBGEventBus } from "./eventBus.ts";
 
 test("HBG event bus publishes timestamped notifications asynchronously", async () => {
   const bus = new HBGEventBus();
-  const received: unknown[] = [];
+  const received = [];
   bus.subscribe("hbg_core.test", (event) => received.push(event));
 
   bus.publish("hbg_core.test", { action: "music.play" });
@@ -12,11 +12,7 @@ test("HBG event bus publishes timestamped notifications asynchronously", async (
   await new Promise((resolve) => setTimeout(resolve, 0));
 
   assert.equal(received.length, 1);
-  const event = received[0] as {
-    channel: string;
-    payload: { action: string };
-    timestamp: string;
-  };
+  const event = received[0];
   assert.equal(event.channel, "hbg_core.test");
   assert.deepEqual(event.payload, { action: "music.play" });
   assert.ok(Number.isFinite(Date.parse(event.timestamp)));
