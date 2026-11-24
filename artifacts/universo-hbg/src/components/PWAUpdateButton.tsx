@@ -58,7 +58,9 @@ export function PWAUpdateButton() {
       await registration.update();
 
       if (registration.waiting) {
-        registration.waiting.postMessage({ type: "SKIP_WAITING" });
+        const waitingWorker = registration.waiting;
+        waitingWorker.postMessage({ type: "SKIP_WAITING" });
+        await waitForActivation(waitingWorker);
       } else {
         if (!installingWorker) await updateFound;
         installingWorker = registration.installing || installingWorker;
@@ -66,7 +68,9 @@ export function PWAUpdateButton() {
           await waitForActivation(installingWorker);
         }
         if (registration.waiting) {
-          registration.waiting.postMessage({ type: "SKIP_WAITING" });
+          const waitingWorker = registration.waiting;
+          waitingWorker.postMessage({ type: "SKIP_WAITING" });
+          await waitForActivation(waitingWorker);
         }
       }
 
