@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { UniversoScreen } from "../components/UniversoScreen";
-import { hbgCore } from "../core/hbgCore";
+import { hbgCore, HBG_CORE_EVENTS } from "../core/hbgCore";
 import {
   generateInstintoHook,
   generateInstintoIdea,
@@ -114,9 +114,10 @@ export function InstintoModule() {
       setCreativeMood(resolveInstintoMood(hbgCore.recall("core.mood")));
     };
     refreshMood();
-    return hbgCore.subscribeMemory((key) => {
-      if (key === "core.mood") refreshMood();
-    });
+    return hbgCore.subscribeEvent<{ mood?: unknown }>(
+      HBG_CORE_EVENTS.MOOD_CHANGED,
+      (event) => setCreativeMood(resolveInstintoMood(event.payload.mood)),
+    );
   }, []);
 
   useEffect(() => { if (lyrics.length > 0 && !activeLyric) setActiveLyric(lyrics[0]); }, []);
