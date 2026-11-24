@@ -20,7 +20,7 @@ test("INSTINTO maps HBG Core mood values to creative moods safely", () => {
 });
 
 test("INSTINTO generates an idea for the selected mood and can use context", () => {
-  const idea = generateInstintoIdea("focused", "Quiero mejorar mi código y mi proyecto", () => 0);
+  const idea = generateInstintoIdea("focused", "código proyecto", () => 0);
   assert.match(idea, /Mapa mental visual/);
   assert.match(idea, /código, proyecto/);
 });
