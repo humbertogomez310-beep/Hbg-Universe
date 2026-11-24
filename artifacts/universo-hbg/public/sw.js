@@ -1,4 +1,4 @@
-const SW_VERSION = "hbg-pwa-v4";
+const SW_VERSION = "hbg-pwa-v5";
 const CACHE_NAME = `hbg-shell-${SW_VERSION}`;
 const CORE_ASSETS = ["/", "/manifest.webmanifest", "/icons/hbg.svg", "/icons/hbg-192.png", "/icons/hbg-512.png", "/apple-touch-icon.png"];
 
@@ -18,6 +18,10 @@ self.addEventListener("install", (event) => {
     await cache.addAll([...new Set([...CORE_ASSETS, ...assetPaths])]);
     await self.skipWaiting();
   })());
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") void self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
