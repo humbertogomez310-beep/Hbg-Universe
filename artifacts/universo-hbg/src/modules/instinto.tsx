@@ -248,6 +248,43 @@ export function InstintoModule() {
     hbgCore.publishEvent("instinto.rhyme_generated", { mood: creativeMood });
   };
 
+  // Expose only bounded local draft operations to HBG Core. Nothing is saved as
+  // a note or lyric until the user explicitly presses the corresponding Save button.
+  useEffect(() => {
+    if (!storageReady) return;
+
+    const unregister = [
+      hbgCore.registerAction("instinto.generateIdea", (payload) => {
+        const context = typeof payload?.context === "string"
+          ? payload.context.trim().slice(0, 240)
+          : "";
+        setNewContent(generateInstintoIdea(creativeMood, context));
+        setNewCategory("ideas");
+        setView("bloc");
+        hbgCore.publishEvent("instinto.idea_generated", { mood: creativeMood });
+        return { success: true, data: { category: "ideas" } };
+      }),
+      hbgCore.registerAction("instinto.generateHook", () => {
+        setNewContent(generateInstintoHook(creativeMood));
+        setNewCategory("letras");
+        setView("bloc");
+        hbgCore.publishEvent("instinto.rhyme_generated", { mood: creativeMood });
+        return { success: true, data: { category: "letras" } };
+      }),
+      hbgCore.registerAction("instinto.createLyricDraft", (payload) => {
+        const title = typeof payload?.title === "string" ? payload.title.trim() : "";
+        if (!title || title.length > 80) {
+          return { success: false, error: "El título de la letra debe tener entre 1 y 80 caracteres." };
+        }
+        setNewLyricTitle(title);
+        setView("letras");
+        return { success: true, data: { draft: true } };
+      }),
+    ];
+
+    return () => unregister.forEach((remove) => remove());
+  }, [storageReady, creativeMood]);
+
   const deleteNote = (id: string) => saveNotes(notes.map((n) => n.id === id ? { ...n, deleted: true } : n));
   const restoreNote = (id: string) => saveNotes(notes.map((n) => n.id === id ? { ...n, deleted: false } : n));
   const permanentDelete = (id: string) => saveNotes(notes.filter((n) => n.id !== id));
