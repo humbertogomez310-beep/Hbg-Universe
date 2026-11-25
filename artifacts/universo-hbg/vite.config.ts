@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
@@ -19,7 +19,7 @@ const buildId =
   process.env.BUILD_ID ||
   `local-${Date.now()}`;
 
-const hbgBuildManifest = {
+const hbgBuildManifest: Plugin = {
   name: "hbg-build-manifest",
   generateBundle() {
     this.emitFile({
