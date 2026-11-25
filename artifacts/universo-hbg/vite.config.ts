@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+import { HBG_RELEASE_VERSION } from "./src/pwa/versioning";
 
 const rawPort = process.env.PORT ?? "5173";
 const port = Number(rawPort);
@@ -26,6 +27,7 @@ const hbgBuildManifest: Plugin = {
       type: "asset",
       fileName: "version.json",
       source: JSON.stringify({
+        releaseVersion: HBG_RELEASE_VERSION,
         buildId,
         generatedAt: new Date().toISOString(),
       }, null, 2),
