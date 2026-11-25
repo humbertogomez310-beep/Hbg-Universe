@@ -25,7 +25,7 @@ test("interprets natural-language goals and maintains an explicit direction", ()
 });
 
 test("more bailable and singing requests modify the existing goal instead of replacing it", () => {
-  const current = { goal: "noventa", energy: "steady" as const };
+  const current = { goal: "noventa", energy: "steady" };
   assert.deepEqual(interpretMusicDirection("Más bailable", current), { goal: "noventa", energy: "up" });
   assert.deepEqual(interpretMusicDirection("Más para cantar", current), { goal: "noventa", energy: "steady", vocalFocus: true });
   assert.deepEqual(interpretMusicDirection("Pon música para cantar", { goal: "", energy: "steady" }), {
@@ -46,7 +46,7 @@ test("Auto DJ ranks energy and vocal hints using only local metadata", () => {
 });
 
 test("selects only local metadata matches and avoids recent tracks when alternatives exist", () => {
-  const direction = { goal: "noventa", energy: "steady" as const };
+  const direction = { goal: "noventa", energy: "steady" };
   assert.equal(selectNextTrack(tracks, null, [], direction)?.id, "90s-a");
   assert.equal(selectNextTrack(tracks, "90s-a", ["90s-a"], direction)?.id, "90s-b");
   assert.equal(selectNextTrack(tracks, null, [], { goal: "jazz", energy: "steady" }), null);
