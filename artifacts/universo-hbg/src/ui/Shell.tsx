@@ -15,6 +15,30 @@ import { PWAInstallButton } from "../components/PWAInstallButton";
 import { PWAUpdateButton } from "../components/PWAUpdateButton";
 
 // Detección responsive compartida por escritorio y móvil.
+function useIsMobile(): boolean {
+  const query = "(max-width: 800px)";
+  const supported =
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function";
+
+  const [mobile, setMobile] = useState(() =>
+    supported ? window.matchMedia(query).matches : false
+  );
+
+  useEffect(() => {
+    if (!supported) return;
+
+    const list = window.matchMedia(query);
+    const update = () => setMobile(list.matches);
+    update();
+    list.addEventListener("change", update);
+
+    return () => list.removeEventListener("change", update);
+  }, [supported]);
+
+  return mobile;
+}
+
 function Clock() {
   const [time, setTime] = useState(new Date());
 
