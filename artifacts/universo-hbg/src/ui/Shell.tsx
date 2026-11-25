@@ -6,6 +6,7 @@ import { Sidebar } from "./Sidebar";
 import { OwnerGate } from "./OwnerGate";
 import { useLogoGesture } from "./useLogoGesture";
 import { UniversoModule } from "../modules/universo";
+import { UniversoLanding } from "../components/UniversoLanding";
 import { InstintoModule } from "../modules/instinto";
 import { VibraModule } from "../modules/vibra";
 import { TerminadorModule } from "../modules/terminador";
@@ -92,10 +93,12 @@ function ModulePanel({
   module,
   isOwner,
   checking,
+  onSelect,
 }: {
   module: ModuleId;
   isOwner: boolean;
   checking: boolean;
+  onSelect: (id: ModuleId) => void;
 }) {
   const [key, setKey] = useState(0);
   const [displayModule, setDisplayModule] = useState(module);
@@ -107,11 +110,11 @@ function ModulePanel({
 
   // Defensa adicional: Terminador nunca se monta sin sesión OWNER confirmada.
   if (displayModule === "terminador" && (!isOwner || checking)) {
-    return <UniversoModule />;
+    return <UniversoLanding onSelect={onSelect} />;
   }
 
   const panels: Record<ModuleId, ReactNode> = {
-    universo: <UniversoModule />,
+    universo: <UniversoLanding onSelect={onSelect} />,
     instinto: <InstintoModule />,
     vibra: <VibraModule />,
     terminador: (
@@ -267,16 +270,13 @@ export function Shell() {
             </div>
 
             {isMobile && showMenu ? (
-              <MobileMenu
-                modules={visibleModules}
-                active={activeModule}
-                onSelect={selectModule}
-              />
+              <UniversoLanding onSelect={selectModule} />
             ) : activeModule !== "vibra" ? (
               <ModulePanel
                 module={activeModule}
                 isOwner={isOwner}
                 checking={checking}
+                onSelect={selectModule}
               />
             ) : null}
 
