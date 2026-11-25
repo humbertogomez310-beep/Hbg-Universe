@@ -1558,7 +1558,7 @@ export function VibraModule() {
       {/* PLAYLISTS */}
       {view === "playlists" && (
         <div>
-          <div style={{ display: "grid", display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
             <input className="hbg-input" style={{ flex: "1 1 180px" }} aria-label="Nombre de la playlist" placeholder="Nombre de la playlist..." value={newPlaylistName} onChange={(e) => setNewPlaylistName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addPlaylist()} />
             <input className="hbg-input" style={{ flex: "1 1 180px" }} aria-label="Estilo o intención musical de la playlist" placeholder="Estilo o intención (opcional)..." value={newPlaylistQuery} onChange={(e) => setNewPlaylistQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addPlaylist()} />
             <button className="hbg-btn hbg-btn-primary" onClick={addPlaylist} disabled={!newPlaylistName.trim()}>+ CREAR</button>
