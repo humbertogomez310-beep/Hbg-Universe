@@ -1,11 +1,11 @@
 
-import { useState, useEffect, type CSSProperties, type ReactNode } from "react";
-import { hbgCore, MODULES, type ModuleConfig, type ModuleId } from "../core/hbgCore";
+import { useState, useEffect, type ReactNode } from "react";
+import { hbgCore, type ModuleId } from "../core/hbgCore";
 import { ownerSession, useOwnerSession } from "../core/ownerSession";
 import { Sidebar } from "./Sidebar";
 import { OwnerGate } from "./OwnerGate";
 import { useLogoGesture } from "./useLogoGesture";
-import { UniversoModule } from "../modules/universo";
+import { UniversoLanding } from "../components/UniversoLanding";
 import { InstintoModule } from "../modules/instinto";
 import { VibraModule } from "../modules/vibra";
 import { TerminadorModule } from "../modules/terminador";
@@ -13,9 +13,8 @@ import { TerminadorAppsSection } from "../modules/terminador-apps";
 import { VoiceCommandBar } from "../voice/VoiceCommandBar";
 import { PWAInstallButton } from "../components/PWAInstallButton";
 import { PWAUpdateButton } from "../components/PWAUpdateButton";
-import { HBG_RELEASE_VERSION } from "../pwa/versioning";
 
-// En teléfono se muestra un menú de tarjetas en vez de la barra lateral.
+// Detección responsive compartida por escritorio y móvil.
 function useIsMobile(): boolean {
   const query = "(max-width: 800px)";
   const supported =
@@ -31,7 +30,6 @@ function useIsMobile(): boolean {
 
     const list = window.matchMedia(query);
     const update = () => setMobile(list.matches);
-
     update();
     list.addEventListener("change", update);
 
@@ -39,38 +37,6 @@ function useIsMobile(): boolean {
   }, [supported]);
 
   return mobile;
-}
-
-function MobileMenu({
-  modules,
-  active,
-  onSelect,
-}: {
-  modules: ModuleConfig[];
-  active: ModuleId;
-  onSelect: (id: ModuleId) => void;
-}) {
-  return (
-    <div className="hbg-menu-list">
-      {modules.map((mod) => (
-        <button
-          key={mod.id}
-          className={`hbg-menu-card ${active === mod.id ? "active" : ""}`}
-          style={{ "--item-color": mod.color } as CSSProperties}
-          onClick={() => onSelect(mod.id)}
-        >
-          <span className="hbg-nav-icon">{mod.icon}</span>
-          <div className="hbg-nav-info">
-            <div className="hbg-nav-name">{mod.label}</div>
-            <div className="hbg-nav-desc">{mod.description}</div>
-          </div>
-        </button>
-      ))}
-      <div className="hbg-version hbg-menu-footer">
-        UNIVERSO HBG {HBG_RELEASE_VERSION} · HBG CORE v1.0.0
-      </div>
-    </div>
-  );
 }
 
 function Clock() {
@@ -92,10 +58,12 @@ function ModulePanel({
   module,
   isOwner,
   checking,
+  onSelect,
 }: {
   module: ModuleId;
   isOwner: boolean;
   checking: boolean;
+  onSelect: (id: ModuleId) => void;
 }) {
   const [key, setKey] = useState(0);
   const [displayModule, setDisplayModule] = useState(module);
@@ -107,11 +75,11 @@ function ModulePanel({
 
   // Defensa adicional: Terminador nunca se monta sin sesión OWNER confirmada.
   if (displayModule === "terminador" && (!isOwner || checking)) {
-    return <UniversoModule />;
+    return <UniversoLanding onSelect={onSelect} />;
   }
 
   const panels: Record<ModuleId, ReactNode> = {
-    universo: <UniversoModule />,
+    universo: <UniversoLanding onSelect={onSelect} />,
     instinto: <InstintoModule />,
     vibra: <VibraModule />,
     terminador: (
@@ -190,9 +158,7 @@ export function Shell() {
       : activeModule
   );
 
-  const visibleModules = isOwner
-    ? MODULES
-    : MODULES.filter((module) => module.id !== "terminador");
+
 
   return (
     <>
@@ -267,16 +233,13 @@ export function Shell() {
             </div>
 
             {isMobile && showMenu ? (
-              <MobileMenu
-                modules={visibleModules}
-                active={activeModule}
-                onSelect={selectModule}
-              />
+              <UniversoLanding onSelect={selectModule} />
             ) : activeModule !== "vibra" ? (
               <ModulePanel
                 module={activeModule}
                 isOwner={isOwner}
                 checking={checking}
+                onSelect={selectModule}
               />
             ) : null}
 
