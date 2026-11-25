@@ -15,11 +15,11 @@ test("interprets natural-language goals and maintains an explicit direction", ()
   const first = interpretMusicDirection("Pon música de los noventa", { goal: "", energy: "steady" });
   assert.deepEqual(first, { goal: "de los noventa", energy: "steady" });
   assert.deepEqual(
-    interpretMusicDirection("Mantén este estilo, pero con más energía", first!),
+    interpretMusicDirection("Mantén este estilo, pero con más energía", first),
     { goal: "de los noventa", energy: "up" },
   );
   assert.deepEqual(
-    interpretMusicDirection("Ahora quiero música vieja", first!),
+    interpretMusicDirection("Ahora quiero música vieja", first),
     { goal: "vieja", energy: "steady" },
   );
 });
