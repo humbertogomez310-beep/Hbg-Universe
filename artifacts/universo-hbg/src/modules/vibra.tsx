@@ -19,6 +19,7 @@ import {
   normalizeMusicText,
   readMusicDirection,
   selectNextTrack,
+  selectTracksForDirection,
   type MusicDirection,
 } from "./musicDirector";
 import {
@@ -231,6 +232,7 @@ export function VibraModule() {
     return Object.fromEntries(EQ_BANDS.map((band) => [band, 50]));
   });
   const [newPlaylistName, setNewPlaylistName] = useState("");
+  const [newPlaylistQuery, setNewPlaylistQuery] = useState("");
   const [filterFavs, setFilterFavs] = useState(false);
   const [directionInput, setDirectionInput] = useState(() => musicDirection.goal);
 
@@ -1045,11 +1047,12 @@ export function VibraModule() {
           if (playlists.some((playlist) => playlist.name.toLowerCase() === requestedName.toLowerCase())) {
             return result(false, undefined, `La playlist "${requestedName}" ya existe`);
           }
-          const query = normalizeMusicText(String(payload?.query ?? ""));
-          const matchedTrackIds = query
-            ? tracks
-                .filter((track) => normalizeMusicText(`${track.title} ${track.artist} ${track.album}`).includes(query))
-                .map((track) => track.id)
+          const query = String(payload?.query ?? "").trim();
+          const direction = query
+            ? interpretMusicDirection(query, { goal: "", energy: "steady" }) ?? { goal: normalizeMusicText(query), energy: "steady" as const }
+            : null;
+          const matchedTrackIds = direction
+            ? selectTracksForDirection(tracks, direction, 50).map((track) => track.id)
             : [];
           if (query && matchedTrackIds.length === 0) {
             return result(false, undefined, `No encontré canciones de "${query}" en la biblioteca; no creé una playlist vacía.`);
@@ -1218,10 +1221,31 @@ export function VibraModule() {
   const toggleFav = (id: string) => setFavorites((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   const addPlaylist = () => {
-    if (!newPlaylistName.trim()) return;
+    const name = newPlaylistName.trim();
+    if (!name) return;
+    if (playlists.some((playlist) => playlist.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+      setError(`La playlist "${name}" ya existe.`);
+      return;
+    }
+    const query = newPlaylistQuery.trim();
+    const direction = query
+      ? interpretMusicDirection(query, { goal: "", energy: "steady" }) ?? { goal: query, energy: "steady" as const }
+      : null;
+    const selectedTracks = direction ? selectTracksForDirection(tracks, direction, 50) : [];
+    if (query && selectedTracks.length === 0) {
+      setError("No encontré canciones que coincidan en tu biblioteca. No creé una playlist vacía.");
+      return;
+    }
     const colors = ["var(--neon-pink)", "var(--neon-cyan)", "var(--neon-green)", "#ff9100", "var(--neon-purple)"];
-    setPlaylists((prev) => [...prev, { id: Date.now().toString(), name: newPlaylistName.trim(), trackIds: [], color: colors[prev.length % colors.length] }]);
+    setPlaylists((prev) => [...prev, {
+      id: `playlist_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      name,
+      trackIds: selectedTracks.map((track) => track.id),
+      color: colors[prev.length % colors.length],
+    }]);
     setNewPlaylistName("");
+    setNewPlaylistQuery("");
+    setError(null);
   };
 
   const movePlaylistTrack = (playlistId: string, trackId: string, offset: -1 | 1) => {
@@ -1337,12 +1361,12 @@ export function VibraModule() {
               FIESTA PRO: {partyMode ? "ACTIVA" : "INACTIVA"}
             </button>
             <span style={{ alignSelf: "center", fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-secondary)" }}>
-              Objetivo: {musicDirection.goal || "sin fijar"} · Preferencia de energía: {musicDirection.energy === "up" ? "más alta" : "estable"}
+              Objetivo: {musicDirection.goal || "sin fijar"} · Preferencia de energía: {musicDirection.energy === "up" ? "más alta" : "estable"}{musicDirection.vocalFocus ? " · prioridad vocal" : ""}
               {plannedNextTrack ? ` · Siguiente candidata: ${plannedNextTrack.title}` : ""}
             </span>
           </div>
           <div style={{ marginTop: 7, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>
-            Selección local por coincidencia con título, artista o álbum. No se infieren géneros ni BPM; energía, Karaoke y adaptación ambiental no están implementados.
+            Selección local por metadatos de título, artista y álbum, con pistas textuales de energía y prioridad vocal. No se analiza BPM, audio ambiental ni emoción del usuario.
           </div>
         </section>
 
@@ -1534,9 +1558,13 @@ export function VibraModule() {
       {/* PLAYLISTS */}
       {view === "playlists" && (
         <div>
-          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-            <input className="hbg-input" style={{ flex: 1 }} placeholder="Nombre de la playlist..." value={newPlaylistName} onChange={(e) => setNewPlaylistName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addPlaylist()} />
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+            <input className="hbg-input" style={{ flex: "1 1 180px" }} aria-label="Nombre de la playlist" placeholder="Nombre de la playlist..." value={newPlaylistName} onChange={(e) => setNewPlaylistName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addPlaylist()} />
+            <input className="hbg-input" style={{ flex: "1 1 180px" }} aria-label="Estilo o intención musical de la playlist" placeholder="Estilo o intención (opcional)..." value={newPlaylistQuery} onChange={(e) => setNewPlaylistQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addPlaylist()} />
             <button className="hbg-btn hbg-btn-primary" onClick={addPlaylist} disabled={!newPlaylistName.trim()}>+ CREAR</button>
+          </div>
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginBottom: 10 }}>
+            Si indicas un estilo, época o intención, VIBRA selecciona hasta 50 canciones disponibles de tu biblioteca local.
           </div>
           {playlists.length === 0 ? (
             <div className="hbg-card" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)", textAlign: "center", padding: "20px" }}>// crea tu primera playlist</div>

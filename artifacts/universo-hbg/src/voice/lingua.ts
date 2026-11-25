@@ -254,8 +254,8 @@ export function parseIntent(text: string): VoiceAction {
   }
 
   if (
-    /^(?:pon|quiero|ahora quiero|hazlo|mant[eé]n|manten)\b/.test(n) &&
-    /\b(musica|noventa|ochenta|90s|80s|romantica|bailable|cantar|vieja|energia|estilo)\b/.test(n)
+    /^(?:pon|quiero|ahora quiero|hazlo|mant[eé]n|manten|mas)\b/.test(n) &&
+    /\b(musica|noventa|ochenta|90s|80s|romantica|bailable|cantar|viejita|vieja|clasicos|retro|karaoke|energia|estilo)\b/.test(n)
   ) {
     return { type: "SET_DIRECTION", text };
   }

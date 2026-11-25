@@ -1,22 +1,29 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readLegacyInstintoData } from "./instintoDB.ts";
+import {
+  getInstintoMigrationKeys,
+  persistInstintoFallbackData,
+  persistInstintoFallbackRecord,
+  readLegacyInstintoData,
+} from "./instintoDB.ts";
 
-function createStorage(values) {
+function createStorage(values = {}) {
   return {
     getItem(key) { return values[key] ?? null; },
+    setItem(key, value) { values[key] = value; },
     removeItem(key) { delete values[key]; },
+    values,
   };
 }
 
 test("legacy INSTINTO migration reader preserves all collections and the draft", () => {
-  const values = {
+  const storage = createStorage({
     hbg_instinto_notes_v2: JSON.stringify([{ id: "n1", deleted: true }]),
     hbg_instinto_lyrics_v2: JSON.stringify([{ id: "l1", sections: [{ content: "verso" }] }]),
     hbg_instinto_projects: JSON.stringify([{ id: "p1", status: "en_progreso" }]),
     hbg_instinto_draft_v1: JSON.stringify({ title: "Borrador", content: "Texto", category: "ideas", tags: ["hbg"] }),
-  };
-  const data = readLegacyInstintoData(createStorage(values));
+  });
+  const data = readLegacyInstintoData(storage);
   assert.equal(data.notes[0].deleted, true);
   assert.equal(data.lyrics[0].sections[0].content, "verso");
   assert.equal(data.projects[0].status, "en_progreso");
@@ -34,4 +41,38 @@ test("legacy INSTINTO migration reader safely defaults malformed values", () => 
   assert.deepEqual(data.lyrics, []);
   assert.deepEqual(data.projects, []);
   assert.deepEqual(data.draft, { title: "", content: "ok", category: "notas", tags: ["x"] });
+});
+
+test("an incomplete migration imports every legacy record, even without a pending marker", () => {
+  assert.deepEqual(getInstintoMigrationKeys(false, null), ["notes", "lyrics", "projects", "draft"]);
+});
+
+test("a completed migration imports only records explicitly saved through the fallback", () => {
+  assert.deepEqual(getInstintoMigrationKeys(true, JSON.stringify(["lyrics", "draft", "unknown", "lyrics"])), ["lyrics", "draft"]);
+  assert.deepEqual(getInstintoMigrationKeys(true, "invalid-json"), []);
+  assert.deepEqual(getInstintoMigrationKeys(true, null), []);
+});
+
+test("fallback writes mark each changed record for reconciliation after IndexedDB recovers", () => {
+  const storage = createStorage();
+  assert.equal(persistInstintoFallbackRecord("lyrics", [{ id: "l1" }], storage), true);
+  assert.deepEqual(JSON.parse(storage.values.__hbg_instinto_fallback_pending_v1__), ["lyrics"]);
+  assert.deepEqual(JSON.parse(storage.values.hbg_instinto_lyrics_v2), [{ id: "l1" }]);
+  assert.deepEqual(getInstintoMigrationKeys(true, storage.values.__hbg_instinto_fallback_pending_v1__), ["lyrics"]);
+});
+
+test("full backup can be staged in fallback storage without losing any collection", () => {
+  const storage = createStorage();
+  const data = {
+    notes: [{ id: "n1" }],
+    lyrics: [{ id: "l1" }],
+    projects: [{ id: "p1" }],
+    draft: { title: "Draft", content: "Text", category: "notas", tags: [] },
+  };
+  assert.equal(persistInstintoFallbackData(data, storage), true);
+  assert.deepEqual(getInstintoMigrationKeys(true, storage.values.__hbg_instinto_fallback_pending_v1__), ["notes", "lyrics", "projects", "draft"]);
+  assert.deepEqual(JSON.parse(storage.values.hbg_instinto_notes_v2), data.notes);
+  assert.deepEqual(JSON.parse(storage.values.hbg_instinto_lyrics_v2), data.lyrics);
+  assert.deepEqual(JSON.parse(storage.values.hbg_instinto_projects), data.projects);
+  assert.deepEqual(JSON.parse(storage.values.hbg_instinto_draft_v1), data.draft);
 });

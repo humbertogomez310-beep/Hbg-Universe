@@ -100,3 +100,18 @@ test("HBG LINGUA recognizes hook, chorus and rhyme draft requests", () => {
     );
   }
 });
+
+test("HBG LINGUA preserves user direction when asking for more energy or singing", () => {
+  assert.deepEqual(interpretUtterance("Más bailable").action, {
+    type: "SET_DIRECTION",
+    text: "Más bailable",
+  });
+  assert.deepEqual(interpretUtterance("Más para cantar").action, {
+    type: "SET_DIRECTION",
+    text: "Más para cantar",
+  });
+  assert.deepEqual(interpretUtterance("Pon música viejita").action, {
+    type: "SET_DIRECTION",
+    text: "Pon música viejita",
+  });
+});

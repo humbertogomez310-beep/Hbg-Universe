@@ -24,3 +24,20 @@ test("VIBRA catalog includes the natural pause phrases that must be understood",
   const pause = vibra?.commands.find((command) => command.label === "Pausar");
   assert.deepEqual(pause?.phrases, ["Pausa", "Páusalo", "Pon pausa", "Ponlo en pausa", "Detén la música"]);
 });
+
+test("VIBRA catalog playlist and party examples map to supported actions", async () => {
+  const { parseIntent } = await import("./lingua.ts");
+  assert.deepEqual(parseIntent("Crea playlist rock"), {
+    type: "PLAYLIST_CREATE",
+    name: "rock",
+    query: "rock",
+  });
+  assert.deepEqual(parseIntent("Reproduce mi playlist favoritos"), {
+    type: "PLAYLIST_PLAY",
+    name: "favoritos",
+  });
+  assert.deepEqual(parseIntent("Activa modo fiesta PRO"), {
+    type: "SET_PARTY",
+    enabled: true,
+  });
+});
