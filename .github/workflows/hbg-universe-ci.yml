@@ -5,10 +5,12 @@ on:
     branches:
       - replit-agent
       - local-first/**
+      - deploy/pwa-render
   pull_request:
     branches:
       - main
       - replit-agent
+      - deploy/pwa-render
 
 permissions:
   contents: read

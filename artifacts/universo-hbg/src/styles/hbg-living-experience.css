@@ -1,0 +1,163 @@
+/* HBG LIVING EXPERIENCE — visual identity layer for public modules.
+   Presentation only: no business logic, storage, permissions or audio behavior. */
+.hbg-app-experience {
+  --app-accent: #20dfff;
+  --app-accent-rgb: 32,223,255;
+  --app-secondary: #b15cff;
+  position: relative;
+  isolation: isolate;
+  min-height: 100%;
+  padding: clamp(10px, 1.5vw, 22px);
+  overflow: hidden;
+  border: 1px solid rgba(var(--app-accent-rgb), .18);
+  border-radius: 16px;
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(var(--app-accent-rgb), .13), transparent 46%),
+    radial-gradient(ellipse at 100% 75%, color-mix(in srgb, var(--app-secondary) 15%, transparent), transparent 42%),
+    linear-gradient(155deg, rgba(5,13,31,.96), rgba(3,8,23,.98) 70%);
+  box-shadow: inset 0 1px rgba(255,255,255,.045), 0 18px 54px rgba(0,0,0,.22);
+}
+.hbg-app-experience::before,
+.hbg-app-experience::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+}
+.hbg-app-experience::before {
+  inset: 0;
+  opacity: .32;
+  background-image:
+    radial-gradient(1px 1px at 8% 16%, #fff 98%, transparent),
+    radial-gradient(1px 1px at 22% 63%, var(--app-accent) 98%, transparent),
+    radial-gradient(1px 1px at 76% 21%, #fff 98%, transparent),
+    radial-gradient(2px 2px at 91% 71%, var(--app-secondary) 98%, transparent);
+  background-size: 190px 170px;
+}
+.hbg-app-experience::after {
+  width: 42vw;
+  height: 42vw;
+  max-width: 520px;
+  max-height: 520px;
+  right: -18%;
+  top: -25%;
+  border-radius: 50%;
+  border: 1px solid rgba(var(--app-accent-rgb), .10);
+  box-shadow: 0 0 0 22px rgba(var(--app-accent-rgb), .018), 0 0 0 54px rgba(var(--app-accent-rgb), .014), 0 0 70px rgba(var(--app-accent-rgb), .09);
+}
+.hbg-app-experience > * { position: relative; z-index: 1; }
+.hbg-app-experience .mod-header {
+  position: relative;
+  align-items: flex-end;
+  min-height: 96px;
+  margin: 0 0 22px;
+  padding: 30px 18px 16px;
+  border: 1px solid rgba(var(--app-accent-rgb), .22);
+  border-radius: 12px;
+  background:
+    linear-gradient(105deg, rgba(var(--app-accent-rgb), .11), transparent 48%),
+    linear-gradient(145deg, rgba(13,29,57,.92), rgba(8,15,34,.72));
+  box-shadow: inset 0 1px rgba(255,255,255,.06), 0 10px 30px rgba(0,0,0,.16);
+}
+.hbg-app-experience .mod-header::before {
+  position: absolute;
+  top: 12px;
+  left: 18px;
+  font: 8px var(--font-mono);
+  letter-spacing: .2em;
+  color: rgba(var(--app-accent-rgb), .82);
+}
+.hbg-app-experience .mod-header::after {
+  left: 18px;
+  width: min(180px, 38%);
+  height: 2px;
+  background: linear-gradient(90deg, var(--app-accent), var(--app-secondary), transparent);
+  box-shadow: 0 0 12px rgba(var(--app-accent-rgb), .45);
+}
+.hbg-app-experience .mod-icon {
+  color: var(--app-accent);
+  filter: drop-shadow(0 0 9px var(--app-accent)) drop-shadow(0 0 20px var(--app-secondary));
+}
+.hbg-app-experience .mod-title {
+  font-size: clamp(18px, 2vw, 27px);
+  letter-spacing: .13em;
+  text-shadow: 0 0 20px rgba(var(--app-accent-rgb), .22);
+}
+.hbg-app-experience .mod-subtitle {
+  color: #a9c3df;
+  letter-spacing: .11em;
+}
+.hbg-app-experience .section-title {
+  color: color-mix(in srgb, var(--app-accent) 75%, white);
+  letter-spacing: .19em;
+}
+.hbg-app-experience .hbg-card {
+  border-color: rgba(var(--app-accent-rgb), .17);
+  border-radius: 11px;
+  background:
+    linear-gradient(145deg, rgba(var(--app-accent-rgb), .055), transparent 58%),
+    linear-gradient(155deg, rgba(12,29,57,.94), rgba(7,16,35,.96));
+  box-shadow: inset 0 1px rgba(255,255,255,.035), 0 8px 24px rgba(0,0,0,.13);
+}
+.hbg-app-experience .hbg-card:hover {
+  border-color: rgba(var(--app-accent-rgb), .42);
+  box-shadow: 0 0 24px rgba(var(--app-accent-rgb), .09), inset 0 1px rgba(255,255,255,.05);
+}
+.hbg-app-experience .hbg-btn {
+  border-radius: 7px;
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
+}
+.hbg-app-experience .hbg-btn:hover { transform: translateY(-1px); }
+.hbg-app-experience .hbg-input {
+  border-radius: 7px;
+  border-color: rgba(var(--app-accent-rgb), .2);
+  background: rgba(2,9,23,.78);
+}
+.hbg-app-experience .hbg-badge { border-radius: 999px; }
+.hbg-app-experience-vibra {
+  --app-accent: #23e5ff;
+  --app-accent-rgb: 35,229,255;
+  --app-secondary: #ff3ca6;
+}
+.hbg-app-experience-vibra .mod-header::before { content: "HBG AUDIO ENGINE  /  LIVE SOUND EXPERIENCE"; }
+.hbg-app-experience-vibra .mod-icon {
+  color: #ff58c5;
+  text-shadow: 0 0 14px rgba(255,60,166,.72);
+}
+.hbg-app-experience-vibra .mod-header {
+  background:
+    radial-gradient(ellipse at 82% 110%, rgba(255,60,166,.20), transparent 42%),
+    linear-gradient(105deg, rgba(35,229,255,.13), transparent 55%),
+    linear-gradient(145deg, #0c1c3a, #090d25);
+}
+.hbg-app-experience-instinto {
+  --app-accent: #b58aff;
+  --app-accent-rgb: 181,138,255;
+  --app-secondary: #34dfff;
+}
+.hbg-app-experience-instinto .mod-header::before { content: "INSTINTO  /  CREATIVE INTELLIGENCE SPACE"; }
+.hbg-app-experience-instinto .mod-icon {
+  color: #c59aff;
+  text-shadow: 0 0 14px rgba(181,138,255,.78);
+}
+.hbg-app-experience-instinto .mod-header {
+  background:
+    radial-gradient(ellipse at 82% 110%, rgba(181,138,255,.22), transparent 42%),
+    linear-gradient(105deg, rgba(181,138,255,.13), transparent 55%),
+    linear-gradient(145deg, #171638, #0b102a);
+}
+.hbg-app-experience-instinto .hbg-card {
+  border-color: rgba(181,138,255,.18);
+}
+@media (max-width: 800px) {
+  .hbg-app-experience { padding: 8px; border-radius: 10px; }
+  .hbg-app-experience .mod-header { min-height: 88px; padding: 28px 12px 13px; gap: 10px; }
+  .hbg-app-experience .mod-header::before { left: 12px; font-size: 7px; letter-spacing: .12em; }
+  .hbg-app-experience .mod-header::after { left: 12px; }
+  .hbg-app-experience .mod-title { font-size: clamp(15px, 5vw, 22px); }
+  .hbg-app-experience .mod-subtitle { font-size: 9px; line-height: 1.5; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hbg-app-experience .hbg-btn { transition: none; }
+  .hbg-app-experience .hbg-btn:hover { transform: none; }
+}
