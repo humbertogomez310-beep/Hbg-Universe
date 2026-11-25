@@ -78,8 +78,10 @@ export function PWAUpdateButton() {
       }
 
       if (!worker) {
-        setNotice("La aplicación ya está actualizada. No se encontró una versión nueva.");
-        setChecking(false);
+        // The worker script may be unchanged while the app's hashed JS/CSS
+        // bundle has changed. Navigation is network-first in sw.js, so reload
+        // to fetch the latest HTML entrypoint and its current asset filenames.
+        window.location.reload();
         return;
       }
 
