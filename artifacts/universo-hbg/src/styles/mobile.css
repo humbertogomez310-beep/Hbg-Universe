@@ -278,3 +278,40 @@ body,
     padding: 22px;
   }
 }
+
+/* La versión publicada ocupa una fila propia en móvil: nunca se comprime
+   dentro del espacio estrecho que queda junto al logotipo. */
+@media (max-width: 800px) {
+  .hbg-shell {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .hbg-topbar {
+    height: auto;
+    min-height: var(--header-h);
+    flex-wrap: wrap;
+    align-content: center;
+    padding-block: 8px;
+  }
+
+  .hbg-topbar-status {
+    width: 100%;
+    margin-left: 0;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 4px 8px;
+  }
+
+  .hbg-update-control {
+    flex: 1 0 100%;
+    width: 100%;
+  }
+
+  .hbg-update-version {
+    width: 100%;
+    max-width: none;
+    font-size: 8px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+}

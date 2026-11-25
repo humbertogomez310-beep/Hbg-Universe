@@ -250,7 +250,7 @@ export function PWAUpdateButton() {
   };
 
   return (
-    <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+    <div className="hbg-update-control" style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, minWidth: 0 }}>
       <button
         type="button"
         className="hbg-btn hbg-btn-ghost hbg-topbar-btn"
@@ -293,18 +293,21 @@ export function PWAUpdateButton() {
         )}
       </button>
       <span
+        className="hbg-update-version"
         aria-live="polite"
         title={`Versión instalada: HBG ${HBG_RELEASE_VERSION}. Compilación: ${CURRENT_BUILD_ID}. ${statusLabel}.`}
         style={{
           display: "flex",
           flexDirection: "column",
           alignItems: "flex-end",
-          maxWidth: 156,
-          color: updateAvailable ? "#ff7b89" : "rgba(180,205,230,0.72)",
-          fontSize: 7,
-          lineHeight: 1.25,
+          width: "100%",
+          maxWidth: "none",
+          color: updateAvailable ? "#ff7b89" : "rgba(180,205,230,0.82)",
+          fontSize: 8,
+          lineHeight: 1.35,
           textAlign: "right",
           whiteSpace: "normal",
+          overflowWrap: "anywhere",
         }}
       >
         <span>HBG {HBG_RELEASE_VERSION} · INSTALADA</span>
