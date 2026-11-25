@@ -14,12 +14,14 @@ export interface InstintoData {
 
 export type InstintoRecordKey = keyof InstintoData;
 
-type LegacyStorage = Pick<Storage, "getItem" | "removeItem">;
+type LegacyStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 const DB_NAME = "hbg_instinto_db";
 const DB_VERSION = 1;
 const STORE_NAME = "records";
 const MIGRATION_KEY = "__local_storage_migrated_v1__";
+const PENDING_FALLBACK_KEY = "__hbg_instinto_fallback_pending_v1__";
+const RECORD_KEYS: InstintoRecordKey[] = ["notes", "lyrics", "projects", "draft"];
 const LEGACY_KEYS: Record<InstintoRecordKey, string> = {
   notes: "hbg_instinto_notes_v2",
   lyrics: "hbg_instinto_lyrics_v2",
@@ -40,6 +42,80 @@ function getLegacyStorage(): LegacyStorage | null {
     return window.localStorage;
   } catch {
     return null;
+  }
+}
+
+function readPendingFallbackKeys(storage: LegacyStorage | null): InstintoRecordKey[] {
+  if (!storage) return [];
+  try {
+    const parsed: unknown = JSON.parse(storage.getItem(PENDING_FALLBACK_KEY) ?? "[]");
+    return Array.isArray(parsed)
+      ? [...new Set(parsed.filter((key): key is InstintoRecordKey =>
+          typeof key === "string" && RECORD_KEYS.includes(key as InstintoRecordKey)))]
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Decide which localStorage records must be imported into IndexedDB. */
+export function getInstintoMigrationKeys(
+  migrationComplete: boolean,
+  pendingValue: string | null,
+): InstintoRecordKey[] {
+  if (!migrationComplete) return [...RECORD_KEYS];
+  try {
+    const parsed: unknown = JSON.parse(pendingValue ?? "[]");
+    return Array.isArray(parsed)
+      ? [...new Set(parsed.filter((key): key is InstintoRecordKey =>
+          typeof key === "string" && RECORD_KEYS.includes(key as InstintoRecordKey)))]
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Persist one record to the localStorage fallback and mark it for later reconciliation. */
+export function persistInstintoFallbackRecord(
+  key: InstintoRecordKey,
+  value: InstintoData[InstintoRecordKey],
+  storage: LegacyStorage | null = getLegacyStorage(),
+): boolean {
+  if (!storage) return false;
+  try {
+    storage.setItem(LEGACY_KEYS[key], JSON.stringify(value));
+    const pending = new Set(readPendingFallbackKeys(storage));
+    pending.add(key);
+    storage.setItem(PENDING_FALLBACK_KEY, JSON.stringify([...pending]));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function persistInstintoFallbackData(
+  data: InstintoData,
+  storage: LegacyStorage | null = getLegacyStorage(),
+): boolean {
+  if (!storage) return false;
+  for (const key of RECORD_KEYS) {
+    if (!persistInstintoFallbackRecord(key, data[key], storage)) return false;
+  }
+  return true;
+}
+
+function clearInstintoFallbackKeys(
+  keys: InstintoRecordKey[],
+  storage: LegacyStorage | null,
+): void {
+  if (!storage || !keys.length) return;
+  try {
+    for (const key of keys) storage.removeItem(LEGACY_KEYS[key]);
+    const pending = readPendingFallbackKeys(storage).filter((key) => !keys.includes(key));
+    if (pending.length) storage.setItem(PENDING_FALLBACK_KEY, JSON.stringify(pending));
+    else storage.removeItem(PENDING_FALLBACK_KEY);
+  } catch {
+    // A stale fallback marker is safe: it only reapplies the last-known value.
   }
 }
 
@@ -113,29 +189,27 @@ export async function initializeInstintoStorage(): Promise<void> {
   const database = await openDatabase();
   const storage = getLegacyStorage();
   await new Promise<void>((resolve, reject) => {
-    let migrated = false;
+    let syncedKeys: InstintoRecordKey[] = [];
     let transaction: IDBTransaction;
     try {
       transaction = database.transaction(STORE_NAME, "readwrite");
       const store = transaction.objectStore(STORE_NAME);
       const markerRequest = store.get(MIGRATION_KEY);
       markerRequest.onsuccess = () => {
-        if (markerRequest.result === true) return;
+        const migrationComplete = markerRequest.result === true;
+        let pendingValue: string | null = null;
+        try { pendingValue = storage?.getItem(PENDING_FALLBACK_KEY) ?? null; } catch { /* storage unavailable */ }
+        syncedKeys = getInstintoMigrationKeys(migrationComplete, pendingValue);
+        if (!syncedKeys.length) return;
+
         const legacy = readLegacyInstintoData(storage);
-        for (const key of Object.keys(LEGACY_KEYS) as InstintoRecordKey[]) {
-          store.put(legacy[key], key);
-        }
+        for (const key of syncedKeys) store.put(legacy[key], key);
         store.put(true, MIGRATION_KEY);
-        migrated = true;
       };
       markerRequest.onerror = () => transaction.abort();
       transaction.oncomplete = () => {
         database.close();
-        if (migrated && storage) {
-          for (const key of Object.values(LEGACY_KEYS)) {
-            try { storage.removeItem(key); } catch { /* Keep the committed IndexedDB copy. */ }
-          }
-        }
+        clearInstintoFallbackKeys(syncedKeys, storage);
         resolve();
       };
       transaction.onerror = () => {
@@ -206,6 +280,7 @@ export async function saveInstintoRecord(key: InstintoRecordKey, value: Instinto
       transaction.objectStore(STORE_NAME).put(value, key);
       transaction.oncomplete = () => {
         database.close();
+        clearInstintoFallbackKeys([key], getLegacyStorage());
         resolve();
       };
       transaction.onerror = () => {
@@ -236,12 +311,7 @@ export async function replaceInstintoData(data: InstintoData): Promise<void> {
       store.put(true, MIGRATION_KEY);
       transaction.oncomplete = () => {
         database.close();
-        const storage = getLegacyStorage();
-        if (storage) {
-          for (const key of Object.values(LEGACY_KEYS)) {
-            try { storage.removeItem(key); } catch { /* IndexedDB is already authoritative. */ }
-          }
-        }
+        clearInstintoFallbackKeys(RECORD_KEYS, getLegacyStorage());
         resolve();
       };
       transaction.onerror = () => {
