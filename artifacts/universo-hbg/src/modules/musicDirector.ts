@@ -29,6 +29,7 @@ const VOCAL_HINTS = new Set([
 
 const ERA_ALIASES: Record<string, string[]> = {
   noventa: ["noventa", "noventas", "noventera", "noventero", "90s", "1990", "1990s"],
+  fiesta: ["fiesta", "party", "dance", "club"],
   ochenta: ["ochenta", "ochentas", "ochentera", "ochentero", "80s", "1980", "1980s"],
   setenta: ["setenta", "setentas", "70s", "1970", "1970s"],
   vieja: ["vieja", "viejita", "clasica", "clasico", "clasicos", "oldies", "retro", "vintage", "70s", "80s", "90s"],
@@ -124,21 +125,33 @@ function scoreTrack(
  * and avoids recent tracks when alternatives exist; it does not infer BPM,
  * inspect audio waveforms, or claim genre/emotion detection.
  */
+export function selectTracksForDirection(
+  tracks: TrackMeta[],
+  direction: MusicDirection,
+  limit = 50,
+): TrackMeta[] {
+  const terms = goalTerms(direction.goal);
+  return tracks
+    .map((track, index) => ({ track, index, score: scoreTrack(track, terms, direction) }))
+    .filter((item): item is { track: TrackMeta; index: number; score: number } => item.score !== null)
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .slice(0, Math.max(0, limit))
+    .map(({ track }) => track);
+}
+
 export function selectNextTrack(
   tracks: TrackMeta[],
   currentId: string | null,
   recentTrackIds: string[],
   direction: MusicDirection,
 ): TrackMeta | null {
-  const terms = goalTerms(direction.goal);
-  const ranked = tracks
-    .filter((track) => track.id !== currentId)
-    .map((track, index) => ({ track, index, score: scoreTrack(track, terms, direction) }))
-    .filter((item): item is { track: TrackMeta; index: number; score: number } => item.score !== null)
-    .sort((left, right) => right.score - left.score || left.index - right.index);
-
-  const notRecentlyPlayed = ranked.filter(({ track }) => !recentTrackIds.includes(track.id));
-  return (notRecentlyPlayed[0] ?? ranked[0])?.track ?? null;
+  const candidates = selectTracksForDirection(
+    tracks.filter((track) => track.id !== currentId),
+    direction,
+    tracks.length,
+  );
+  const notRecentlyPlayed = candidates.filter((track) => !recentTrackIds.includes(track.id));
+  return notRecentlyPlayed[0] ?? candidates[0] ?? null;
 }
 
 export function readMusicDirection(storage: Storage): MusicDirection {
