@@ -3,28 +3,29 @@
 @import url("https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&family=Orbitron:wght@400;500;700;900&display=swap");
 
 :root {
-  --bg-void: #020408;
-  --bg-deep: #060c12;
-  --bg-panel: #0a1420;
-  --bg-card: #0d1a28;
-  --bg-hover: #101f30;
-  --bg-active: #122236;
+  /* Identidad cósmica oficial: azul profundo, horizonte cian y acentos violeta. */
+  --bg-void: #020817;
+  --bg-deep: #06132b;
+  --bg-panel: #091b38;
+  --bg-card: #0d2346;
+  --bg-hover: #112c55;
+  --bg-active: #16345f;
 
-  --neon-purple: #7c4dff;
-  --neon-cyan: #00e5ff;
-  --neon-pink: #ff4081;
-  --neon-green: #69ff47;
-  --neon-orange: #ff9100;
-  --neon-yellow: #ffd740;
+  --neon-purple: #9565ff;
+  --neon-cyan: #18c8ff;
+  --neon-pink: #df55e8;
+  --neon-green: #53e0c1;
+  --neon-orange: #ffb454;
+  --neon-yellow: #ffe08a;
 
-  --text-primary: #e0f2ff;
-  --text-secondary: #7ba7c2;
-  --text-muted: #3a5870;
-  --text-accent: #00e5ff;
+  --text-primary: #edf5ff;
+  --text-secondary: #a4c3e6;
+  --text-muted: #6887ad;
+  --text-accent: #39d5ff;
 
-  --border-dim: rgba(0, 229, 255, 0.08);
-  --border-glow: rgba(0, 229, 255, 0.25);
-  --border-active: rgba(0, 229, 255, 0.6);
+  --border-dim: rgba(75, 155, 255, 0.14);
+  --border-glow: rgba(24, 200, 255, 0.32);
+  --border-active: rgba(24, 200, 255, 0.72);
 
   --sidebar-w: 220px;
   --header-h: 48px;
@@ -48,7 +49,11 @@ body,
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: var(--bg-void);
+  background:
+    radial-gradient(ellipse at 50% -18%, rgba(31, 112, 255, 0.16), transparent 54%),
+    radial-gradient(ellipse at 92% 78%, rgba(149, 101, 255, 0.10), transparent 42%),
+    var(--bg-void);
+  background-attachment: fixed;
   color: var(--text-primary);
   font-family: var(--font-ui);
 }
@@ -319,8 +324,9 @@ body,
   position: fixed;
   inset: 0;
   background:
-    radial-gradient(ellipse at 20% 20%, rgba(124, 77, 255, 0.04) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 80%, rgba(0, 229, 255, 0.04) 0%, transparent 50%);
+    radial-gradient(ellipse at 18% 12%, rgba(24, 200, 255, 0.08) 0%, transparent 48%),
+    radial-gradient(ellipse at 82% 74%, rgba(149, 101, 255, 0.10) 0%, transparent 52%),
+    radial-gradient(ellipse at 50% 110%, rgba(28, 92, 190, 0.10) 0%, transparent 48%);
   pointer-events: none;
   z-index: 0;
 }
@@ -700,8 +706,8 @@ body,
     0deg,
     transparent,
     transparent 2px,
-    rgba(0, 0, 0, 0.03) 2px,
-    rgba(0, 0, 0, 0.03) 4px
+    rgba(0, 0, 0, 0.012) 2px,
+    rgba(0, 0, 0, 0.012) 4px
   );
   pointer-events: none;
   z-index: 999;
