@@ -638,7 +638,6 @@ No declarar las aplicaciones terminadas como productos independientes hasta cerr
 
 
 
-**FIN — UNIVERSO HBG / HOJA MAESTRA Y CHECKPOINT OFICIAL / 25-11-2026**
 
 ### 15.6 Registro de promoción a producción
 
@@ -651,3 +650,5 @@ No declarar las aplicaciones terminadas como productos independientes hasta cerr
 - CI del commit de merge: ejecución 45724643236, en curso al redactar este registro.
 - El deployment confirma publicación del build, no la actualización de la PWA ya instalada ni el funcionamiento físico del audio/voz/almacenamiento en el teléfono.
 
+
+**FIN — UNIVERSO HBG / HOJA MAESTRA Y CHECKPOINT OFICIAL / 25-11-2026**
