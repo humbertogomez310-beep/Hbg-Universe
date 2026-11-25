@@ -144,4 +144,16 @@ test("PWA serves the cached app shell for offline navigation but never intercept
     respondWith() { apiIntercepted = true; },
   });
   assert.equal(apiIntercepted, false);
+
+  let versionManifestIntercepted = false;
+  harness.listeners.get("fetch")({
+    request: {
+      method: "GET",
+      url: "https://hbg.test/version.json",
+      mode: "cors",
+      destination: "",
+    },
+    respondWith() { versionManifestIntercepted = true; },
+  });
+  assert.equal(versionManifestIntercepted, false);
 });
