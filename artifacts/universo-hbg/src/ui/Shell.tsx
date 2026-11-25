@@ -80,8 +80,8 @@ function ModulePanel({
 
   const panels: Record<ModuleId, ReactNode> = {
     universo: <UniversoLanding onSelect={onSelect} />,
-    instinto: <InstintoModule />,
-    vibra: <VibraModule />,
+    instinto: <div className="hbg-app-experience hbg-app-experience-instinto"><InstintoModule /></div>,
+    vibra: <div className="hbg-app-experience hbg-app-experience-vibra"><VibraModule /></div>,
     terminador: (
       <>
         <TerminadorAppsSection />
@@ -222,6 +222,7 @@ export function Shell() {
 
             {/* VIBRA permanece montada incluso cuando se abre el menú móvil. */}
             <div
+              className="hbg-app-experience hbg-app-experience-vibra"
               style={{
                 display:
                   activeModule === "vibra" && !(isMobile && showMenu)
