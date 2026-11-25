@@ -221,7 +221,7 @@ export function InstintoModule() {
     const note: Note = { id: Date.now().toString(), title: newTitle || "Sin título", content: newContent.trim(), category: newCategory, createdAt: now, updatedAt: now, pinned: false, favorite: false, tags: activeTags, deleted: false };
     saveNotes([note, ...notes], note);
     setDraft({ title: "", content: "", category: "notas", tags: [] });
-    void saveRecord("draft", { title: "", content: "", category: "notas", tags: [] }, DRAFT_KEY, "el borrador");
+    void saveRecord("draft", { title: "", content: "", category: "notas", tags: [] }, "el borrador");
     setAutoSaved(false);
     setNewContent(""); setNewTitle(""); setActiveTags([]);
   };
