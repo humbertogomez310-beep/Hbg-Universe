@@ -834,8 +834,8 @@ button.hbg-cover-service:hover strong { color: var(--cover-cyan); }
   to { filter: drop-shadow(0 0 13px rgba(0,220,255,.95)) drop-shadow(0 0 30px rgba(167,80,255,.7)); }
 }
 @keyframes hbg-cover-orbit-drift {
-  from { translate: -50% -50%; scale: .98; }
-  to { translate: -50% -50%; scale: 1.02; }
+  from { scale: .98; }
+  to { scale: 1.02; }
 }
 @media (prefers-reduced-motion: reduce) {
   .hbg-cover-brand-mark span, .hbg-cover-orbit { animation: none !important; }
