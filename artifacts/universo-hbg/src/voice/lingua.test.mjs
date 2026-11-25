@@ -83,3 +83,20 @@ test("HBG LINGUA keeps named song requests as track searches after control prior
     query: "despacito",
   });
 });
+
+test("HBG LINGUA routes INSTINTO idea requests with bounded context", () => {
+  assert.deepEqual(
+    interpretUtterance("Genera una idea sobre mi próximo proyecto").action,
+    { type: "INSTINTO_IDEA", context: "mi próximo proyecto" },
+  );
+});
+
+test("HBG LINGUA recognizes hook, chorus and rhyme draft requests", () => {
+  for (const phrase of ["Dame un hook", "Prepara un coro", "Genera una rima"]) {
+    assert.deepEqual(
+      interpretUtterance(phrase).action,
+      { type: "INSTINTO_HOOK" },
+      `Expected "${phrase}" to route to INSTINTO`,
+    );
+  }
+});

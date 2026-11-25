@@ -17,7 +17,9 @@ export type HBGActionName =
   | "music.favorite"
   | "music.playlist"
   | "universe.navigate"
-  | "instinto.createLyricDraft";
+  | "instinto.createLyricDraft"
+  | "instinto.generateIdea"
+  | "instinto.generateHook";
 
 export type HBGPermissionScope = "USE" | "DEVELOP" | "SENSITIVE";
 

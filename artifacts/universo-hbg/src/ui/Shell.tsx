@@ -11,6 +11,8 @@ import { VibraModule } from "../modules/vibra";
 import { TerminadorModule } from "../modules/terminador";
 import { TerminadorAppsSection } from "../modules/terminador-apps";
 import { VoiceCommandBar } from "../voice/VoiceCommandBar";
+import { PWAInstallButton } from "../components/PWAInstallButton";
+import { PWAUpdateButton } from "../components/PWAUpdateButton";
 
 // En teléfono se muestra un menú de tarjetas en vez de la barra lateral.
 function useIsMobile(): boolean {
@@ -215,6 +217,8 @@ export function Shell() {
           </span>
 
           <div className="hbg-topbar-status">
+            <PWAInstallButton />
+            <PWAUpdateButton />
             {isOwner && !checking && (
               <button
                 type="button"

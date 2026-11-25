@@ -41,6 +41,8 @@ export type VoiceAction =
   | { type: "APP_INFO"; module: "universo" | "instinto" | "vibra" }
   | { type: "CAPABILITIES" }
   | { type: "CREATE_SONG"; title: string }
+  | { type: "INSTINTO_IDEA"; context: string }
+  | { type: "INSTINTO_HOOK" }
   | { type: "BLOCKED_DEVELOPMENT" }
   | { type: "GREETING" }
   | { type: "PLAY" }
@@ -170,6 +172,18 @@ export function parseIntent(text: string): VoiceAction {
     const subject = /(?:sobre|llamada|titulada|de)\s+(.+)$/i.exec(raw)?.[1]?.trim();
     return { type: "CREATE_SONG", title: subject || "Nueva canción" };
   }
+
+  const ideaRequest = /^(?:genera|generame|dame|prepara|crea|hazme) (?:una )?(?:nueva )?idea(?: sobre (.+))?$/.exec(n);
+  if (ideaRequest) {
+    const context =
+      /(?:sobre)\s+(.+)$/i.exec(raw)?.[1]?.trim() ??
+      ideaRequest[1]?.trim() ??
+      "";
+    return { type: "INSTINTO_IDEA", context };
+  }
+
+  const hookRequest = /^(?:genera|generame|dame|prepara|escribe) (?:un |una )?(?:hook|coro|rima)(?: sobre (.+))?$/;
+  if (hookRequest.test(n)) return { type: "INSTINTO_HOOK" };
 
   if (/^(activa|activar|enciende) (el )?auto dj$/.test(n)) return { type: "SET_AUTO_DJ", enabled: true };
   if (/^(desactiva|desactivar|apaga) (el )?auto dj$/.test(n)) return { type: "SET_AUTO_DJ", enabled: false };

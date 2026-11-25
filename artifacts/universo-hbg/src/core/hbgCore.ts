@@ -1,4 +1,5 @@
 import { HBGContextStore } from "./context.ts";
+import { HBGEventBus, type HBGEventSubscriber } from "./eventBus.ts";
 import { HBGError } from "./errors.ts";
 import { getHBGCoreIdentity } from "./identity.ts";
 import { HBGMemoryStore } from "./memory.ts";
@@ -60,8 +61,31 @@ export const MODULES: ModuleConfig[] = [
   },
 ];
 
+export const HBG_CORE_EVENTS = {
+  ACTION_REQUESTED: "hbg_core.action_requested",
+  ACTION_SUCCEEDED: "hbg_core.action_succeeded",
+  ACTION_FAILED: "hbg_core.action_failed",
+  MOOD_CHANGED: "hbg_core.mood_changed",
+} as const;
+
+export interface HBGActionLifecycleEvent {
+  action: HBGActionName;
+  requestId?: string;
+  code?: string;
+}
+
 type ModuleSubscriber = (module: ModuleId) => void;
 const STORAGE_KEY = "hbg_active_module";
+const VALID_CORE_MOODS = new Set([
+  "relajado",
+  "feliz",
+  "nostalgico",
+  "triste",
+  "energia",
+  "enfocado",
+  "creativo",
+  "neutral",
+]);
 const VALID_MODULES = new Set<ModuleId>([
   "universo",
   "instinto",
@@ -99,6 +123,7 @@ export class HBGCore implements HBGActionRouter {
   private readonly context = new HBGContextStore();
   private readonly memory = new HBGMemoryStore();
   private readonly requestProcessor = new HBGRequestProcessor();
+  private readonly events = new HBGEventBus();
 
   init(): void {
     if (this.initialized) return;
@@ -142,12 +167,23 @@ export class HBGCore implements HBGActionRouter {
     return this.requestProcessor.registerAction(name, handler);
   }
 
-  dispatchAction(
+  async dispatchAction(
     name: HBGActionName,
     payload?: Record<string, unknown>,
     options?: HBGDispatchOptions,
   ): Promise<HBGActionResult> {
-    return this.requestProcessor.dispatchAction(name, payload, options);
+    this.events.publish(HBG_CORE_EVENTS.ACTION_REQUESTED, { action: name });
+    const result = await this.requestProcessor.dispatchAction(name, payload, options);
+    const event: HBGActionLifecycleEvent = {
+      action: name,
+      ...(result.requestId ? { requestId: result.requestId } : {}),
+      ...(result.code ? { code: result.code } : {}),
+    };
+    this.events.publish(
+      result.success ? HBG_CORE_EVENTS.ACTION_SUCCEEDED : HBG_CORE_EVENTS.ACTION_FAILED,
+      event,
+    );
+    return result;
   }
 
   getRegisteredActions(): HBGActionName[] {
@@ -156,6 +192,26 @@ export class HBGCore implements HBGActionRouter {
 
   subscribeActions(subscriber: (actions: HBGActionName[]) => void): () => void {
     return this.requestProcessor.subscribeActions(subscriber);
+  }
+
+  /** Publish a notification between modules; notifications never authorize actions. */
+  publishEvent<T = unknown>(channel: string, payload: T): void {
+    if (channel.startsWith("hbg_core.")) {
+      throw new Error("Los canales hbg_core.* están reservados para eventos internos de HBG Core.");
+    }
+    this.events.publish(channel, payload);
+  }
+
+  /** Subscribe to lifecycle notifications; event payloads never include action data. */
+  subscribeEvent<T = unknown>(
+    channel: string,
+    subscriber: HBGEventSubscriber<T>,
+  ): () => void {
+    return this.events.subscribe(channel, subscriber);
+  }
+
+  getActiveEventChannels(): string[] {
+    return this.events.getActiveChannels();
   }
 
   getPendingRequests(): HBGPendingRequest[] {
@@ -167,7 +223,8 @@ export class HBGCore implements HBGActionRouter {
   }
 
   getActionRouter(): HBGActionRouter {
-    return this.requestProcessor;
+    // Preserve lifecycle notifications for consumers using the shared router API.
+    return this;
   }
 
   setContext(key: string, value: unknown): void {
@@ -200,6 +257,9 @@ export class HBGCore implements HBGActionRouter {
 
   remember(key: string, value: unknown): void {
     this.memory.remember(key, value);
+    if (key === "core.mood" && typeof value === "string" && VALID_CORE_MOODS.has(value)) {
+      this.events.publish(HBG_CORE_EVENTS.MOOD_CHANGED, { mood: value });
+    }
   }
 
   recall<T>(key: string): T | undefined {
