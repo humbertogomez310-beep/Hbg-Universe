@@ -74,7 +74,6 @@ export function interpretMusicDirection(
     .replace(/^(?:el|la|los|las|un|una)\s+/, "")
     .replace(/\bmas para cantar\b/g, "")
     .replace(/\bpara cantar\b/g, "")
-    .replace(/\bk karaoke\b/g, "")
     .replace(/\s+/g, " ")
     .trim();
 
@@ -114,9 +113,9 @@ function scoreTrack(
     if ([...HIGH_ENERGY_HINTS].some((hint) => metadata.has(hint))) score += 4;
     if ([...LOW_ENERGY_HINTS].some((hint) => metadata.has(hint))) score -= 2;
   }
-  if (direction.vocalFocus && [...VOCAL_HINTS].some((hint) => metadata.has(hint))) {
-    score += 4;
-  }
+  const hasVocalHint = [...VOCAL_HINTS].some((hint) => metadata.has(hint));
+  if (direction.vocalFocus && !hasVocalHint) return null;
+  if (direction.vocalFocus && hasVocalHint) score += 4;
   return score;
 }
 
