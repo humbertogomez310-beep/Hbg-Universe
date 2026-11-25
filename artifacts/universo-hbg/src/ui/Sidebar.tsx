@@ -1,4 +1,5 @@
 import { MODULES, type ModuleId } from "../core/hbgCore";
+import { HBG_RELEASE_VERSION } from "../pwa/versioning";
 
 interface SidebarProps {
   active: ModuleId;
@@ -38,7 +39,8 @@ export function Sidebar({ active, onSelect, isOwner }: SidebarProps) {
       </div>
 
       <div className="hbg-sidebar-footer" style={{ cursor: "default", userSelect: "none" }}>
-        <div className="hbg-version">HBG CORE v1.0.0</div>
+        <div className="hbg-version">UNIVERSO HBG {HBG_RELEASE_VERSION}</div>
+        <div className="hbg-version" style={{ marginTop: 2 }}>HBG CORE v1.0.0</div>
         <div className="hbg-version" style={{ marginTop: 2 }}>
           {isOwner ? "⚙ MODO ADMIN" : "SISTEMA ACTIVO"}
         </div>

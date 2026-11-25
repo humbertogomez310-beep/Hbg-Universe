@@ -13,6 +13,7 @@ import { TerminadorAppsSection } from "../modules/terminador-apps";
 import { VoiceCommandBar } from "../voice/VoiceCommandBar";
 import { PWAInstallButton } from "../components/PWAInstallButton";
 import { PWAUpdateButton } from "../components/PWAUpdateButton";
+import { HBG_RELEASE_VERSION } from "../pwa/versioning";
 
 // En teléfono se muestra un menú de tarjetas en vez de la barra lateral.
 function useIsMobile(): boolean {
@@ -65,7 +66,9 @@ function MobileMenu({
           </div>
         </button>
       ))}
-      <div className="hbg-version hbg-menu-footer">HBG CORE v1.0.0</div>
+      <div className="hbg-version hbg-menu-footer">
+        UNIVERSO HBG {HBG_RELEASE_VERSION} · HBG CORE v1.0.0
+      </div>
     </div>
   );
 }
