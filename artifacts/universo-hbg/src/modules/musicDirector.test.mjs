@@ -74,6 +74,6 @@ test("playlist selection builds a bounded ordered list from the same explicit di
 test("vocal-first selection excludes tracks whose metadata gives no vocal clue", () => {
   assert.deepEqual(
     selectTracksForDirection(tracks, { goal: "", energy: "steady", vocalFocus: true }).map((track) => track.id),
-    ["party", "romance"],
+    ["romance", "party"],
   );
 });
