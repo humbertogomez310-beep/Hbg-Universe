@@ -130,6 +130,12 @@ export function selectTracksForDirection(
   limit = 50,
 ): TrackMeta[] {
   const terms = goalTerms(direction.goal);
+  if (!terms.length && !direction.vocalFocus && direction.energy !== "up") return [];
+  if (
+    !terms.length &&
+    direction.energy === "up" &&
+    !tracks.some((track) => [...HIGH_ENERGY_HINTS].some((hint) => metadataTerms(track).has(hint)))
+  ) return [];
   return tracks
     .map((track, index) => ({ track, index, score: scoreTrack(track, terms, direction) }))
     .filter((item): item is { track: TrackMeta; index: number; score: number } => item.score !== null)
