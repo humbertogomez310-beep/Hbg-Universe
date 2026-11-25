@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { fetchLatestBuild, isUpdateAvailable } from "../pwa/versioning";
 
 declare const __HBG_BUILD_ID__: string;
@@ -60,20 +60,6 @@ export function PWAUpdateButton() {
   const [checking, setChecking] = useState(false);
   const [availableBuild, setAvailableBuild] = useState<string | null>(() => readAvailableBuild());
   const [notice, setNotice] = useState("");
-
-  const checkForUpdates = useCallback(async () => {
-    if (!navigator.onLine) return;
-    const latestBuild = await fetchLatestBuild();
-    if (!latestBuild) return;
-
-    if (isUpdateAvailable(CURRENT_BUILD_ID, latestBuild)) {
-      storeAvailableBuild(latestBuild);
-      setAvailableBuild(latestBuild);
-    } else {
-      storeAvailableBuild(null);
-      setAvailableBuild(null);
-    }
-  }, []);
 
   useEffect(() => {
     let disposed = false;
