@@ -77,3 +77,9 @@ test("vocal-first selection excludes tracks whose metadata gives no vocal clue",
     ["romance", "party"],
   );
 });
+
+test("does not create an unfiltered playlist when a query contains no usable intent", () => {
+  assert.deepEqual(selectTracksForDirection(tracks, { goal: "algo", energy: "steady" }), []);
+  const unlabeled = [{ id: "plain", title: "Track One", artist: "Unknown", album: "", importedAt: 1 }];
+  assert.deepEqual(selectTracksForDirection(unlabeled, { goal: "", energy: "up" }), []);
+});
