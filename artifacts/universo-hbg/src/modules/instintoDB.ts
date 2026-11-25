@@ -110,12 +110,15 @@ function clearInstintoFallbackKeys(
 ): void {
   if (!storage || !keys.length) return;
   try {
-    for (const key of keys) storage.removeItem(LEGACY_KEYS[key]);
     const pending = readPendingFallbackKeys(storage).filter((key) => !keys.includes(key));
     if (pending.length) storage.setItem(PENDING_FALLBACK_KEY, JSON.stringify(pending));
     else storage.removeItem(PENDING_FALLBACK_KEY);
   } catch {
-    // A stale fallback marker is safe: it only reapplies the last-known value.
+    // Keep the fallback records marked if their reconciliation marker cannot be updated.
+    return;
+  }
+  for (const key of keys) {
+    try { storage.removeItem(LEGACY_KEYS[key]); } catch { /* The marker is already cleared. */ }
   }
 }
 
