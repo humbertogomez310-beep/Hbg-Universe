@@ -295,9 +295,20 @@ export function PWAUpdateButton() {
       <span
         aria-live="polite"
         title={`Versión instalada: HBG ${HBG_RELEASE_VERSION}. Compilación: ${CURRENT_BUILD_ID}. ${statusLabel}.`}
-        style={{ color: updateAvailable ? "#ff7b89" : "rgba(180,205,230,0.72)", fontSize: 7, lineHeight: 1.2, whiteSpace: "nowrap" }}
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "flex-end",
+          maxWidth: 156,
+          color: updateAvailable ? "#ff7b89" : "rgba(180,205,230,0.72)",
+          fontSize: 7,
+          lineHeight: 1.25,
+          textAlign: "right",
+          whiteSpace: "normal",
+        }}
       >
-        HBG {HBG_RELEASE_VERSION} · {statusLabel}
+        <span>HBG {HBG_RELEASE_VERSION} · INSTALADA</span>
+        <span>{statusLabel}</span>
       </span>
       {notice && (
         <div
