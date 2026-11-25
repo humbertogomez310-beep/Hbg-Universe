@@ -57,27 +57,25 @@ export function PWAUpdateButton() {
       // Subscribe before update() so a fast updatefound event cannot be missed.
       let resolveUpdateFound: (() => void) | undefined;
       const updateFound = new Promise<void>((resolve) => {
-        resolveUpdateFound = resolve;
+        const timeout = window.setTimeout(resolve, 5000);
+        resolveUpdateFound = () => {
+          window.clearTimeout(timeout);
+          resolve();
+        };
       });
-      const onUpdateFound = () => {
-        registration.removeEventListener("updatefound", onUpdateFound);
-        resolveUpdateFound?.();
-      };
+      const onUpdateFound = () => resolveUpdateFound?.();
       registration.addEventListener("updatefound", onUpdateFound, { once: true });
 
+      let worker: ServiceWorker | null = null;
       try {
         await registration.update();
+        worker = registration.waiting || registration.installing;
+        if (!worker) {
+          await updateFound;
+          worker = registration.waiting || registration.installing;
+        }
       } finally {
         registration.removeEventListener("updatefound", onUpdateFound);
-      }
-
-      let worker = registration.waiting || registration.installing;
-      if (!worker && resolveUpdateFound) {
-        await Promise.race([
-          updateFound,
-          new Promise<void>((resolve) => window.setTimeout(resolve, 5000)),
-        ]);
-        worker = registration.waiting || registration.installing;
       }
 
       if (!worker) {
