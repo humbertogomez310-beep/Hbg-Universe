@@ -7,7 +7,7 @@ import {
   resolveInstintoMood,
   type InstintoMood,
 } from "./instintoInspiration";
-import { loadInstintoData, saveInstintoRecord, replaceInstintoData } from "./instintoDB";
+import { loadInstintoData, saveInstintoRecord, replaceInstintoData, persistInstintoFallbackRecord, persistInstintoFallbackData } from "./instintoDB";
 import {
   createInstintoBackup,
   parseInstintoBackup,
@@ -29,12 +29,6 @@ const DRAFT_KEY = "hbg_instinto_draft_v1";
 function browserStorage(): Storage | null {
   if (typeof window === "undefined") return null;
   try { return window.localStorage; } catch { return null; }
-}
-
-function persistLegacyValue(key: string, value: unknown): boolean {
-  const storage = browserStorage();
-  if (!storage) return false;
-  try { storage.setItem(key, JSON.stringify(value)); return true; } catch { return false; }
 }
 
 function loadLegacyCollection<T>(key: string): T[] {
@@ -149,13 +143,13 @@ export function InstintoModule() {
     return () => { cancelled = true; };
   }, []);
 
-  const saveRecord = async (key: "notes" | "lyrics" | "projects" | "draft", value: unknown, legacyKey: string, label: string) => {
+  const saveRecord = async (key: "notes" | "lyrics" | "projects" | "draft", value: unknown, label: string) => {
     try {
       await saveInstintoRecord(key, value as never);
       setStorageWarning("");
       return true;
     } catch {
-      const saved = persistLegacyValue(legacyKey, value);
+      const saved = persistInstintoFallbackRecord(key, value as never);
       setStorageWarning(saved
         ? `IndexedDB no disponible; ${label} se guardaron temporalmente en el almacenamiento anterior.`
         : `No se pudieron guardar ${label} en este dispositivo.`);
@@ -165,7 +159,7 @@ export function InstintoModule() {
 
   const saveNotes = (next: Note[], newlySavedNote?: Note) => {
     setNotes(next);
-    void saveRecord("notes", next, NOTE_KEY, "las notas").then((persisted) => {
+    void saveRecord("notes", next, "las notas").then((persisted) => {
       if (persisted && newlySavedNote) {
         hbgCore.publishEvent("instinto.note_saved", {
           noteId: newlySavedNote.id,
@@ -176,11 +170,11 @@ export function InstintoModule() {
   };
   const saveLyrics = (next: Lyric[]) => {
     setLyrics(next);
-    void saveRecord("lyrics", next, LYRIC_KEY, "las letras");
+    void saveRecord("lyrics", next, "las letras");
   };
   const saveProjects = (next: Project[]) => {
     setProjects(next);
-    void saveRecord("projects", next, PROJECT_KEY, "los proyectos");
+    void saveRecord("projects", next, "los proyectos");
   };
 
   const addProject = () => {
@@ -204,7 +198,7 @@ export function InstintoModule() {
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     if (!newTitle.trim() && !newContent.trim() && activeTags.length === 0) {
       setDraft({ title: "", content: "", category: "notas", tags: [] });
-      void saveRecord("draft", { title: "", content: "", category: "notas", tags: [] }, DRAFT_KEY, "el borrador");
+      void saveRecord("draft", { title: "", content: "", category: "notas", tags: [] }, "el borrador");
       setAutoSaved(false);
       return;
     }
@@ -213,7 +207,7 @@ export function InstintoModule() {
     autoSaveTimerRef.current = setTimeout(() => {
       const nextDraft: NoteDraft = { title: newTitle, content: newContent, category: newCategory, tags: activeTags };
       setDraft(nextDraft);
-      void saveRecord("draft", nextDraft, DRAFT_KEY, "el borrador").then(() => setAutoSaved(true));
+      void saveRecord("draft", nextDraft, "el borrador").then(() => setAutoSaved(true));
     }, 800);
 
     return () => {
@@ -396,12 +390,19 @@ export function InstintoModule() {
         `Se reemplazarán los datos locales de INSTINTO. Notas: ${backup.notes.length}; letras: ${backup.lyrics.length}; proyectos: ${backup.projects.length}. ¿Continuar?`,
       )) return;
 
-      await replaceInstintoData({
+      const restoredData = {
         notes: backup.notes,
         lyrics: backup.lyrics,
         projects: backup.projects,
         draft: backup.draft,
-      });
+      };
+      let restoredToFallback = false;
+      try {
+        await replaceInstintoData(restoredData);
+      } catch (storageError) {
+        restoredToFallback = persistInstintoFallbackData(restoredData);
+        if (!restoredToFallback) throw storageError;
+      }
 
       setNotes(backup.notes);
       setLyrics(backup.lyrics);
@@ -412,7 +413,7 @@ export function InstintoModule() {
       setActiveTags(backup.draft.tags);
       setDraft(backup.draft);
       setActiveLyric(backup.lyrics[0] ?? null);
-      setStorageWarning("");
+      setStorageWarning(restoredToFallback ? "IndexedDB no disponible; el respaldo quedó guardado temporalmente en el almacenamiento alternativo y se sincronizará al recuperarse." : "");
       setBackupStatus(`Respaldo restaurado: ${backup.notes.length} notas, ${backup.lyrics.length} letras y ${backup.projects.length} proyectos.`);
     } catch (error) {
       setBackupStatus(error instanceof Error ? error.message : "No se pudo restaurar el respaldo.");
