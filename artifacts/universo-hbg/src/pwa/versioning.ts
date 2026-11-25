@@ -16,7 +16,7 @@ export function readVersionManifest(value: unknown): VersionManifest | null {
       ? manifest.releaseVersion.trim()
       : "";
 
-  if (!buildId || !/^\\d+\\.\\d+(?:\\.\\d+)?$/.test(releaseVersion)) {
+  if (!buildId || !/^\d+\.\d+(?:\.\d+)?$/.test(releaseVersion)) {
     return null;
   }
 
