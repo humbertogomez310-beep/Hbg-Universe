@@ -38,7 +38,7 @@ export function UniversoLanding({ onSelect }: UniversoLandingProps) {
   }
 
   return (
-    <main className="hbg-universe-landing">
+    <div className="hbg-universe-landing">
       <div className="hbg-landing-stars" aria-hidden="true" />
       <div className="hbg-landing-earth" aria-hidden="true">
         <div className="hbg-landing-earth-glow" />
@@ -75,7 +75,7 @@ export function UniversoLanding({ onSelect }: UniversoLandingProps) {
           <button
             key={app.id}
             type="button"
-            className={\`hbg-landing-app hbg-landing-app-\${app.tone}\`}
+            className={"hbg-landing-app hbg-landing-app-" + app.tone}
             onClick={() => onSelect(app.id)}
           >
             <span className="hbg-landing-app-icon" aria-hidden="true">{app.icon}</span>
@@ -86,7 +86,7 @@ export function UniversoLanding({ onSelect }: UniversoLandingProps) {
         ))}
 
         <div className="hbg-landing-app hbg-landing-app-qr" aria-label="QR Restaurant próximamente">
-          <span className="hbg-landing-app-icon" aria-hidden="true">餐</span>
+          <span className="hbg-landing-app-icon" aria-hidden="true">🍴</span>
           <strong>QR RESTAURANT</strong>
           <small>GESTIÓN · FINANZAS · INSIGHTS</small>
           <span className="hbg-landing-coming">PRÓXIMAMENTE</span>
@@ -121,6 +121,6 @@ export function UniversoLanding({ onSelect }: UniversoLandingProps) {
         <strong>EL FUTURO YA ESTÁ AQUÍ</strong>
         <span />
       </footer>
-    </main>
+    </div>
   );
 }
