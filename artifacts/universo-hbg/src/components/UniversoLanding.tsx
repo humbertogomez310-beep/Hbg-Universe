@@ -10,18 +10,48 @@ const APPS = [
   {
     id: "vibra" as const,
     title: "VIBRA PRO",
-    subtitle: "MÚSICA · DJ · EXPERIENCIAS",
-    icon: "♫",
-    tone: "cyan",
+    eyebrow: "01 / EXPERIENCIA MUSICAL",
+    subtitle: "MÚSICA INTELIGENTE · AUTO DJ · PLAYLISTS",
+    description: "El sonido de tu universo. Música que se adapta a ti y toma vida con cada momento.",
+    tone: "vibra",
   },
   {
     id: "instinto" as const,
     title: "INSTINTO",
-    subtitle: "INTELIGENCIA · PERSONALIZACIÓN",
-    icon: "✧",
-    tone: "purple",
+    eyebrow: "02 / INTELIGENCIA CREATIVA",
+    subtitle: "PERSONALIZACIÓN · IDEAS · EVOLUCIÓN",
+    description: "Una inteligencia que conecta tus ideas, aprende tu forma de crear y evoluciona contigo.",
+    tone: "instinto",
   },
 ];
+
+function VibraMark() {
+  return (
+    <svg viewBox="0 0 96 96" className="hbg-cover-vibra-mark" aria-hidden="true">
+      <path d="M8 49h9l7-20 10 42 10-55 11 63 10-45 8 27 7-12h8" />
+      <path d="M10 75c18 12 56 12 76-1" className="hbg-cover-mark-secondary" />
+    </svg>
+  );
+}
+
+function InstintoMark() {
+  return (
+    <svg viewBox="0 0 96 96" className="hbg-cover-instinto-mark" aria-hidden="true">
+      <path d="M47 17c-10-12-28-5-27 10-13 6-12 24-1 30-3 15 12 24 25 16 3 8 10 8 13 0 13 8 28-1 25-16 11-6 12-24-1-30 1-15-17-22-27-10-3-6-5-6-7 0Z" />
+      <path d="M47 18v55M27 34l15 11-11 15m38-26L54 45l11 15M21 57l20 8m34-8-20 8M33 24l9 9m22-9-9 9" />
+      <g><circle cx="27" cy="34" r="3"/><circle cx="21" cy="57" r="3"/><circle cx="69" cy="34" r="3"/><circle cx="75" cy="57" r="3"/><circle cx="42" cy="65" r="3"/><circle cx="54" cy="65" r="3"/></g>
+    </svg>
+  );
+}
+
+function RestaurantMark() {
+  return (
+    <svg viewBox="0 0 96 96" className="hbg-cover-restaurant-mark" aria-hidden="true">
+      <path d="M25 13v27m-10-27v17m20-17v17M15 30c0 13 20 13 20 0M25 42v42M66 13c-14 18-14 34 0 39v32m0-71v39" />
+      <path d="M47 17h3m-3 11h3m-3 11h3" className="hbg-cover-mark-highlight" />
+    </svg>
+  );
+}
 
 export function UniversoLanding({ onSelect }: UniversoLandingProps) {
   const [showCore, setShowCore] = useState(false);
@@ -38,103 +68,96 @@ export function UniversoLanding({ onSelect }: UniversoLandingProps) {
   }
 
   return (
-    <div className="hbg-universe-landing">
-      <div className="hbg-landing-stars" aria-hidden="true" />
-      <div className="hbg-landing-earth" aria-hidden="true">
-        <div className="hbg-landing-earth-glow" />
-        <div className="hbg-landing-earth-surface" />
+    <main className="hbg-universe-landing hbg-cover-v2">
+      <div className="hbg-cover-nebula hbg-cover-nebula-one" aria-hidden="true" />
+      <div className="hbg-cover-nebula hbg-cover-nebula-two" aria-hidden="true" />
+      <div className="hbg-cover-starfield" aria-hidden="true" />
+      <div className="hbg-cover-orbit hbg-cover-orbit-one" aria-hidden="true" />
+      <div className="hbg-cover-orbit hbg-cover-orbit-two" aria-hidden="true" />
+      <div className="hbg-cover-horizon" aria-hidden="true">
+        <div className="hbg-cover-horizon-glow" />
+        <div className="hbg-cover-city-lights" />
       </div>
-      <div className="hbg-landing-waves" aria-hidden="true" />
 
-      <header className="hbg-landing-topline">
-        <div className="hbg-landing-motto">
-          <span>TU MUNDO.</span>
-          <span>TUS APPS.</span>
-          <span>TU UNIVERSO.</span>
+      <header className="hbg-cover-header">
+        <div className="hbg-cover-manifesto">
+          <span>TU MUNDO</span>
+          <span>TUS APPS</span>
+          <span>TU UNIVERSO</span>
           <i />
         </div>
-        <div className="hbg-landing-infinity" aria-label="Logotipo Universo HBG">∞</div>
-        <div className="hbg-landing-values">
-          <span>CREA</span>
-          <span>CONECTA</span>
-          <span>DISFRUTA</span>
-          <span>EVOLUCIONA</span>
+        <div className="hbg-cover-brand-mark" aria-label="Universo HBG">
+          <span>∞</span>
+          <small>HBG</small>
+        </div>
+        <div className="hbg-cover-values">
+          <span>CREA</span><span>CONECTA</span><span>DISFRUTA</span><span>EVOLUCIONA</span>
           <i />
         </div>
       </header>
 
-      <section className="hbg-landing-hero">
-        <div className="hbg-landing-kicker">UN ECOSISTEMA · POSIBILIDADES SIN LÍMITE</div>
-        <h1><span>UNIVERSO</span> <strong>HBG</strong></h1>
-        <div className="hbg-landing-subtitle">APLICACIONES INDEPENDIENTES <b>•</b> UN ECOSISTEMA CONECTADO</div>
-        <p>Más que aplicaciones, es un universo de posibilidades.</p>
+      <section className="hbg-cover-hero">
+        <div className="hbg-cover-overline"><span /> UN ECOSISTEMA · POSIBILIDADES SIN LÍMITE <span /></div>
+        <h1><span>UNIVERSO</span><strong>HBG</strong></h1>
+        <div className="hbg-cover-tagline">TU VIDA DIGITAL, EN SU PROPIO UNIVERSO.</div>
+        <p>Aplicaciones independientes. Un universo conectado. Infinitas posibilidades.</p>
+        <div className="hbg-cover-signal"><i /> SISTEMA HBG <b>EN LÍNEA</b><i /></div>
       </section>
 
-      <section className="hbg-landing-apps" aria-label="Aplicaciones del ecosistema">
+      <section className="hbg-cover-apps" aria-label="Aplicaciones del ecosistema">
         {APPS.map((app) => (
           <button
             key={app.id}
             type="button"
-            className={"hbg-landing-app hbg-landing-app-" + app.tone}
+            className={"hbg-cover-app hbg-cover-app-" + app.tone}
             onClick={() => onSelect(app.id)}
           >
-            <span className={"hbg-landing-app-icon hbg-landing-app-icon-" + app.id} aria-hidden="true">
-              {app.id === "vibra" ? (
-                <span className="hbg-landing-waveform">{[10, 19, 29, 16, 36, 22, 31, 13, 25].map((height, index) => <i key={index} style={{ height: height + "px" }} />)}</span>
-              ) : (
-                <svg viewBox="0 0 64 64" role="presentation" className="hbg-landing-brain">
-                  <path d="M31 12c-7-8-19-2-18 8-9 4-8 17-1 21-2 10 8 16 17 11 2 5 8 5 10 0 9 5 19-1 17-11 7-5 8-17-1-21 1-10-11-16-18-8-2-4-4-4-6 0Z" />
-                  <path d="M31 13v38M17 23c7-1 10 4 10 9m-14 9c7-4 12-1 14 5m20-23c-7-1-10 4-10 9m14 9c-7-4-12-1-14 5M21 17l5 5m17-5-5 5" />
-                  <circle cx="17" cy="23" r="2"/><circle cx="14" cy="41" r="2"/><circle cx="47" cy="23" r="2"/><circle cx="50" cy="41" r="2"/>
-                </svg>
-              )}
+            <span className="hbg-cover-app-top"><small>{app.eyebrow}</small><b>↗</b></span>
+            <span className="hbg-cover-app-art">
+              {app.id === "vibra" ? <VibraMark /> : <InstintoMark />}
+              <i />
             </span>
-            <strong>{app.title}</strong>
-            <small>{app.subtitle}</small>
-            <span className="hbg-landing-open">ABRIR APLICACIÓN ↗</span>
+            <strong className="hbg-cover-app-title">{app.title}</strong>
+            <span className="hbg-cover-app-subtitle">{app.subtitle}</span>
+            <span className="hbg-cover-app-description">{app.description}</span>
+            <span className="hbg-cover-app-action">ENTRAR AL MÓDULO <b>⟶</b></span>
           </button>
         ))}
 
-        <div className="hbg-landing-app hbg-landing-app-qr" aria-label="QR Restaurant próximamente">
-          <span className="hbg-landing-app-icon hbg-landing-app-icon-qr" aria-hidden="true">
-            <svg viewBox="0 0 64 64" role="presentation" className="hbg-landing-cutlery">
-              <path d="M17 8v17m-6-17v11m12-11v11M11 19c0 8 12 8 12 0M17 27v29M43 8c-8 11-8 22 0 25v23m0-48v25" />
-            </svg>
-          </span>
-          <strong>QR RESTAURANT</strong>
-          <small>GESTIÓN · FINANZAS · INSIGHTS</small>
-          <span className="hbg-landing-coming">PRÓXIMAMENTE</span>
+        <article className="hbg-cover-app hbg-cover-app-restaurant" aria-label="QR Restaurant próximamente">
+          <span className="hbg-cover-app-top"><small>03 / SOLUCIONES PARA NEGOCIOS</small><b>SOON</b></span>
+          <span className="hbg-cover-app-art"><RestaurantMark /><i /></span>
+          <strong className="hbg-cover-app-title">QR RESTAURANT</strong>
+          <span className="hbg-cover-app-subtitle">MENÚ DIGITAL · FINANZAS · INSIGHTS</span>
+          <span className="hbg-cover-app-description">La operación de tu restaurante, conectada en una experiencia simple y poderosa.</span>
+          <span className="hbg-cover-app-action hbg-cover-app-action-soon">PRÓXIMAMENTE</span>
+        </article>
+      </section>
+
+      <section className="hbg-cover-foundation" aria-label="Tecnología del ecosistema">
+        <div className="hbg-cover-foundation-heading"><span>LA TECNOLOGÍA DETRÁS</span><i /></div>
+        <div className="hbg-cover-foundation-grid">
+          <button type="button" onClick={() => setShowCore(true)} className="hbg-cover-service hbg-cover-service-core">
+            <span className="hbg-cover-service-icon">⌘</span><strong>HBG CORE</strong><small>CENTRO DE CONEXIÓN</small>
+          </button>
+          <div className="hbg-cover-service hbg-cover-service-authority">
+            <span className="hbg-cover-service-icon">⬡</span><strong>HBG AUTHORITY</strong><small>PERMISOS Y SEGURIDAD</small>
+          </div>
+          <div className="hbg-cover-service hbg-cover-service-ai">
+            <span className="hbg-cover-service-icon">✳</span><strong>IA HBG</strong><small>INTELIGENCIA TRANSVERSAL</small>
+          </div>
+          <div className="hbg-cover-service hbg-cover-service-insights">
+            <span className="hbg-cover-service-icon">⌁</span><strong>HBG INSIGHTS</strong><small>DATOS Y OPORTUNIDADES</small>
+          </div>
         </div>
       </section>
 
-      <section className="hbg-landing-foundation" aria-label="Tecnología del ecosistema">
-        <button type="button" onClick={() => setShowCore(true)}>
-          <span className="hbg-foundation-icon">⬡</span>
-          <strong>HBG CORE</strong>
-          <small>SERVICIOS E INTEGRACIÓN</small>
-        </button>
-        <div>
-          <span className="hbg-foundation-icon">⛨</span>
-          <strong>HBG AUTHORITY</strong>
-          <small>PERMISOS Y SEGURIDAD</small>
-        </div>
-        <div>
-          <span className="hbg-foundation-icon">✺</span>
-          <strong>IA HBG</strong>
-          <small>INTELIGENCIA TRANSVERSAL</small>
-        </div>
-        <div>
-          <span className="hbg-foundation-icon">↗</span>
-          <strong>HBG INSIGHTS</strong>
-          <small>DATOS · ALERTAS · OPORTUNIDADES</small>
-        </div>
-      </section>
-
-      <footer className="hbg-landing-footer">
+      <footer className="hbg-cover-footer">
         <span />
-        <strong>EL FUTURO YA ESTÁ AQUÍ</strong>
+        <strong>CREA · CONECTA · EVOLUCIONA</strong>
+        <small>UNIVERSO HBG</small>
         <span />
       </footer>
-    </div>
+    </main>
   );
 }
