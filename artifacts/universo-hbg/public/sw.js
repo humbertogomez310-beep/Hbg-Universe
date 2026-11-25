@@ -1,4 +1,4 @@
-const SW_VERSION = "hbg-pwa-v6";
+const SW_VERSION = "hbg-pwa-v7";
 const CACHE_NAME = `hbg-shell-${SW_VERSION}`;
 const CORE_ASSETS = ["/", "/manifest.webmanifest", "/icons/hbg.svg", "/icons/hbg-192.png", "/icons/hbg-512.png", "/apple-touch-icon.png"];
 
@@ -10,7 +10,7 @@ self.addEventListener("install", (event) => {
     await cache.put("/", shellResponse.clone());
 
     const html = await shellResponse.text();
-    const assetPaths = [...html.matchAll(/(?:src|href)=["']([^"']+\.(?:js|css)(?:\?[^"']*)?)["']/g)]
+    const assetPaths = [...html.matchAll(/(?:src|href)=["']([^"']+\\.(?:js|css)(?:\\?[^"']*)?)["']/g)]
       .map((match) => new URL(match[1], self.location.origin))
       .filter((url) => url.origin === self.location.origin)
       .map((url) => url.href);
@@ -43,11 +43,12 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  // Never cache API, authentication, or other dynamic server responses.
+  // Never cache API, authentication, version manifests, or dynamic server responses.
   if (
     url.pathname.startsWith("/api/") ||
     url.pathname.startsWith("/auth/") ||
-    url.pathname.startsWith("/health")
+    url.pathname.startsWith("/health") ||
+    url.pathname === "/version.json"
   ) {
     return;
   }
