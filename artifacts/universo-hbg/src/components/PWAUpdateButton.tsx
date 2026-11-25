@@ -1,11 +1,17 @@
 import { useEffect, useState } from "react";
-import { fetchLatestBuild, isUpdateAvailable } from "../pwa/versioning";
+import {
+  fetchLatestVersion,
+  HBG_RELEASE_VERSION,
+  isUpdateAvailable,
+} from "../pwa/versioning";
 
 declare const __HBG_BUILD_ID__: string;
 
 const CURRENT_BUILD_ID = typeof __HBG_BUILD_ID__ === "string" ? __HBG_BUILD_ID__ : "development";
 const AVAILABLE_BUILD_KEY = "hbg-pwa-update-available-build";
 const PENDING_BUILD_KEY = "hbg-pwa-update-pending-build";
+
+type VersionCheckStatus = "checking" | "current" | "available" | "offline" | "error";
 
 function readAvailableBuild(): string | null {
   try {
@@ -59,15 +65,29 @@ function waitForWorkerActivation(worker: ServiceWorker): Promise<void> {
 export function PWAUpdateButton() {
   const [checking, setChecking] = useState(false);
   const [availableBuild, setAvailableBuild] = useState<string | null>(() => readAvailableBuild());
+  const [latestReleaseVersion, setLatestReleaseVersion] = useState<string | null>(null);
+  const [checkStatus, setCheckStatus] = useState<VersionCheckStatus>("checking");
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
     let disposed = false;
 
     const check = async () => {
-      if (!navigator.onLine || document.visibilityState === "hidden") return;
-      const latestBuild = await fetchLatestBuild();
-      if (!latestBuild || disposed) return;
+      if (!navigator.onLine) {
+        setCheckStatus("offline");
+        return;
+      }
+      if (document.visibilityState === "hidden") return;
+
+      setCheckStatus("checking");
+      const latest = await fetchLatestVersion();
+      if (disposed) return;
+      if (!latest) {
+        setCheckStatus("error");
+        return;
+      }
+
+      setLatestReleaseVersion(latest.releaseVersion);
 
       let pendingBuild: string | null = null;
       try {
@@ -83,24 +103,29 @@ export function PWAUpdateButton() {
           // Ignore unavailable session storage.
         }
 
-        if (pendingBuild === CURRENT_BUILD_ID && latestBuild === CURRENT_BUILD_ID) {
+        if (pendingBuild === CURRENT_BUILD_ID && latest.buildId === CURRENT_BUILD_ID) {
           storeAvailableBuild(null);
           setAvailableBuild(null);
-          setNotice(`ACTUALIZACIÓN COMPLETADA · ${CURRENT_BUILD_ID.slice(0, 12)}`);
+          setCheckStatus("current");
+          setNotice(`ACTUALIZACIÓN COMPLETADA · HBG ${HBG_RELEASE_VERSION}`);
         } else {
-          storeAvailableBuild(latestBuild === CURRENT_BUILD_ID ? null : latestBuild);
-          setAvailableBuild(latestBuild === CURRENT_BUILD_ID ? null : latestBuild);
+          const stillAvailable = latest.buildId !== CURRENT_BUILD_ID;
+          storeAvailableBuild(stillAvailable ? latest.buildId : null);
+          setAvailableBuild(stillAvailable ? latest.buildId : null);
+          setCheckStatus(stillAvailable ? "available" : "current");
           setNotice("La recarga terminó, pero no se pudo confirmar que la nueva versión esté activa. Vuelve a intentarlo con conexión.");
         }
         return;
       }
 
-      if (isUpdateAvailable(CURRENT_BUILD_ID, latestBuild)) {
-        storeAvailableBuild(latestBuild);
-        setAvailableBuild(latestBuild);
+      if (isUpdateAvailable(CURRENT_BUILD_ID, latest.buildId)) {
+        storeAvailableBuild(latest.buildId);
+        setAvailableBuild(latest.buildId);
+        setCheckStatus("available");
       } else {
         storeAvailableBuild(null);
         setAvailableBuild(null);
+        setCheckStatus("current");
       }
     };
 
@@ -110,6 +135,7 @@ export function PWAUpdateButton() {
 
     void check();
     window.addEventListener("online", onVisible);
+    window.addEventListener("offline", onVisible);
     window.addEventListener("focus", onVisible);
     document.addEventListener("visibilitychange", onVisible);
     const interval = window.setInterval(() => void check(), 180000);
@@ -117,6 +143,7 @@ export function PWAUpdateButton() {
     return () => {
       disposed = true;
       window.removeEventListener("online", onVisible);
+      window.removeEventListener("offline", onVisible);
       window.removeEventListener("focus", onVisible);
       document.removeEventListener("visibilitychange", onVisible);
       window.clearInterval(interval);
@@ -124,6 +151,12 @@ export function PWAUpdateButton() {
   }, []);
 
   const updateAvailable = isUpdateAvailable(CURRENT_BUILD_ID, availableBuild);
+  const statusLabel =
+    checkStatus === "checking" ? "COMPROBANDO SERVIDOR" :
+    checkStatus === "offline" ? "SERVIDOR SIN CONEXIÓN" :
+    checkStatus === "error" ? "VERSIÓN PUBLICADA SIN VERIFICAR" :
+    updateAvailable ? `NUEVA HBG ${latestReleaseVersion ?? "DISPONIBLE"}` :
+    `SERVIDOR HBG ${latestReleaseVersion ?? HBG_RELEASE_VERSION} · AL DÍA`;
 
   const updateApp = async () => {
     if (checking) return;
@@ -133,6 +166,7 @@ export function PWAUpdateButton() {
     }
     if (!navigator.onLine) {
       setNotice("Necesitas conexión a Internet para descargar la actualización.");
+      setCheckStatus("offline");
       return;
     }
 
@@ -140,18 +174,25 @@ export function PWAUpdateButton() {
     setNotice("");
 
     try {
-      const latestBuild = await fetchLatestBuild();
-      if (!latestBuild) throw new Error("No se pudo consultar la versión publicada.");
-      if (!isUpdateAvailable(CURRENT_BUILD_ID, latestBuild)) {
+      const latest = await fetchLatestVersion();
+      if (!latest) {
+        setCheckStatus("error");
+        throw new Error("No se pudo consultar la versión publicada.");
+      }
+
+      setLatestReleaseVersion(latest.releaseVersion);
+      if (!isUpdateAvailable(CURRENT_BUILD_ID, latest.buildId)) {
         storeAvailableBuild(null);
         setAvailableBuild(null);
-        setNotice(`UNIVERSO HBG YA ESTÁ ACTUALIZADO · ${CURRENT_BUILD_ID.slice(0, 12)}`);
+        setCheckStatus("current");
+        setNotice(`UNIVERSO HBG ${HBG_RELEASE_VERSION} YA ESTÁ ACTUALIZADO · ${CURRENT_BUILD_ID.slice(0, 12)}`);
         setChecking(false);
         return;
       }
 
-      storeAvailableBuild(latestBuild);
-      setAvailableBuild(latestBuild);
+      storeAvailableBuild(latest.buildId);
+      setAvailableBuild(latest.buildId);
+      setCheckStatus("available");
 
       const registration = await navigator.serviceWorker.getRegistration("/");
       if (!registration) {
@@ -191,10 +232,8 @@ export function PWAUpdateButton() {
         }
       }
 
-      // El HTML se solicita de nuevo incluso cuando sw.js no cambió:
-      // Vite publica bundles JS/CSS con nombres hash diferentes por compilación.
       try {
-        window.sessionStorage.setItem(PENDING_BUILD_KEY, latestBuild);
+        window.sessionStorage.setItem(PENDING_BUILD_KEY, latest.buildId);
       } catch {
         // The next online check still detects a stale build if storage is unavailable.
       }
@@ -211,7 +250,7 @@ export function PWAUpdateButton() {
   };
 
   return (
-    <div style={{ position: "relative" }}>
+    <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
       <button
         type="button"
         className="hbg-btn hbg-btn-ghost hbg-topbar-btn"
@@ -222,8 +261,8 @@ export function PWAUpdateButton() {
           : "Buscar e instalar actualizaciones de UNIVERSO HBG"}
         aria-describedby={notice ? "hbg-update-notice" : undefined}
         title={updateAvailable
-          ? `Nueva versión disponible: ${availableBuild}. Pulsa para instalar.`
-          : `Comprobar actualizaciones · versión ${CURRENT_BUILD_ID.slice(0, 12)}`}
+          ? `Nueva versión HBG ${latestReleaseVersion ?? ""} disponible. Pulsa para instalar.`
+          : `HBG ${HBG_RELEASE_VERSION} instalada · build ${CURRENT_BUILD_ID.slice(0, 12)}`}
         style={{ padding: "4px 8px", fontSize: 9, position: "relative" }}
       >
         {checking ? "ACTUALIZANDO..." : "↻ ACTUALIZAR"}
@@ -253,6 +292,13 @@ export function PWAUpdateButton() {
           </span>
         )}
       </button>
+      <span
+        aria-live="polite"
+        title={`Versión instalada: HBG ${HBG_RELEASE_VERSION}. Compilación: ${CURRENT_BUILD_ID}. ${statusLabel}.`}
+        style={{ color: updateAvailable ? "#ff7b89" : "rgba(180,205,230,0.72)", fontSize: 7, lineHeight: 1.2, whiteSpace: "nowrap" }}
+      >
+        HBG {HBG_RELEASE_VERSION} · {statusLabel}
+      </span>
       {notice && (
         <div
           id="hbg-update-notice"
