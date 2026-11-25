@@ -280,6 +280,7 @@ export async function loadInstintoData(): Promise<InstintoData> {
 }
 
 export async function saveInstintoRecord(key: InstintoRecordKey, value: InstintoData[InstintoRecordKey]): Promise<void> {
+  await initializeInstintoStorage();
   const database = await openDatabase();
   await new Promise<void>((resolve, reject) => {
     try {
