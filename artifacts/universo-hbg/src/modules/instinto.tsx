@@ -207,7 +207,7 @@ export function InstintoModule() {
     autoSaveTimerRef.current = setTimeout(() => {
       const nextDraft: NoteDraft = { title: newTitle, content: newContent, category: newCategory, tags: activeTags };
       setDraft(nextDraft);
-      void saveRecord("draft", nextDraft, "el borrador").then(() => setAutoSaved(true));
+      void saveRecord("draft", nextDraft, "el borrador").then((persisted) => setAutoSaved(persisted));
     }, 800);
 
     return () => {
