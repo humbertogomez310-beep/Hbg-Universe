@@ -556,4 +556,86 @@ Quien continúe debe:
 
 ---
 
+
+---
+
+## 15. Addendum oficial — cierre funcional de VIBRA PRO e INSTINTO
+
+**Fecha:** 25-11-2026  
+**PR de implementación:** #31 — https://github.com/humbertogomez310-beep/Hbg-Universe/pull/31  
+**Commit validado:** e005772ef31be4f1332fc22da208c252d38c242e  
+**CI:** ejecución 45724257838 — SUCCESS  
+**Respaldo previo:** rama rollback/pre-vibra-instinto-close-2026-11-25, basada en d4ecdff2b23479447ccfa01129107e4789565532.
+
+### 15.1 Evidencia automatizada
+
+- API server tests: 18 aprobadas, 0 fallidas.
+- Universo HBG application tests: 122 aprobadas, 0 fallidas.
+- Typecheck: SUCCESS.
+- Build de workspace: SUCCESS.
+- Build PWA estática: SUCCESS.
+- Validación de scripts, iconos y esquema PostgreSQL temporal: SUCCESS.
+
+Esto certifica el código candidato en CI. No equivale a prueba física de teléfono, ni certifica servicios remotos no desplegados.
+
+### 15.2 INSTINTO — estado actualizado
+
+**Cerrado en código para la beta local-first:**
+- Notas, letras, secciones, proyectos, borradores, etiquetas, favoritos, fijados, búsqueda y papelera.
+- Persistencia primaria IndexedDB.
+- Respaldo local alternativo en localStorage cuando IndexedDB falla.
+- Los registros guardados en fallback quedan marcados como pendientes y se reconcilian cuando IndexedDB vuelve a estar disponible.
+- Los guardados exitosos inicializan/migran primero el almacenamiento para evitar que una migración antigua sobrescriba el registro recién guardado.
+- El borrado del marcador de fallback ocurre antes de retirar los datos auxiliares para evitar que una copia antigua reemplace datos nuevos.
+- Exportación e importación con validación de esquema.
+- Si IndexedDB no está disponible, la restauración de un respaldo completo puede quedar temporalmente en el almacenamiento alternativo.
+- El indicador de autoguardado solo confirma éxito si la persistencia realmente terminó.
+
+**Pendiente de cierre integral:**
+- Prueba física de creación, edición, autosave, cierre, reapertura, exportación e importación en Android/iOS.
+- Definir qué funciones corresponden a FREE y cuáles a PRO.
+- Crear paquete/instalación independiente de INSTINTO, separado de la PWA Universo HBG.
+- Definir si IA HBG remota, sincronización y trabajo multi-dispositivo pertenecen a PRO o a una capacidad posterior.
+
+### 15.3 VIBRA PRO — estado actualizado
+
+**Cerrado en código para la beta local-first:**
+- Reproductor local, biblioteca, reproducción, cola, favoritos, shuffle, repetición, historial y persistencia de playlists.
+- Ecualizador y visualización mediante Web Audio cuando el navegador lo permite.
+- Dirección musical explícita persistente.
+- Los refinamientos «más bailable», «más energía» y «más para cantar» no reemplazan la intención musical previa; refinan sus preferencias.
+- El selector de Auto DJ puntúa coincidencias de metadatos, evita pistas recientes cuando existen alternativas y usa pistas textuales de energía y prioridad vocal.
+- Se amplían equivalencias de épocas como viejita, setenta, ochenta y noventa, y alias de fiesta.
+- La creación de playlists por voz y por interfaz puede seleccionar hasta 50 canciones de la biblioteca local según estilo/intención; si no encuentra coincidencias, no crea una lista vacía.
+- La interfaz informa que la selección usa metadatos locales, no análisis musical profundo.
+
+**Límite funcional que no debe ocultarse:**
+- La selección es heurística de texto en título, artista y álbum. No analiza BPM, tonalidad, beatmatching, mezcla armónica ni forma de onda para decidir transiciones.
+- No hay detección fiable del ánimo del usuario ni lectura del ambiente.
+- Modo Fiesta eleva la preferencia de energía y Auto DJ, pero todavía no es un DJ profesional adaptativo basado en señales ambientales.
+- HBG Voice en la PWA usa reconocimiento del navegador por intervención iniciada por el usuario; no es wake word permanente ni escucha garantizada en segundo plano.
+- El ducking de audio está cubierto por pruebas de lógica existentes, pero falta validar música y voz simultáneas en un teléfono real.
+
+### 15.4 Requisitos para declarar INSTINTO y VIBRA concluidos
+
+No declarar las aplicaciones terminadas como productos independientes hasta cerrar:
+
+1. **Prueba física Android/iOS:** instalación, apertura, persistencia, cierre/reapertura, offline, restauración y comportamiento real de audio/voz.
+2. **Distribución independiente:** cada aplicación necesita su propio punto de entrada, identidad, manifest/service worker y paquete instalable, sin depender de abrir Universo HBG.
+3. **Matriz FREE/PRO:** definir y aprobar por aplicación qué funciones pertenecen a cada plan; no inventar precios, pagos ni restricciones.
+4. **ONLINE/OFFLINE:** definir con claridad qué operaciones son locales y cuáles requieren servicios remotos; no afirmar sincronización cloud que no está desplegada.
+5. **VIBRA Manos Libres:** determinar el alcance nativo necesario para escucha continua/wake word y restricciones de segundo plano de Android/iOS.
+6. **VIBRA Auto DJ avanzado:** implementar y probar análisis de audio/tempo y transiciones solo después de definir las capacidades de la plataforma y la biblioteca real.
+7. **INSTINTO IA:** decidir qué funciones locales bastan y qué capacidades remotas de IA HBG o sincronización se habilitarán, siempre con permisos.
+
+### 15.5 Estado honesto de cierre
+
+- **INSTINTO:** funcionalidad local-first reforzada y CI verde; pendiente de pruebas físicas, FREE/PRO y distribución independiente.
+- **VIBRA:** funcionalidad local-first reforzada y CI verde; pendiente de pruebas físicas, FREE/PRO, distribución independiente y capacidades avanzadas de Manos Libres/Auto DJ.
+- **Universo HBG:** el PR #31 es un cambio de aplicación y todavía requiere promoción controlada a producción y comprobación del nuevo build en dispositivo.
+
+**Siguiente secuencia:** integrar PR #31 tras CI verde, confirmar el deployment Render, verificar la PWA instalada y ejecutar pruebas físicas de INSTINTO y VIBRA antes de declararlas cerradas.
+
+
+
 **FIN — UNIVERSO HBG / HOJA MAESTRA Y CHECKPOINT OFICIAL / 25-11-2026**
