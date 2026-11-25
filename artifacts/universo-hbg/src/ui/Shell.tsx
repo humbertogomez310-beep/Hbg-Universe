@@ -1,11 +1,10 @@
 
-import { useState, useEffect, type CSSProperties, type ReactNode } from "react";
-import { hbgCore, MODULES, type ModuleConfig, type ModuleId } from "../core/hbgCore";
+import { useState, useEffect, type ReactNode } from "react";
+import { hbgCore, type ModuleId } from "../core/hbgCore";
 import { ownerSession, useOwnerSession } from "../core/ownerSession";
 import { Sidebar } from "./Sidebar";
 import { OwnerGate } from "./OwnerGate";
 import { useLogoGesture } from "./useLogoGesture";
-import { UniversoModule } from "../modules/universo";
 import { UniversoLanding } from "../components/UniversoLanding";
 import { InstintoModule } from "../modules/instinto";
 import { VibraModule } from "../modules/vibra";
@@ -14,66 +13,8 @@ import { TerminadorAppsSection } from "../modules/terminador-apps";
 import { VoiceCommandBar } from "../voice/VoiceCommandBar";
 import { PWAInstallButton } from "../components/PWAInstallButton";
 import { PWAUpdateButton } from "../components/PWAUpdateButton";
-import { HBG_RELEASE_VERSION } from "../pwa/versioning";
 
-// En teléfono se muestra un menú de tarjetas en vez de la barra lateral.
-function useIsMobile(): boolean {
-  const query = "(max-width: 800px)";
-  const supported =
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function";
-
-  const [mobile, setMobile] = useState(() =>
-    supported ? window.matchMedia(query).matches : false
-  );
-
-  useEffect(() => {
-    if (!supported) return;
-
-    const list = window.matchMedia(query);
-    const update = () => setMobile(list.matches);
-
-    update();
-    list.addEventListener("change", update);
-
-    return () => list.removeEventListener("change", update);
-  }, [supported]);
-
-  return mobile;
-}
-
-function MobileMenu({
-  modules,
-  active,
-  onSelect,
-}: {
-  modules: ModuleConfig[];
-  active: ModuleId;
-  onSelect: (id: ModuleId) => void;
-}) {
-  return (
-    <div className="hbg-menu-list">
-      {modules.map((mod) => (
-        <button
-          key={mod.id}
-          className={`hbg-menu-card ${active === mod.id ? "active" : ""}`}
-          style={{ "--item-color": mod.color } as CSSProperties}
-          onClick={() => onSelect(mod.id)}
-        >
-          <span className="hbg-nav-icon">{mod.icon}</span>
-          <div className="hbg-nav-info">
-            <div className="hbg-nav-name">{mod.label}</div>
-            <div className="hbg-nav-desc">{mod.description}</div>
-          </div>
-        </button>
-      ))}
-      <div className="hbg-version hbg-menu-footer">
-        UNIVERSO HBG {HBG_RELEASE_VERSION} · HBG CORE v1.0.0
-      </div>
-    </div>
-  );
-}
-
+// Detección responsive compartida por escritorio y móvil.
 function Clock() {
   const [time, setTime] = useState(new Date());
 
@@ -193,9 +134,7 @@ export function Shell() {
       : activeModule
   );
 
-  const visibleModules = isOwner
-    ? MODULES
-    : MODULES.filter((module) => module.id !== "terminador");
+
 
   return (
     <>
