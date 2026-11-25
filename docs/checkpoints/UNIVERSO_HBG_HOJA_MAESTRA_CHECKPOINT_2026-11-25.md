@@ -634,7 +634,7 @@ No declarar las aplicaciones terminadas como productos independientes hasta cerr
 - **VIBRA:** funcionalidad local-first reforzada y CI verde; pendiente de pruebas físicas, FREE/PRO, distribución independiente y capacidades avanzadas de Manos Libres/Auto DJ.
 - **Universo HBG:** PR #31 fusionado en `18c76b312751ffa171757f43927f9176732f0b05`; Render confirmó `LIVE` para `dep-dc3n9i0473hc738j99bg`. La comprobación física del nuevo build en el dispositivo sigue pendiente.
 
-**Siguiente secuencia:** integrar PR #31 tras CI verde, confirmar el deployment Render, verificar la PWA instalada y ejecutar pruebas físicas de INSTINTO y VIBRA antes de declararlas cerradas.
+**Siguiente secuencia:** verificar la PWA instalada y ejecutar pruebas físicas de INSTINTO y VIBRA antes de declararlas cerradas.
 
 
 
@@ -647,7 +647,7 @@ No declarar las aplicaciones terminadas como productos independientes hasta cerr
 - Deployment: `dep-dc3n9i0473hc738j99bg` — **LIVE**.
 - Build Vite: 76 módulos transformados; JS 428.86 kB (128.08 kB gzip); build terminado en 1.23 s.
 - CI completo de PR: ejecución 45724493058 — SUCCESS (18 pruebas API, 122 pruebas de aplicación, typecheck y ambos builds).
-- CI del commit de merge: ejecución 45724643236, en curso al redactar este registro.
+- CI del commit de merge: ejecución 45724643236 — SUCCESS.
 - El deployment confirma publicación del build, no la actualización de la PWA ya instalada ni el funcionamiento físico del audio/voz/almacenamiento en el teléfono.
 
 
