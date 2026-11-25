@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { interpretMusicDirection, selectNextTrack, readMusicDirection } from "./musicDirector.ts";
+import { interpretMusicDirection, selectNextTrack, selectTracksForDirection, readMusicDirection } from "./musicDirector.ts";
 import { parseIntent } from "../voice/intentParser.ts";
 
 const tracks = [
@@ -65,4 +65,8 @@ test("reads persisted direction and maps voice controls to concrete actions", ()
     name: "rock",
     query: "rock",
   });
+});
+
+test("playlist selection builds a bounded ordered list from the same explicit direction", () => {
+  assert.deepEqual(selectTracksForDirection(tracks, { goal: "noventa", energy: "steady" }, 10).map((track) => track.id), ["90s-a", "90s-b"]);
 });
