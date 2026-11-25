@@ -32,8 +32,8 @@ const ERA_ALIASES: Record<string, string[]> = {
   fiesta: ["fiesta", "party", "dance", "club"],
   ochenta: ["ochenta", "ochentas", "ochentera", "ochentero", "80s", "1980", "1980s"],
   setenta: ["setenta", "setentas", "70s", "1970", "1970s"],
-  vieja: ["vieja", "viejita", "clasica", "clasico", "clasicos", "oldies", "retro", "vintage", "70s", "80s", "90s"],
-  viejita: ["vieja", "viejita", "clasica", "clasico", "clasicos", "oldies", "retro", "vintage", "70s", "80s", "90s"],
+  vieja: ["vieja", "viejita", "clasica", "clasico", "clasicos", "oldies", "retro", "vintage", "setenta", "ochenta", "noventa", "70s", "80s", "90s"],
+  viejita: ["vieja", "viejita", "clasica", "clasico", "clasicos", "oldies", "retro", "vintage", "setenta", "ochenta", "noventa", "70s", "80s", "90s"],
   clasicos: ["clasica", "clasico", "clasicos", "oldies", "retro", "vintage"],
 };
 
@@ -113,9 +113,9 @@ function scoreTrack(
     if ([...HIGH_ENERGY_HINTS].some((hint) => metadata.has(hint))) score += 4;
     if ([...LOW_ENERGY_HINTS].some((hint) => metadata.has(hint))) score -= 2;
   }
-  const hasVocalHint = [...VOCAL_HINTS].some((hint) => metadata.has(hint));
-  if (direction.vocalFocus && !hasVocalHint) return null;
-  if (direction.vocalFocus && hasVocalHint) score += 4;
+  const vocalHintCount = [...VOCAL_HINTS].filter((hint) => metadata.has(hint)).length;
+  if (direction.vocalFocus && vocalHintCount === 0) return null;
+  if (direction.vocalFocus) score += vocalHintCount * 4;
   return score;
 }
 
