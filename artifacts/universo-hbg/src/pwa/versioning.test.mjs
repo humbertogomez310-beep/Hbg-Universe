@@ -18,6 +18,10 @@ test("version manifest validates the release and technical build identifiers", (
     readVersionManifest({ releaseVersion: "0.1", buildId: "abc123" }),
     { releaseVersion: "0.1", buildId: "abc123" },
   );
+  assert.deepEqual(
+    readVersionManifest({ releaseVersion: "0.1.2", buildId: "abc123" }),
+    { releaseVersion: "0.1.2", buildId: "abc123" },
+  );
   assert.equal(readVersionManifest({ releaseVersion: "1", buildId: "abc123" }), null);
   assert.equal(readVersionManifest({ releaseVersion: "0.1", buildId: "" }), null);
   assert.equal(readVersionManifest(null), null);
