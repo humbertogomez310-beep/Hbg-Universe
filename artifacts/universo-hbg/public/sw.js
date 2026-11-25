@@ -10,7 +10,7 @@ self.addEventListener("install", (event) => {
     await cache.put("/", shellResponse.clone());
 
     const html = await shellResponse.text();
-    const assetPaths = [...html.matchAll(/(?:src|href)=["']([^"']+\\.(?:js|css)(?:\\?[^"']*)?)["']/g)]
+    const assetPaths = [...html.matchAll(/(?:src|href)=["']([^"']+\.(?:js|css)(?:\?[^"']*)?)["']/g)]
       .map((match) => new URL(match[1], self.location.origin))
       .filter((url) => url.origin === self.location.origin)
       .map((url) => url.href);
