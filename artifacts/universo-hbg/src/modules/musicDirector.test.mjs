@@ -70,3 +70,10 @@ test("reads persisted direction and maps voice controls to concrete actions", ()
 test("playlist selection builds a bounded ordered list from the same explicit direction", () => {
   assert.deepEqual(selectTracksForDirection(tracks, { goal: "noventa", energy: "steady" }, 10).map((track) => track.id), ["90s-a", "90s-b"]);
 });
+
+test("vocal-first selection excludes tracks whose metadata gives no vocal clue", () => {
+  assert.deepEqual(
+    selectTracksForDirection(tracks, { goal: "", energy: "steady", vocalFocus: true }).map((track) => track.id),
+    ["party", "romance"],
+  );
+});
