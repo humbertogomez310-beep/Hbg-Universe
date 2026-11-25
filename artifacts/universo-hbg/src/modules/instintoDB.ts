@@ -153,12 +153,16 @@ function parseDraft(raw: string | null): InstintoDraft {
   }
 }
 
+function safeReadLegacyValue(storage: LegacyStorage | null, key: string): string | null {
+  try { return storage?.getItem(key) ?? null; } catch { return null; }
+}
+
 export function readLegacyInstintoData(storage: LegacyStorage | null): InstintoData {
   return {
-    notes: parseArray<InstintoNote>(storage?.getItem(LEGACY_KEYS.notes) ?? null),
-    lyrics: parseArray<InstintoLyric>(storage?.getItem(LEGACY_KEYS.lyrics) ?? null),
-    projects: parseArray<InstintoProject>(storage?.getItem(LEGACY_KEYS.projects) ?? null),
-    draft: parseDraft(storage?.getItem(LEGACY_KEYS.draft) ?? null),
+    notes: parseArray<InstintoNote>(safeReadLegacyValue(storage, LEGACY_KEYS.notes)),
+    lyrics: parseArray<InstintoLyric>(safeReadLegacyValue(storage, LEGACY_KEYS.lyrics)),
+    projects: parseArray<InstintoProject>(safeReadLegacyValue(storage, LEGACY_KEYS.projects)),
+    draft: parseDraft(safeReadLegacyValue(storage, LEGACY_KEYS.draft)),
   };
 }
 
