@@ -75,6 +75,31 @@ test("full backup is staged as one atomic fallback record", () => {
   assert.deepEqual(Object.keys(storage.values), ["__hbg_instinto_fallback_backup_v1__"]);
 });
 
+test("later edits update the staged full backup instead of creating split fallback records", () => {
+  const storage = createStorage();
+  const data = {
+    notes: [{ id: "n1", title: "Original" }],
+    lyrics: [{ id: "l1" }],
+    projects: [{ id: "p1" }],
+    draft: { title: "Draft", content: "Text", category: "notas", tags: [] },
+  };
+  assert.equal(persistInstintoFallbackData(data, storage), true);
+  const updatedNotes = [{ id: "n1", title: "Updated" }];
+  assert.equal(persistInstintoFallbackRecord("notes", updatedNotes, storage), true);
+  assert.deepEqual(readInstintoFallbackData(storage), { ...data, notes: updatedNotes });
+  assert.deepEqual(Object.keys(storage.values), ["__hbg_instinto_fallback_backup_v1__"]);
+});
+
+test("invalid staged full backup blocks partial per-record fallback writes", () => {
+  const storage = createStorage();
+  storage.values.__hbg_instinto_fallback_backup_v1__ = "{invalid";
+  assert.equal(
+    persistInstintoFallbackRecord("notes", [{ id: "n1" }], storage),
+    false,
+  );
+  assert.deepEqual(Object.keys(storage.values), ["__hbg_instinto_fallback_backup_v1__"]);
+});
+
 test("failed atomic backup staging leaves no partial collection writes", () => {
   const values = {};
   const storage = {
