@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { interpretMusicDirection, selectNextTrack, selectTracksForDirection, selectAutoDjCandidates, selectNextAutoDjTrack, readMusicDirection } from "./musicDirector.ts";
+import { interpretMusicDirection, selectNextTrack, selectTracksForDirection, selectAutoDjCandidates, selectNextAutoDjTrack, explainAutoDjSelection, readMusicDirection } from "./musicDirector.ts";
 import { parseIntent } from "../voice/intentParser.ts";
 
 const tracks = [
@@ -165,4 +165,18 @@ test("Auto DJ starts a new cycle only after all alternatives have played", () =>
   ];
   assert.equal(selectNextAutoDjTrack(library, "a", ["a", "b", "c"], { goal: "", energy: "steady" }, () => 0)?.id, "b");
   assert.equal(selectNextAutoDjTrack([library[0]], "a", ["a"], { goal: "", energy: "steady" }), null);
+});
+
+
+test("Auto DJ explains the actual rhythmic compatibility and does not invent unavailable analysis", () => {
+  const previous = { id: "previous", title: "Previous", artist: "", album: "", importedAt: 1, bpm: 120, bpmConfidence: 0.9 };
+  const selected = { id: "selected", title: "Selected", artist: "", album: "", importedAt: 2, bpm: 122, bpmConfidence: 0.9, beatStrength: 0.8, energyLevel: 0.75, impactStrength: 0.7 };
+  const explanation = explainAutoDjSelection(previous, selected, { goal: "para brincar", energy: "steady" });
+  assert.match(explanation, /122 BPM/);
+  assert.match(explanation, /120 BPM/);
+  assert.match(explanation, /pulso rítmico/);
+  assert.match(explanation, /ritmo y energía/);
+  const unknown = explainAutoDjSelection(null, { id: "plain", title: "Plain", artist: "", album: "", importedAt: 3 }, { goal: "", energy: "steady" });
+  assert.match(unknown, /al azar/);
+  assert.doesNotMatch(unknown, /BPM|tonalidad|drop/i);
 });
