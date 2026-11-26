@@ -100,10 +100,15 @@ export class VibraDjMixEngine {
     return this.decks.map((deck) => deck.audio);
   }
 
-  /** Route both music decks through the host EQ/analyser chain before the master bus. */
-  connectMusicOutput(output: AudioNode): void {
+  /** Route both music decks through the host EQ/analyser/output chain into the master bus. */
+  connectMusicChain(nodes: readonly AudioNode[]): void {
     this.musicBus.disconnect();
-    this.musicBus.connect(output);
+    let previous: AudioNode = this.musicBus;
+    for (const node of nodes) {
+      previous.connect(node);
+      previous = node;
+    }
+    previous.connect(this.masterBus);
   }
 
   get isTransitioning(): boolean {
@@ -163,7 +168,6 @@ export class VibraDjMixEngine {
     const objectUrl = URL.createObjectURL(blob);
     active.objectUrl = objectUrl;
     active.audio.src = objectUrl;
-    active.audio.load();
 
     const ready = await new Promise<boolean>((resolve) => {
       let settled = false;
@@ -180,6 +184,7 @@ export class VibraDjMixEngine {
       const timeout = setTimeout(() => finish(false), 12000);
       active.audio.addEventListener("canplay", onReady, { once: true });
       active.audio.addEventListener("error", onError, { once: true });
+      active.audio.load();
     });
     if (!ready) {
       this.releaseDeck(active);
@@ -234,7 +239,6 @@ export class VibraDjMixEngine {
     const objectUrl = URL.createObjectURL(blob);
     deck.objectUrl = objectUrl;
     deck.audio.src = objectUrl;
-    deck.audio.load();
 
     const ready = await new Promise<boolean>((resolve) => {
       let settled = false;
@@ -251,6 +255,7 @@ export class VibraDjMixEngine {
       const timeout = setTimeout(() => finish(false), 12000);
       deck.audio.addEventListener("canplay", onReady, { once: true });
       deck.audio.addEventListener("error", onError, { once: true });
+      deck.audio.load();
     });
     if (!ready) {
       deck.audio.removeAttribute("src");
