@@ -1,9 +1,10 @@
 // IndexedDB engine for persisting audio files between sessions
 
 const DB_NAME = "hbg_vibra_db";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_AUDIO = "audio_files";
 const STORE_META = "track_meta";
+const STORE_STATE = "app_state";
 
 export interface TrackMeta {
   id: string;
@@ -27,6 +28,8 @@ export interface TrackMeta {
   musicalKey?: string;
   keyConfidence?: number;
   analyzedAt?: number;
+  /** SHA-256 of exact file bytes when safely available during a manual device scan. */
+  contentHash?: string;
 }
 
 function openDB(): Promise<IDBDatabase> {
@@ -39,6 +42,9 @@ function openDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(STORE_META)) {
         db.createObjectStore(STORE_META); // key = track id
+      }
+      if (!db.objectStoreNames.contains(STORE_STATE)) {
+        db.createObjectStore(STORE_STATE); // key = application state name
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -104,6 +110,19 @@ export async function saveTrackMeta(meta: TrackMeta): Promise<void> {
 
 export async function getAllTrackMeta(): Promise<TrackMeta[]> {
   return (await tx(STORE_META, "readonly", (store) => store.getAll())) as TrackMeta[];
+}
+
+export async function saveAppState<T>(key: string, value: T): Promise<void> {
+  await tx(STORE_STATE, "readwrite", (store) => store.put(value, key));
+}
+
+export async function getAppState<T>(key: string): Promise<T | null> {
+  const value = await tx(STORE_STATE, "readonly", (store) => store.get(key));
+  return (value as T) ?? null;
+}
+
+export async function deleteAppState(key: string): Promise<void> {
+  await tx(STORE_STATE, "readwrite", (store) => store.delete(key));
 }
 
 export async function deleteTrackMeta(id: string): Promise<void> {

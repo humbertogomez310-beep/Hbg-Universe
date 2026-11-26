@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   beginVoiceAudioSession,
   calculateEffectiveAudioVolume,
+  prepareAudioForUpdate,
+  cancelAudioUpdatePreparation,
   getCurrentAudioDuckingFactor,
   registerAudioOutput,
   registerAudioSessionLifecycle,
@@ -77,6 +79,23 @@ test("voice session lifecycle restores interrupted playback unless the user expl
     preventVoiceSessionPlaybackRestore();
     secondRelease();
     assert.deepEqual(events, ["start", "restore", "start", "keep-paused"]);
+  } finally {
+    unregister();
+  }
+});
+
+test("PWA update preparation pauses registered outputs and cancellation restores them", async () => {
+  const events = [];
+  const lifecycle = {
+    onBeforeUpdate: async () => { events.push("pause"); },
+    onUpdateCancelled: async () => { events.push("restore"); },
+  };
+  const unregister = registerAudioSessionLifecycle("update-lifecycle-test", lifecycle);
+  try {
+    await prepareAudioForUpdate();
+    assert.deepEqual(events, ["pause"]);
+    await cancelAudioUpdatePreparation();
+    assert.deepEqual(events, ["pause", "restore"]);
   } finally {
     unregister();
   }

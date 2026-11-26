@@ -4,6 +4,7 @@ import {
   HBG_RELEASE_VERSION,
   isUpdateAvailable,
 } from "../pwa/versioning";
+import { prepareAudioForUpdate, cancelAudioUpdatePreparation } from "../core/audioManager";
 
 declare const __HBG_BUILD_ID__: string;
 
@@ -172,6 +173,7 @@ export function PWAUpdateButton() {
 
     setChecking(true);
     setNotice("");
+    let audioPreparationStarted = false;
 
     try {
       const latest = await fetchLatestVersion();
@@ -237,8 +239,14 @@ export function PWAUpdateButton() {
       } catch {
         // The next online check still detects a stale build if storage is unavailable.
       }
+      // Detener el audio de forma controlada antes de reemplazar la página activa.
+      audioPreparationStarted = true;
+      await prepareAudioForUpdate();
       window.location.reload();
     } catch (error) {
+      if (audioPreparationStarted) {
+        await cancelAudioUpdatePreparation();
+      }
       console.error("No se pudo actualizar UNIVERSO HBG:", error);
       setNotice(
         error instanceof Error

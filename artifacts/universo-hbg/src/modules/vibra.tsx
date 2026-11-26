@@ -7,6 +7,9 @@ import {
   getAudioBlob,
   saveTrackMeta,
   getAllTrackMeta,
+  saveAppState,
+  getAppState,
+  deleteAppState,
   deleteAudioBlob,
   deleteTrackMeta,
   getAudioDuration,
@@ -34,7 +37,7 @@ import {
 } from "./vibraPlayback";
 
 type MoodMode = "party" | "focus" | "creative" | "chill" | "nostalgia" | "sad" | "happy" | "normal";
-type ViewMode = "player" | "dj" | "library" | "playlists" | "modes" | "eq" | "perfil" | "universo";
+type ViewMode = "player" | "dj" | "library" | "playlists" | "modes" | "eq" | "perfil" | "universo" | "scan";
 
 interface Playlist {
   id: string;
@@ -42,6 +45,35 @@ interface Playlist {
   trackIds: string[];
   color: string;
 }
+
+interface LibraryScanCheckpoint {
+  queueIds: string[];
+  processed: number;
+  total: number;
+  failed: number;
+  updatedAt: number;
+}
+
+interface AutoDjSessionCheckpoint {
+  version: 1;
+  currentTrackId: string;
+  currentTime: number;
+  queueIds: string[];
+  recentTrackIds: string[];
+  direction: MusicDirection;
+  savedAt: number;
+  wasPlaying: boolean;
+}
+
+interface DuplicateGroup {
+  id: string;
+  trackIds: string[];
+  kind: "exact" | "probable";
+  reason: string;
+}
+
+const LIBRARY_SCAN_CHECKPOINT_KEY = "library_scan_checkpoint";
+const AUTO_DJ_SESSION_CHECKPOINT_KEY = "auto_dj_session_checkpoint";
 
 const STORAGE_KEYS = {
   volume: "hbg_vibra_volume",
@@ -56,6 +88,7 @@ const STORAGE_KEYS = {
   equalizer: "hbg_vibra_equalizer_v1",
   shuffle: "hbg_vibra_shuffle",
   repeat: "hbg_vibra_repeat",
+  normalQueue: "hbg_vibra_normal_queue",
   resumeAfterInterruption: "hbg_vibra_resume_after_interruption",
 };
 
@@ -230,7 +263,16 @@ export function VibraModule() {
 
   const [view, setView] = useState<ViewMode>("player");
   const [tracks, setTracks] = useState<TrackMeta[]>([]);
+  const [normalQueueIds, setNormalQueueIds] = useState<string[]>(() => {
+    try {
+      const saved: unknown = JSON.parse(readStoredValue(STORAGE_KEYS.normalQueue) ?? "[]");
+      return Array.isArray(saved) ? saved.filter((id): id is string => typeof id === "string") : [];
+    } catch {
+      return [];
+    }
+  });
   const [currentId, setCurrentId] = useState<string | null>(readStoredTrackId);
+  const [savedAutoDjSession, setSavedAutoDjSession] = useState<AutoDjSessionCheckpoint | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [djMixStatus, setDjMixStatus] = useState<"standby" | "preloading" | "ready" | "mixing">("standby");
   const [progress, setProgress] = useState(0); // 0–1
@@ -259,11 +301,20 @@ export function VibraModule() {
   const [newPlaylistQuery, setNewPlaylistQuery] = useState("");
   const [filterFavs, setFilterFavs] = useState(false);
   const [directionInput, setDirectionInput] = useState(() => musicDirection.goal);
+  const [autoDjSeekStep, setAutoDjSeekStep] = useState<5 | 10>(5);
   const [analysisRevision, setAnalysisRevision] = useState(0);
-  const analysisQueueRef = useRef<string[]>([]);
-  const analysisQueuedIdsRef = useRef(new Set<string>());
-  const analysisAttemptedIdsRef = useRef(new Set<string>());
-  const analysisQueueRunningRef = useRef(false);
+  const [libraryScanStatus, setLibraryScanStatus] = useState<"idle" | "running" | "pausing" | "paused" | "completed">("idle");
+  const [deviceScanStatus, setDeviceScanStatus] = useState<string | null>(null);
+  const [includeShortDeviceAudio, setIncludeShortDeviceAudio] = useState(false);
+  const [includeVoiceNotes, setIncludeVoiceNotes] = useState(false);
+  const [duplicateScanStatus, setDuplicateScanStatus] = useState<"idle" | "running" | "completed">("idle");
+  const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
+  const [duplicateKeepIds, setDuplicateKeepIds] = useState<Record<string, string>>({});
+  const [libraryScanProgress, setLibraryScanProgress] = useState({ processed: 0, total: 0, failed: 0, currentTitle: "" });
+  const libraryScanQueueRef = useRef<string[]>([]);
+  const libraryScanCheckpointRef = useRef<LibraryScanCheckpoint | null>(null);
+  const libraryScanWorkerRef = useRef(false);
+  const libraryScanPauseRequestedRef = useRef(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -279,14 +330,20 @@ export function VibraModule() {
   const playbackPositionRef = useRef(0);
   const voicePlaybackSnapshotRef = useRef<{ wasPlaying: boolean; currentTime: number; audio: HTMLAudioElement | null } | null>(null);
   const backgroundPlaybackSnapshotRef = useRef<{ trackId: string | null; wasPlaying: boolean; currentTime: number; audio: HTMLAudioElement | null } | null>(null);
+  const updatePlaybackSnapshotRef = useRef<{ trackId: string | null; wasPlaying: boolean; currentTime: number; audio: HTMLAudioElement; djTransitionEnabled: boolean } | null>(null);
   const backgroundResumeSuppressedRef = useRef(false);
   const backgroundRestoreInFlightRef = useRef(false);
+  const autoDjSeekHoldDelayRef = useRef<number | null>(null);
+  const autoDjSeekHoldIntervalRef = useRef<number | null>(null);
   const lastKnownPlayingRef = useRef(false);
   const lastPlaybackCheckpointAtRef = useRef(0);
+  const autoDjSessionSaveInFlightRef = useRef(false);
+  const autoDjQueueIdsRef = useRef<string[] | null>(null);
   const equalizerFiltersRef = useRef<BiquadFilterNode[]>([]);
   const [audioAnalyser, setAudioAnalyser] = useState<AnalyserNode | null>(null);
   const currentUrlRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const deviceScanFileInputRef = useRef<HTMLInputElement>(null);
   const progressRafRef = useRef<number | null>(null);
   const loadGenerationRef = useRef(0);
   const manualSelectionGenerationRef = useRef(0);
@@ -328,10 +385,11 @@ export function VibraModule() {
 
   const mood = MOODS.find((m) => m.mode === activeMode)!;
   const currentTrack = tracks.find((t) => t.id === currentId) ?? null;
-  const plannedNextTrack = useMemo(
-    () => selectNextAutoDjTrack(tracks, currentId, recentTrackIds, musicDirection),
-    [tracks.length, currentId, recentTrackIds, musicDirection, analysisRevision],
-  );
+  const plannedNextTrack = useMemo(() => {
+    const sessionIds = autoDjEnabled ? autoDjQueueIdsRef.current : null;
+    const candidatePool = sessionIds ? tracks.filter((track) => sessionIds.includes(track.id)) : tracks;
+    return selectNextAutoDjTrack(candidatePool, currentId, recentTrackIds, musicDirection);
+  }, [tracks, currentId, recentTrackIds, musicDirection, analysisRevision, autoDjEnabled]);
   plannedNextTrackRef.current = plannedNextTrack;
   // Auto DJ manages its own no-repeat rotation; manual repeat-one must not stop DJ transitions.
   djTransitionEnabledRef.current = autoDjEnabled || partyMode;
@@ -463,45 +521,54 @@ export function VibraModule() {
     });
   }, []);
 
-  // Backfill rhythm analysis for tracks already present in the player's IndexedDB library.
-  // One file is decoded at a time in the background; playback never waits for this queue.
+  // Restore an interrupted scan as PAUSED. Never resume analysis automatically on app launch.
   useEffect(() => {
-    for (const track of tracks) {
-      if (track.beatStrength !== undefined && track.energyLevel !== undefined && track.impactStrength !== undefined) continue;
-      if (analysisAttemptedIdsRef.current.has(track.id)) continue;
-      analysisAttemptedIdsRef.current.add(track.id);
-      analysisQueuedIdsRef.current.add(track.id);
-      analysisQueueRef.current.push(track.id);
-    }
-    if (analysisQueueRunningRef.current || analysisQueueRef.current.length === 0) return;
-    analysisQueueRunningRef.current = true;
-    void (async () => {
-      let updatedAny = false;
-      try {
-        while (analysisQueueRef.current.length > 0) {
-          const id = analysisQueueRef.current.shift();
-          if (!id) continue;
-          try {
-            const meta = tracksRef.current.find((item) => item.id === id);
-            const blob = await getAudioBlob(id);
-            if (!meta || !blob) continue;
-            const profile = await analyzeAudioBlob(blob);
-            const enriched = { ...meta, ...profile };
-            await saveTrackMeta(enriched);
-            updatedAny = true;
-            setTracks((previous) => previous.map((item) => item.id === id ? enriched : item));
-          } catch {
-            // Unsupported codecs stay playable and cannot block the DJ rotation.
-          } finally {
-            analysisQueuedIdsRef.current.delete(id);
-          }
-        }
-      } finally {
-        analysisQueueRunningRef.current = false;
-        if (updatedAny) setAnalysisRevision((value) => value + 1);
-      }
-    })();
-  }, [tracks]);
+    let cancelled = false;
+    getAppState<LibraryScanCheckpoint>(LIBRARY_SCAN_CHECKPOINT_KEY)
+      .then((checkpoint) => {
+        if (cancelled || !checkpoint || checkpoint.queueIds.length === 0) return;
+        libraryScanCheckpointRef.current = checkpoint;
+        libraryScanQueueRef.current = [...checkpoint.queueIds];
+        setLibraryScanProgress({
+          processed: checkpoint.processed,
+          total: checkpoint.total,
+          failed: checkpoint.failed,
+          currentTitle: "",
+        });
+        setLibraryScanStatus("paused");
+      })
+      .catch(() => {
+        if (!cancelled) setError("No se pudo recuperar el progreso del escaneo anterior.");
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  // El análisis musical se ejecuta únicamente cuando el usuario lo inicia desde Centro de Escaneo.
+
+  // Recover Auto DJ metadata without autoplay. The user must explicitly resume the session.
+  useEffect(() => {
+    let cancelled = false;
+    void getAppState(AUTO_DJ_SESSION_CHECKPOINT_KEY).then((savedValue) => {
+      const saved = savedValue as AutoDjSessionCheckpoint | null;
+      if (cancelled || !saved || saved.version !== 1) return;
+      if (
+        typeof saved.currentTrackId !== "string" ||
+        !Number.isFinite(saved.currentTime) ||
+        !Array.isArray(saved.queueIds) ||
+        !Array.isArray(saved.recentTrackIds) ||
+        !saved.direction ||
+        typeof saved.direction.goal !== "string"
+      ) return;
+      setSavedAutoDjSession({
+        ...saved,
+        currentTime: Math.max(0, saved.currentTime),
+        queueIds: saved.queueIds.filter((id) => typeof id === "string") as string[],
+        recentTrackIds: saved.recentTrackIds.filter((id) => typeof id === "string").slice(0, 5000) as string[],
+        wasPlaying: false,
+      });
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
 
   // Persist config; playback remains usable even when browser storage is unavailable.
   useEffect(() => {
@@ -521,6 +588,22 @@ export function VibraModule() {
   useEffect(() => {
     if (currentId && !writeStoredValue(STORAGE_KEYS.trackId, currentId)) setError("No se pudo guardar la canción seleccionada.");
   }, [currentId]);
+
+  useEffect(() => {
+    if (tracks.length === 0) return;
+    setNormalQueueIds((current) => {
+      const available = new Set(tracks.map((track) => track.id));
+      const retained = current.filter((id) => available.has(id));
+      const additions = tracks.map((track) => track.id).filter((id) => !retained.includes(id));
+      return [...retained, ...additions];
+    });
+  }, [tracks]);
+
+  useEffect(() => {
+    if (!writeStoredValue(STORAGE_KEYS.normalQueue, JSON.stringify(normalQueueIds))) {
+      setError("No se pudo guardar el orden de la cola del reproductor.");
+    }
+  }, [normalQueueIds]);
   useEffect(() => {
     const saved =
       writeStoredValue("hbg_vibra_music_direction", JSON.stringify(musicDirection)) &&
@@ -695,6 +778,23 @@ export function VibraModule() {
         if (trackId) writeStoredValue(STORAGE_KEYS.trackId, trackId);
         writeStoredValue(STORAGE_KEYS.trackTime, String(target.currentTime || 0));
         writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "true");
+        if (djTransitionEnabledRef.current && trackId && !autoDjSessionSaveInFlightRef.current) {
+          autoDjSessionSaveInFlightRef.current = true;
+          const checkpoint: AutoDjSessionCheckpoint = {
+            version: 1,
+            currentTrackId: trackId,
+            currentTime: Math.max(0, target.currentTime || 0),
+            queueIds: tracksRef.current.map((track) => track.id),
+            recentTrackIds: readStoredRecentTracks(),
+            direction: readStoredDirection(),
+            savedAt: now,
+            wasPlaying: true,
+          };
+          void saveAppState(AUTO_DJ_SESSION_CHECKPOINT_KEY, checkpoint)
+            .then(() => setSavedAutoDjSession({ ...checkpoint, wasPlaying: false }))
+            .catch(() => undefined)
+            .finally(() => { autoDjSessionSaveInFlightRef.current = false; });
+        }
       }
     };
     const onDurationChange = (target: HTMLAudioElement) => {
@@ -816,6 +916,62 @@ export function VibraModule() {
           // The next explicit play command will retry without reloading the track.
         }
       })();
+    },
+    // Preserve the current song and position, fade out, then pause before the PWA reloads.
+    onBeforeUpdate: async () => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      const snapshot = {
+        trackId: currentIdRef.current,
+        wasPlaying: !audio.paused && !audio.ended,
+        currentTime: Number.isFinite(audio.currentTime) ? audio.currentTime : playbackPositionRef.current,
+        audio,
+        djTransitionEnabled: djTransitionEnabledRef.current,
+      };
+      updatePlaybackSnapshotRef.current = snapshot;
+      if (snapshot.trackId) writeStoredValue(STORAGE_KEYS.trackId, snapshot.trackId);
+      writeStoredValue(STORAGE_KEYS.trackTime, String(snapshot.currentTime));
+      writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, snapshot.wasPlaying ? "true" : "false");
+      if (!snapshot.wasPlaying) return;
+
+      djTransitionEnabledRef.current = false;
+      const engine = djMixEngineRef.current;
+      engine?.clearPreparedNext();
+      djPreparedTrackIdRef.current = null;
+      djPreparingTrackIdRef.current = null;
+      if (engine) engine.setMasterVolume(0);
+      else audio.volume = 0;
+
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 350));
+      const activeAudio = audioRef.current ?? audio;
+      const finalPosition = Number.isFinite(activeAudio.currentTime) ? activeAudio.currentTime : snapshot.currentTime;
+      snapshot.currentTime = finalPosition;
+      writeStoredValue(STORAGE_KEYS.trackTime, String(finalPosition));
+      if (engine) engine.allAudios.forEach((deckAudio) => deckAudio.pause());
+      else activeAudio.pause();
+      setIsPlaying(false);
+      await audioContextRef.current?.suspend().catch(() => undefined);
+    },
+    // If the update is cancelled before reload, restore the same playback session.
+    onUpdateCancelled: async () => {
+      const snapshot = updatePlaybackSnapshotRef.current;
+      if (!snapshot) return;
+      updatePlaybackSnapshotRef.current = null;
+      djTransitionEnabledRef.current = snapshot.djTransitionEnabled;
+      const audio = audioRef.current ?? snapshot.audio;
+      const engine = djMixEngineRef.current;
+      if (engine) engine.setMasterVolume(volumeRef.current / 100);
+      else audio.volume = calculateEffectiveAudioVolume(volumeRef.current / 100, getCurrentAudioDuckingFactor());
+      if (!snapshot.wasPlaying) return;
+
+      await audioContextRef.current?.resume();
+      if (engine) {
+        const resumed = await engine.resumeActive();
+        if (!resumed) throw new Error("No se pudo reanudar el audio después de cancelar la actualización.");
+      } else {
+        await audio.play();
+      }
+      setIsPlaying(!audio.paused);
     },
   }), []);
 
@@ -978,6 +1134,53 @@ export function VibraModule() {
     });
   }, [tracks, loadTrack]);
 
+  const resumeSavedAutoDjSession = async (): Promise<boolean> => {
+    const checkpoint = savedAutoDjSession;
+    if (!checkpoint) return false;
+    const availableIds = new Set(tracksRef.current.map((track) => track.id));
+    if (!availableIds.has(checkpoint.currentTrackId)) {
+      setError("La canción guardada en la sesión Auto DJ ya no está disponible. Revisa tu biblioteca.");
+      return false;
+    }
+    const sessionTracks = checkpoint.queueIds.filter((id) => availableIds.has(id));
+    if (sessionTracks.length === 0) {
+      setError("La biblioteca ya no contiene canciones de la sesión Auto DJ guardada.");
+      return false;
+    }
+    autoDjQueueIdsRef.current = sessionTracks;
+    setMusicDirection(checkpoint.direction);
+    setRecentTrackIds(checkpoint.recentTrackIds.filter((id) => availableIds.has(id)));
+    setAutoDjEnabled(true);
+    setPartyMode(false);
+    activeSequenceRef.current = null;
+    const restored = await loadTrackRef.current(
+      checkpoint.currentTrackId,
+      true,
+      checkpoint.currentTime,
+    );
+    if (!restored) return false;
+    setCurrentId(checkpoint.currentTrackId);
+    setView("dj");
+    hbgCore.setContext("music.currentTrack", tracksRef.current.find((track) => track.id === checkpoint.currentTrackId) ?? null);
+    setSavedAutoDjSession({ ...checkpoint, wasPlaying: false, savedAt: Date.now() });
+    return true;
+  };
+
+  const finishAutoDjSession = async () => {
+    backgroundResumeSuppressedRef.current = true;
+    writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "false");
+    djMixEngineRef.current?.pauseAll();
+    if (!djMixEngineRef.current) audioRef.current?.pause();
+    djMixEngineRef.current?.clearPreparedNext();
+    setIsPlaying(false);
+    setAutoDjEnabled(false);
+    setPartyMode(false);
+    autoDjQueueIdsRef.current = null;
+    setDjMixStatus("standby");
+    await deleteAppState(AUTO_DJ_SESSION_CHECKPOINT_KEY).catch(() => undefined);
+    setSavedAutoDjSession(null);
+  };
+
   const resumePlayback = async (): Promise<boolean> => {
     const audio = audioRef.current;
     if (!audio) return false;
@@ -1089,7 +1292,10 @@ export function VibraModule() {
 
   autoAdvanceRef.current = () => {
     if (autoAdvanceInProgressRef.current) return;
-    const availableTracks = tracksRef.current;
+    const sessionIds = autoDjQueueIdsRef.current;
+    const availableTracks = sessionIds
+      ? tracksRef.current.filter((track) => sessionIds.includes(track.id))
+      : tracksRef.current;
     const currentTrackId = currentIdRef.current;
     const activeSequence = activeSequenceRef.current;
 
@@ -1135,7 +1341,7 @@ export function VibraModule() {
 
     if (!autoDjEnabled) {
       const nextId = selectNextPlaybackId(
-        availableTracks.map((track) => track.id),
+        normalQueueIds.filter((id) => availableTracks.some((track) => track.id === id)),
         currentTrackId,
         shuffleEnabled,
         repeatMode,
@@ -1196,14 +1402,18 @@ export function VibraModule() {
   const nextTrack = async (): Promise<boolean> => {
     if (autoDjEnabled && !activeSequenceRef.current) {
       const previousTrack = tracksRef.current.find((track) => track.id === currentIdRef.current) ?? null;
-      const next = selectNextAutoDjTrack(tracksRef.current, currentIdRef.current, recentTrackIds, musicDirection);
+      const sessionIds = autoDjQueueIdsRef.current;
+      const candidatePool = sessionIds
+        ? tracksRef.current.filter((track) => sessionIds.includes(track.id))
+        : tracksRef.current;
+      const next = selectNextAutoDjTrack(candidatePool, currentIdRef.current, recentTrackIds, musicDirection);
       if (!next) return false;
       const playing = await playTrack(next.id);
       if (playing) hbgCore.setContext("music.currentTrackReason", explainAutoDjSelection(previousTrack, next, musicDirection));
       return playing;
     }
     const activeSequence = activeSequenceRef.current;
-    const queue = activeSequence ?? tracks.map((track) => track.id);
+    const queue = activeSequence ?? normalQueueIds;
     const nextId = selectNextPlaybackId(
       queue,
       currentId,
@@ -1223,7 +1433,7 @@ export function VibraModule() {
       return true;
     }
     const activeSequence = activeSequenceRef.current;
-    const queue = activeSequence ?? tracks.map((track) => track.id);
+    const queue = activeSequence ?? normalQueueIds;
     const previousFromHistory = shuffleEnabled
       ? recentTrackIds.find((id, index) => index > 0 && id !== currentId && queue.includes(id))
       : undefined;
@@ -1397,6 +1607,7 @@ export function VibraModule() {
           return result(false, undefined, "Indica si Auto DJ debe activarse o desactivarse.");
         }
         const enabled = payload.enabled;
+        if (enabled && !autoDjQueueIdsRef.current) autoDjQueueIdsRef.current = tracks.map((track) => track.id);
         setAutoDjEnabled(enabled);
         if (enabled) setView("dj");
         else setPartyMode(false);
@@ -1564,7 +1775,7 @@ export function VibraModule() {
       }),
     ];
     return () => unregister.forEach((off) => off());
-  }, [autoDjEnabled, currentId, favorites, isPlaying, musicDirection, nextTrack, playSequenceFrom, playTrack, playTrackSequence, prevTrack, recentTrackIds, tracks, togglePlay, volume]);
+  }, [autoDjEnabled, currentId, favorites, isPlaying, musicDirection, nextTrack, normalQueueIds, playSequenceFrom, playTrack, playTrackSequence, prevTrack, recentTrackIds, tracks, togglePlay, volume]);
 
   const seek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const audio = audioRef.current;
@@ -1574,6 +1785,332 @@ export function VibraModule() {
     playbackPositionRef.current = t;
     setCurrentTime(t);
     setProgress(t / duration);
+  };
+
+  const seekAutoDjBy = (direction: -1 | 1) => {
+    if (!autoDjEnabled) return;
+    const audio = djMixEngineRef.current?.activeAudio ?? audioRef.current;
+    const total = audio?.duration || duration;
+    if (!audio || !Number.isFinite(total) || total <= 0) return;
+    const nextTime = Math.max(0, Math.min(Math.max(0, total - 0.25), audio.currentTime + direction * autoDjSeekStep));
+    audio.currentTime = nextTime;
+    playbackPositionRef.current = nextTime;
+    setCurrentTime(nextTime);
+    setProgress(total > 0 ? nextTime / total : 0);
+    writeStoredValue(STORAGE_KEYS.trackTime, String(nextTime));
+  };
+
+  const stopAutoDjSeekHold = () => {
+    if (autoDjSeekHoldDelayRef.current !== null) window.clearTimeout(autoDjSeekHoldDelayRef.current);
+    if (autoDjSeekHoldIntervalRef.current !== null) window.clearInterval(autoDjSeekHoldIntervalRef.current);
+    autoDjSeekHoldDelayRef.current = null;
+    autoDjSeekHoldIntervalRef.current = null;
+  };
+
+  const startAutoDjSeekHold = (direction: -1 | 1) => {
+    stopAutoDjSeekHold();
+    seekAutoDjBy(direction);
+    autoDjSeekHoldDelayRef.current = window.setTimeout(() => {
+      autoDjSeekHoldIntervalRef.current = window.setInterval(() => seekAutoDjBy(direction), 300);
+    }, 450);
+  };
+
+  useEffect(() => () => {
+    if (autoDjSeekHoldDelayRef.current !== null) window.clearTimeout(autoDjSeekHoldDelayRef.current);
+    if (autoDjSeekHoldIntervalRef.current !== null) window.clearInterval(autoDjSeekHoldIntervalRef.current);
+  }, []);
+
+  const persistLibraryScanCheckpoint = async (checkpoint: LibraryScanCheckpoint) => {
+    libraryScanCheckpointRef.current = checkpoint;
+    try {
+      await saveAppState(LIBRARY_SCAN_CHECKPOINT_KEY, checkpoint);
+    } catch {
+      setError("No se pudo guardar el progreso del escaneo. Mantén VIBRA abierta hasta terminar.");
+    }
+  };
+
+  const runLibraryScan = async () => {
+    if (libraryScanWorkerRef.current) return;
+    libraryScanWorkerRef.current = true;
+    libraryScanPauseRequestedRef.current = false;
+    setLibraryScanStatus("running");
+
+    try {
+      while (libraryScanQueueRef.current.length > 0 && !libraryScanPauseRequestedRef.current) {
+        // Keep the current ID in the persisted queue until it finishes. If the app closes,
+        // this song is safely retried on the next manual resume.
+        const id = libraryScanQueueRef.current[0];
+        const meta = tracksRef.current.find((track) => track.id === id);
+        let failed = false;
+
+        if (meta) {
+          setLibraryScanProgress((previous) => ({ ...previous, currentTitle: meta.title }));
+          try {
+            const blob = await getAudioBlob(id);
+            if (!blob) throw new Error("El archivo ya no está disponible en la biblioteca.");
+            const analysis = await analyzeAudioBlob(blob);
+            const enriched = { ...meta, ...analysis };
+            await saveTrackMeta(enriched);
+            setTracks((previous) => previous.map((track) => track.id === id ? enriched : track));
+            setAnalysisRevision((previous) => previous + 1);
+          } catch {
+            failed = true;
+          }
+        }
+
+        libraryScanQueueRef.current.shift();
+        const previous = libraryScanCheckpointRef.current ?? {
+          queueIds: [], processed: 0, total: libraryScanProgress.total, failed: 0, updatedAt: Date.now(),
+        };
+        const checkpoint: LibraryScanCheckpoint = {
+          queueIds: [...libraryScanQueueRef.current],
+          processed: Math.min(previous.total, previous.processed + 1),
+          total: previous.total,
+          failed: previous.failed + (failed ? 1 : 0),
+          updatedAt: Date.now(),
+        };
+        setLibraryScanProgress({
+          processed: checkpoint.processed,
+          total: checkpoint.total,
+          failed: checkpoint.failed,
+          currentTitle: "",
+        });
+        await persistLibraryScanCheckpoint(checkpoint);
+      }
+    } finally {
+      libraryScanWorkerRef.current = false;
+      setLibraryScanProgress((previous) => ({ ...previous, currentTitle: "" }));
+      if (libraryScanPauseRequestedRef.current && libraryScanQueueRef.current.length > 0) {
+        setLibraryScanStatus("paused");
+      } else {
+        libraryScanQueueRef.current = [];
+        libraryScanCheckpointRef.current = null;
+        await deleteAppState(LIBRARY_SCAN_CHECKPOINT_KEY).catch(() => undefined);
+        setLibraryScanStatus("completed");
+      }
+    }
+  };
+
+  const startLibraryScan = () => {
+    if (libraryScanWorkerRef.current) return;
+    if (libraryScanStatus === "paused" && libraryScanQueueRef.current.length > 0) {
+      void runLibraryScan();
+      return;
+    }
+
+    const pending = tracksRef.current.filter((track) =>
+      track.beatStrength === undefined ||
+      track.energyLevel === undefined ||
+      track.impactStrength === undefined ||
+      track.analyzedAt === undefined
+    );
+    if (pending.length === 0) {
+      setLibraryScanProgress({ processed: tracksRef.current.length, total: tracksRef.current.length, failed: 0, currentTitle: "" });
+      setLibraryScanStatus("completed");
+      return;
+    }
+
+    libraryScanQueueRef.current = pending.map((track) => track.id);
+    const checkpoint: LibraryScanCheckpoint = {
+      queueIds: [...libraryScanQueueRef.current],
+      processed: 0,
+      total: pending.length,
+      failed: 0,
+      updatedAt: Date.now(),
+    };
+    libraryScanCheckpointRef.current = checkpoint;
+    setLibraryScanProgress({ processed: 0, total: pending.length, failed: 0, currentTitle: "" });
+    libraryScanPauseRequestedRef.current = false;
+    void persistLibraryScanCheckpoint(checkpoint).then(() => runLibraryScan());
+  };
+
+  const pauseLibraryScan = () => {
+    if (!libraryScanWorkerRef.current) return;
+    libraryScanPauseRequestedRef.current = true;
+    setLibraryScanStatus("pausing");
+  };
+  const scanLibraryDuplicates = async () => {
+    if (duplicateScanStatus === "running") return;
+    setDuplicateScanStatus("running");
+    setDuplicateGroups([]);
+    const snapshot = [...tracksRef.current];
+    const exactGroups = new Map<string, string[]>();
+    const probableGroups = new Map<string, string[]>();
+    const maxHashBytes = 32 * 1024 * 1024;
+
+    const hashBlob = async (blob: Blob): Promise<string | null> => {
+      if (!globalThis.crypto?.subtle || blob.size > maxHashBytes) return null;
+      const bytes = await blob.arrayBuffer();
+      const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+      return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+    };
+
+    try {
+      for (const track of snapshot) {
+        const title = normalizeMusicText(track.title);
+        const artist = normalizeMusicText(track.artist);
+        const durationBucket = Math.round(track.duration / 3);
+        const probableKey = [title, artist, durationBucket].join("|");
+        const probable = probableGroups.get(probableKey) ?? [];
+        probable.push(track.id);
+        probableGroups.set(probableKey, probable);
+
+        let contentHash = track.contentHash ?? null;
+        if (!contentHash && track.size <= maxHashBytes) {
+          const blob = await getAudioBlob(track.id);
+          if (blob) contentHash = await hashBlob(blob);
+          if (contentHash) {
+            const enriched = { ...track, contentHash };
+            await saveTrackMeta(enriched);
+            setTracks((previous) => previous.map((item) => item.id === track.id ? enriched : item));
+          }
+        }
+        if (contentHash) {
+          const exact = exactGroups.get(contentHash) ?? [];
+          exact.push(track.id);
+          exactGroups.set(contentHash, exact);
+        }
+      }
+
+      const byIds = new Map<string, DuplicateGroup>();
+      const addGroup = (ids: string[], kind: "exact" | "probable", reason: string) => {
+        if (ids.length < 2) return;
+        const ordered = [...ids].sort((a, b) => {
+          const left = snapshot.find((track) => track.id === a)?.importedAt ?? 0;
+          const right = snapshot.find((track) => track.id === b)?.importedAt ?? 0;
+          return left - right;
+        });
+        const key = [...ordered].sort().join("|");
+        const previous = byIds.get(key);
+        if (!previous || kind === "exact") {
+          byIds.set(key, { id: key, trackIds: ordered, kind, reason });
+        }
+      };
+
+      for (const ids of exactGroups.values()) addGroup(ids, "exact", "SHA-256 idéntico: los bytes de audio son iguales.");
+      for (const ids of probableGroups.values()) addGroup(ids, "probable", "Coinciden título, artista y duración aproximada; requiere revisión humana.");
+
+      const groups = [...byIds.values()];
+      setDuplicateGroups(groups);
+      setDuplicateKeepIds(Object.fromEntries(groups.map((group) => [group.id, group.trackIds[0]])));
+      setDuplicateScanStatus("completed");
+    } catch (cause) {
+      setError(cause instanceof Error ? "Falló el escaneo de duplicados: " + cause.message : "Falló el escaneo de duplicados.");
+      setDuplicateScanStatus("idle");
+    }
+  };
+
+  const handleDeviceScan = async (files: FileList | null) => {
+    if (!files || files.length === 0 || deviceScanStatus === "ESCANEANDO") return;
+    setDeviceScanStatus("ESCANEANDO");
+    let imported = 0;
+    let duplicates = 0;
+    let shortFiles = 0;
+    let voiceNotes = 0;
+    let failed = 0;
+    let unsupported = 0;
+    const knownTracks = [...tracksRef.current];
+    const maxHashBytes = 32 * 1024 * 1024;
+
+    const hashBlob = async (blob: Blob): Promise<string | null> => {
+      if (!globalThis.crypto?.subtle || blob.size > maxHashBytes) return null;
+      const bytes = await blob.arrayBuffer();
+      const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+      return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+    };
+
+    try {
+      for (const file of Array.from(files)) {
+        try {
+          if (!/\.(mp3|wav|ogg|flac|aac|m4a)$/i.test(file.name)) {
+            unsupported++;
+            continue;
+          }
+
+          const voiceNoteName = /(?:whatsapp[ _-]*audio|voice[ _-]*note|nota[ _-]*de[ _-]*voz|grabaci[oó]n|recording|voice[ _-]*memo|audio[ _-]*message|^ptt[ _-])/i.test(file.name);
+          if (voiceNoteName && !includeVoiceNotes) {
+            voiceNotes++;
+            continue;
+          }
+          const duration = await getAudioDuration(file);
+          if (!Number.isFinite(duration) || (duration < 60 && !includeShortDeviceAudio)) {
+            shortFiles++;
+            continue;
+          }
+
+          const parsed = parseFilename(file.name);
+          const normalizedTitle = normalizeMusicText(parsed.title);
+          const normalizedArtist = normalizeMusicText(parsed.artist);
+          const candidates = knownTracks.filter((track) =>
+            track.size === file.size &&
+            Math.abs(track.duration - duration) <= 1.25 &&
+            normalizeMusicText(track.title) === normalizedTitle &&
+            normalizeMusicText(track.artist) === normalizedArtist
+          );
+
+          let contentHash: string | null = null;
+          if (candidates.length > 0) {
+            contentHash = await hashBlob(file);
+            if (contentHash) {
+              let exactDuplicate = false;
+              for (const candidate of candidates) {
+                let existingHash = candidate.contentHash ?? null;
+                if (!existingHash) {
+                  const existingBlob = await getAudioBlob(candidate.id);
+                  if (existingBlob) existingHash = await hashBlob(existingBlob);
+                  if (existingHash) {
+                    const enriched = { ...candidate, contentHash: existingHash };
+                    await saveTrackMeta(enriched);
+                    const knownIndex = knownTracks.findIndex((track) => track.id === candidate.id);
+                    if (knownIndex >= 0) knownTracks[knownIndex] = enriched;
+                    setTracks((previous) => previous.map((track) => track.id === candidate.id ? enriched : track));
+                  }
+                }
+                if (existingHash && existingHash === contentHash) {
+                  exactDuplicate = true;
+                  break;
+                }
+              }
+              if (exactDuplicate) {
+                duplicates++;
+                continue;
+              }
+            }
+          } else {
+            contentHash = await hashBlob(file);
+          }
+
+          const id = "track_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+          const meta: TrackMeta = {
+            id,
+            title: parsed.title,
+            artist: parsed.artist,
+            album: "",
+            duration,
+            size: file.size,
+            type: file.type || "audio/mpeg",
+            importedAt: Date.now(),
+            ...(contentHash ? { contentHash } : {}),
+          };
+          await saveAudioBlob(id, file);
+          await saveTrackMeta(meta);
+          knownTracks.push(meta);
+          setTracks((previous) => [...previous, meta]);
+          imported++;
+          if (!currentIdRef.current) {
+            setCurrentId(id);
+            void loadTrackRef.current(id, false);
+          }
+        } catch {
+          failed++;
+        }
+      }
+    } finally {
+      setDeviceScanStatus(
+        "ESCANEO TERMINADO · " + imported + " NUEVAS · " + duplicates + " DUPLICADAS · " +
+        shortFiles + " CORTAS · " + voiceNotes + " NOTAS DE VOZ · " + unsupported + " NO COMPATIBLES · " + failed + " ERRORES"
+      );
+    }
   };
 
   const handleImport = async (files: FileList | null) => {
@@ -1593,7 +2130,8 @@ export function VibraModule() {
         }
         const id = `track_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
         const { title, artist } = parseFilename(file.name);
-        const blob = new Blob([await file.arrayBuffer()], { type: file.type || "audio/mpeg" });
+        // File ya es un Blob: guardarlo directamente evita duplicar el archivo completo en RAM.
+        const blob: Blob = file;
         const dur = await getAudioDuration(blob);
 
         const meta: TrackMeta = {
@@ -1605,19 +2143,7 @@ export function VibraModule() {
         await saveAudioBlob(id, blob);
         await saveTrackMeta(meta);
         setTracks((prev) => [...prev, meta]);
-        // Analyze rhythm, pulse, energy and key locally without delaying import/playback.
-        analysisQueuedIdsRef.current.add(id);
-        analysisAttemptedIdsRef.current.add(id);
-        void analyzeAudioBlob(blob).then(async (analysis) => {
-          const enriched = { ...meta, ...analysis };
-          await saveTrackMeta(enriched);
-          setTracks((prev) => prev.map((track) => track.id === id ? enriched : track));
-          setAnalysisRevision((value) => value + 1);
-        }).catch(() => {
-          // Unsupported codecs/devices keep the imported track playable without fabricated metadata.
-        }).finally(() => {
-          analysisQueuedIdsRef.current.delete(id);
-        });
+        // El análisis queda pendiente hasta que el usuario lo solicite en Centro de Escaneo.
         imported++;
 
         // Auto-select first imported track
@@ -1660,6 +2186,56 @@ export function VibraModule() {
       if (id === currentId) hbgCore.setContext("music.currentTrack", null);
     } catch (cause) {
       setError(cause instanceof Error ? `No se pudo eliminar la canción: ${cause.message}` : "No se pudo eliminar la canción.");
+    }
+  };
+
+  const removeDuplicateCopies = async (group: DuplicateGroup) => {
+    const keepId = duplicateKeepIds[group.id] ?? group.trackIds[0];
+    if (!group.trackIds.includes(keepId)) return;
+    const removeIds = group.trackIds.filter((id) => id !== keepId);
+    if (removeIds.length === 0) return;
+    const keepTrack = tracksRef.current.find((track) => track.id === keepId);
+    if (!keepTrack) {
+      setError("No se encontró la canción elegida para conservar.");
+      return;
+    }
+    const confirmed = window.confirm(
+      "Se conservará: " + keepTrack.title + "\nSe eliminarán " + removeIds.length +
+      " copia(s). Las playlists y colas que apunten a esas copias se redirigirán a la canción conservada. ¿Continuar?"
+    );
+    if (!confirmed) return;
+
+    const wasCurrentRemoved = currentIdRef.current !== null && removeIds.includes(currentIdRef.current);
+    const wasPlaying = isPlaying;
+    try {
+      for (const id of removeIds) {
+        await deleteAudioBlob(id);
+        await deleteTrackMeta(id);
+      }
+      setTracks((previous) => previous.filter((track) => !removeIds.includes(track.id)));
+      setFavorites((previous) => {
+        const next = new Set(previous);
+        const keepFavorite = next.has(keepId) || removeIds.some((id) => next.has(id));
+        removeIds.forEach((id) => next.delete(id));
+        if (keepFavorite) next.add(keepId);
+        return next;
+      });
+      const remap = (ids: string[]) => {
+        const mapped = ids.map((id) => removeIds.includes(id) ? keepId : id);
+        return mapped.filter((id, index) => mapped.indexOf(id) === index);
+      };
+      setPlaylists((previous) => previous.map((playlist) => ({ ...playlist, trackIds: remap(playlist.trackIds) })));
+      setNormalQueueIds((previous) => remap(previous));
+      activeSequenceRef.current = activeSequenceRef.current ? remap(activeSequenceRef.current) : null;
+      setRecentTrackIds((previous) => remap(previous));
+      setDuplicateGroups((previous) => previous.filter((item) => item.id !== group.id));
+      if (wasCurrentRemoved) {
+        setCurrentId(keepId);
+        await loadTrackRef.current(keepId, wasPlaying);
+      }
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? "No se pudieron retirar todas las copias: " + cause.message : "No se pudieron retirar todas las copias.");
     }
   };
 
@@ -1718,6 +2294,22 @@ export function VibraModule() {
     .filter((t) => !filterFavs || favorites.has(t.id))
     .filter((t) => !searchQ || t.title.toLowerCase().includes(searchQ.toLowerCase()) || t.artist.toLowerCase().includes(searchQ.toLowerCase()));
 
+  const normalQueueTracks = useMemo(
+    () => normalQueueIds.map((id) => tracks.find((track) => track.id === id)).filter((track): track is TrackMeta => Boolean(track)),
+    [normalQueueIds, tracks],
+  );
+
+  const moveNormalQueueTrack = (trackId: string, direction: -1 | 1) => {
+    setNormalQueueIds((current) => {
+      const index = current.indexOf(trackId);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= current.length) return current;
+      const reordered = [...current];
+      [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+      return reordered;
+    });
+  };
+
   const progressPct = Math.round(progress * 100);
   const horasEscuchadas = Math.round(tracks.reduce((a, t) => a + t.duration, 0) / 60);
 
@@ -1730,6 +2322,7 @@ export function VibraModule() {
     { id: "eq", label: "EQ PRO" },
     { id: "perfil", label: "PERFIL" },
     { id: "universo", label: "UNIVERSO HBG" },
+    { id: "scan", label: "CENTRO DE ESCANEO" },
   ];
 
   return (
@@ -1781,6 +2374,26 @@ export function VibraModule() {
               {isPlaying ? "EN VIVO" : "EN ESPERA"}
             </div>
           </header>
+
+          {savedAutoDjSession && (
+            <div className="hbg-card" style={{ marginTop: 12, border: "1px solid var(--border-dim)" }}>
+              <div style={{ fontFamily: "var(--font-display)", fontSize: 11, fontWeight: 700 }}>SESIÓN AUTO DJ GUARDADA</div>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginTop: 5 }}>
+                {tracks.find((track) => track.id === savedAutoDjSession.currentTrackId)?.title ?? "Pista no disponible"} · posición {formatDuration(savedAutoDjSession.currentTime)} · guardada {new Date(savedAutoDjSession.savedAt).toLocaleString()}
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 9 }}>
+                <button type="button" className="hbg-btn hbg-btn-primary" onClick={() => void resumeSavedAutoDjSession().then((ok) => { if (!ok) setError("No se pudo reanudar la sesión Auto DJ guardada."); })}>
+                  ▶ CONTINUAR SESIÓN
+                </button>
+                <button type="button" className="hbg-btn hbg-btn-ghost" onClick={() => void finishAutoDjSession()}>
+                  FINALIZAR Y BORRAR SESIÓN
+                </button>
+              </div>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginTop: 7 }}>
+                La sesión se guarda sin reproducirse automáticamente al abrir VIBRA. La reanudación requiere que pulses CONTINUAR.
+              </div>
+            </div>
+          )}
 
           <div className="vibra-dj-stage">
             <div className="vibra-dj-stage-top">
@@ -1876,6 +2489,20 @@ export function VibraModule() {
             </div>
           </div>
 
+          {autoDjEnabled && (
+            <div className="vibra-dj-direction-panel" aria-label="Avance y retroceso de Auto DJ">
+              <div className="vibra-dj-section-label">04 / NAVEGACIÓN DE PISTA</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>PASO:</span>
+                <button type="button" className={autoDjSeekStep === 5 ? "hbg-btn hbg-btn-primary" : "hbg-btn hbg-btn-ghost"} aria-pressed={autoDjSeekStep === 5} onClick={() => { stopAutoDjSeekHold(); setAutoDjSeekStep(5); }}>5 SEG</button>
+                <button type="button" className={autoDjSeekStep === 10 ? "hbg-btn hbg-btn-primary" : "hbg-btn hbg-btn-ghost"} aria-pressed={autoDjSeekStep === 10} onClick={() => { stopAutoDjSeekHold(); setAutoDjSeekStep(10); }}>10 SEG</button>
+                <button type="button" className="hbg-btn hbg-btn-ghost" aria-label={`Retroceder ${autoDjSeekStep} segundos`} disabled={!currentTrack || loading} onPointerDown={(event) => { event.preventDefault(); startAutoDjSeekHold(-1); }} onPointerUp={stopAutoDjSeekHold} onPointerLeave={stopAutoDjSeekHold} onPointerCancel={stopAutoDjSeekHold}>−{autoDjSeekStep} SEG</button>
+                <button type="button" className="hbg-btn hbg-btn-ghost" aria-label={`Adelantar ${autoDjSeekStep} segundos`} disabled={!currentTrack || loading} onPointerDown={(event) => { event.preventDefault(); startAutoDjSeekHold(1); }} onPointerUp={stopAutoDjSeekHold} onPointerLeave={stopAutoDjSeekHold} onPointerCancel={stopAutoDjSeekHold}>+{autoDjSeekStep} SEG</button>
+              </div>
+              <small style={{ display: "block", marginTop: 6, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>Mantén presionado para avanzar o retroceder continuamente. Solo afecta la canción actual de Auto DJ.</small>
+            </div>
+          )}
+
           <div className="vibra-dj-controls">
             <button type="button" className="hbg-btn hbg-btn-primary" onClick={togglePlay} disabled={!currentTrack || loading}>
               {isPlaying ? "Ⅱ PAUSAR" : "▶ REPRODUCIR"}
@@ -1894,6 +2521,16 @@ export function VibraModule() {
         </section>
       )}
 
+      {/* Manual file selection only: the PWA cannot silently traverse Android MediaStore. */}
+      <input
+        ref={deviceScanFileInputRef}
+        type="file"
+        accept=".mp3,.wav,.ogg,.flac,.aac,.m4a,audio/*"
+        multiple
+        style={{ display: "none" }}
+        onChange={(event) => { void handleDeviceScan(event.target.files); }}
+        onClick={(event) => { (event.target as HTMLInputElement).value = ""; }}
+      />
       {/* Hidden file input */}
       <input
         ref={fileInputRef}
@@ -2004,6 +2641,27 @@ export function VibraModule() {
                 style={{ flex: 1, accentColor: mood.color, cursor: "pointer" }} />
               <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: mood.color, minWidth: 32 }}>{volume}%</span>
             </div>
+            {!autoDjEnabled && (
+              <div style={{ marginTop: 16, borderTop: "1px solid var(--border-dim)", paddingTop: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <span style={{ fontFamily: "var(--font-display)", fontSize: 11, fontWeight: 700 }}>COLA DEL REPRODUCTOR</span>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>{normalQueueTracks.length} CANCIONES</span>
+                </div>
+                <div style={{ maxHeight: 260, overflowY: "auto", display: "flex", flexDirection: "column", gap: 5 }}>
+                  {normalQueueTracks.map((track, index) => (
+                    <div key={track.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 8px", borderRadius: 3, border: "1px solid var(--border-dim)", background: track.id === currentId ? "rgba(0, 220, 255, 0.08)" : "transparent" }}>
+                      <button type="button" className="hbg-btn hbg-btn-ghost" style={{ minWidth: 26, padding: "3px 5px", fontSize: 9 }} onClick={() => void playTrack(track.id)} aria-label={"Reproducir " + track.title}>▶</button>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: track.id === currentId ? mood.color : "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{index + 1}. {track.title}</div>
+                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track.artist || "Artista desconocido"}</div>
+                      </div>
+                      <button type="button" className="hbg-btn hbg-btn-ghost" style={{ minWidth: 27, padding: "3px 6px" }} onClick={() => moveNormalQueueTrack(track.id, -1)} disabled={index === 0} aria-label={"Subir " + track.title}>↑</button>
+                      <button type="button" className="hbg-btn hbg-btn-ghost" style={{ minWidth: 27, padding: "3px 6px" }} onClick={() => moveNormalQueueTrack(track.id, 1)} disabled={index === normalQueueTracks.length - 1} aria-label={"Bajar " + track.title}>↓</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
@@ -2020,6 +2678,104 @@ export function VibraModule() {
         </div>
       )}
 
+      {/* CENTRO DE ESCANEO */}
+      {view === "scan" && (
+        <section className="hbg-card" aria-label="Centro de Escaneo">
+          <div className="section-title">// CENTRO DE ESCANEO</div>
+          <p style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", lineHeight: 1.6 }}>
+            Los análisis se ejecutan únicamente cuando tú los inicias. VIBRA procesa una canción a la vez y guarda sus resultados para reutilizarlos.
+          </p>
+          <div className="hbg-card" style={{ marginTop: 12, border: "1px solid var(--border-dim)" }}>
+            <div style={{ fontFamily: "var(--font-display)", fontSize: 12, fontWeight: 700, marginBottom: 6 }}>ANALIZAR BIBLIOTECA</div>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginBottom: 12 }}>
+              Calcula BPM, pulso, energía, impacto y tonalidad de las canciones que todavía no tienen un análisis completo.
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="hbg-btn hbg-btn-primary" onClick={startLibraryScan} disabled={libraryScanStatus === "running" || libraryScanStatus === "pausing" || tracks.length === 0}>
+                {libraryScanStatus === "paused" ? "▶ REANUDAR" : libraryScanStatus === "completed" ? "↻ REVISAR PENDIENTES" : "▶ ESCANEAR BIBLIOTECA"}
+              </button>
+              <button className="hbg-btn hbg-btn-ghost" onClick={pauseLibraryScan} disabled={libraryScanStatus !== "running"}>PAUSAR</button>
+            </div>
+            <div style={{ marginTop: 12, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-secondary)" }} aria-live="polite">
+              {libraryScanStatus === "running" && "ANALIZANDO: " + (libraryScanProgress.currentTitle || "preparando...")}
+              {libraryScanStatus === "pausing" && "TERMINANDO LA CANCIÓN ACTUAL PARA PAUSAR..."}
+              {libraryScanStatus === "paused" && "ESCANEO PAUSADO · PUEDES REANUDARLO"}
+              {libraryScanStatus === "completed" && "ESCANEO TERMINADO · " + libraryScanProgress.failed + " ERROR(ES)"}
+              {libraryScanStatus === "idle" && "LISTO · NO SE HA INICIADO NINGÚN ESCANEO"}
+            </div>
+            <div style={{ height: 6, marginTop: 8, borderRadius: 4, background: "var(--bg-deep)", overflow: "hidden" }}>
+              <div style={{ height: "100%", width: (libraryScanProgress.total ? (libraryScanProgress.processed / libraryScanProgress.total) * 100 : 0) + "%", background: mood.color, transition: "width 0.2s ease" }} />
+            </div>
+            <div style={{ marginTop: 6, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>
+              {libraryScanProgress.processed} / {libraryScanProgress.total} canciones · {libraryScanProgress.failed} errores
+            </div>
+          </div>
+          <div className="hbg-card" style={{ marginTop: 10, border: "1px solid var(--border-dim)" }}>
+            <div style={{ fontFamily: "var(--font-display)", fontSize: 12, fontWeight: 700 }}>ESCANEAR DISPOSITIVO</div>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.6 }}>
+              Selecciona manualmente los archivos de audio. VIBRA filtra canciones cortas y nombres típicos de notas de voz (con opción de incluirlos), compara coincidencias exactas disponibles y solo incorpora canciones nuevas. No accede silenciosamente a toda la memoria del teléfono.
+            </div>
+            <button type="button" className="hbg-btn hbg-btn-primary" style={{ marginTop: 10 }} onClick={() => deviceScanFileInputRef.current?.click()} disabled={deviceScanStatus === "ESCANEANDO"}>
+              {deviceScanStatus === "ESCANEANDO" ? "◎ ESCANEANDO..." : "⌕ SELECCIONAR Y ESCANEAR ARCHIVOS"}
+            </button>
+            <div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 10, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-secondary)" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <input type="checkbox" checked={includeShortDeviceAudio} onChange={(event) => setIncludeShortDeviceAudio(event.target.checked)} />
+                Permitir canciones de menos de 60 segundos
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <input type="checkbox" checked={includeVoiceNotes} onChange={(event) => setIncludeVoiceNotes(event.target.checked)} />
+                Incluir archivos que parecen notas de voz por su nombre
+              </label>
+            </div>
+            {deviceScanStatus && <div aria-live="polite" style={{ marginTop: 9, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-secondary)" }}>{deviceScanStatus}</div>}
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginTop: 7 }}>
+              La verificación SHA-256 se realiza secuencialmente para archivos de hasta 32 MB. Archivos mayores se importan sin hash para evitar picos grandes de memoria; podrán revisarse en el escaneo de duplicados.
+            </div>
+          </div>
+          <div className="hbg-card" style={{ marginTop: 10, border: "1px solid var(--border-dim)" }}>
+            <div style={{ fontFamily: "var(--font-display)", fontSize: 12, fontWeight: 700 }}>ESCANEAR DUPLICADOS</div>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.6 }}>
+              Compara archivos por SHA-256 y agrupa posibles coincidencias por título, artista y duración. No elimina nada automáticamente.
+            </div>
+            <button type="button" className="hbg-btn hbg-btn-primary" style={{ marginTop: 10 }} onClick={() => void scanLibraryDuplicates()} disabled={duplicateScanStatus === "running" || tracks.length < 2}>
+              {duplicateScanStatus === "running" ? "◎ REVISANDO BIBLIOTECA..." : "⌕ ESCANEAR DUPLICADOS"}
+            </button>
+            {duplicateScanStatus === "completed" && (
+              <div style={{ marginTop: 8, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-secondary)" }}>
+                {duplicateGroups.length === 0 ? "NO SE ENCONTRARON GRUPOS DUPLICADOS" : duplicateGroups.length + " GRUPO(S) PARA REVISAR"}
+              </div>
+            )}
+            {duplicateGroups.map((group) => (
+              <div key={group.id} style={{ marginTop: 12, padding: 9, border: "1px solid var(--border-dim)", borderRadius: 3 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                  <strong style={{ fontFamily: "var(--font-display)", fontSize: 10 }}>{group.kind === "exact" ? "DUPLICADO EXACTO" : "POSIBLE DUPLICADO"}</strong>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>{group.trackIds.length} ARCHIVOS</span>
+                </div>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginTop: 4 }}>{group.reason}</div>
+                {group.trackIds.map((id) => {
+                  const track = tracks.find((item) => item.id === id);
+                  if (!track) return null;
+                  const keep = duplicateKeepIds[group.id] === id;
+                  return (
+                    <div key={id} style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 7, padding: 6, background: keep ? "rgba(0, 220, 255, 0.08)" : "transparent", border: "1px solid var(--border-dim)", borderRadius: 3 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track.title}</div>
+                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>{track.artist} · {formatDuration(track.duration)} · {(track.size / (1024 * 1024)).toFixed(1)} MB</div>
+                      </div>
+                      <button type="button" className={keep ? "hbg-btn hbg-btn-primary" : "hbg-btn hbg-btn-ghost"} style={{ padding: "4px 7px", fontSize: 9 }} aria-pressed={keep} onClick={() => setDuplicateKeepIds((previous) => ({ ...previous, [group.id]: id }))}>{keep ? "CONSERVAR" : "ELEGIR"}</button>
+                    </div>
+                  );
+                })}
+                <button type="button" className="hbg-btn hbg-btn-ghost" style={{ marginTop: 8, width: "100%", justifyContent: "center" }} onClick={() => void removeDuplicateCopies(group)}>ELIMINAR COPIAS NO CONSERVADAS</button>
+              </div>
+            ))}
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginTop: 9 }}>
+              La huella acústica para detectar la misma grabación con otra codificación aún no está integrada. Las coincidencias probables requieren tu revisión; eliminar siempre pide confirmación y redirige las referencias de playlists y colas.
+            </div>
+          </div>
+        </section>
+      )}
       {/* LIBRARY */}
       {view === "library" && (
         <div>
