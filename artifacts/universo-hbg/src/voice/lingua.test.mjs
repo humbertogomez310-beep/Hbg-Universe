@@ -114,6 +114,14 @@ test("HBG LINGUA preserves user direction when asking for more energy or singing
     type: "SET_DIRECTION",
     text: "Pon música viejita",
   });
+  assert.deepEqual(interpretUtterance("Pon música para brincar").action, {
+    type: "SET_DIRECTION",
+    text: "Pon música para brincar",
+  });
+  assert.deepEqual(interpretUtterance("Pon música para tomar").action, {
+    type: "SET_DIRECTION",
+    text: "Pon música para tomar",
+  });
 });
 
 
