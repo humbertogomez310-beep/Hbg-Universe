@@ -69,6 +69,7 @@ const STORAGE_KEYS = {
   equalizer: "hbg_vibra_equalizer_v1",
   shuffle: "hbg_vibra_shuffle",
   repeat: "hbg_vibra_repeat",
+  normalQueue: "hbg_vibra_normal_queue",
   resumeAfterInterruption: "hbg_vibra_resume_after_interruption",
 };
 
@@ -243,6 +244,14 @@ export function VibraModule() {
 
   const [view, setView] = useState<ViewMode>("player");
   const [tracks, setTracks] = useState<TrackMeta[]>([]);
+  const [normalQueueIds, setNormalQueueIds] = useState<string[]>(() => {
+    try {
+      const saved: unknown = JSON.parse(readStoredValue(STORAGE_KEYS.normalQueue) ?? "[]");
+      return Array.isArray(saved) ? saved.filter((id): id is string => typeof id === "string") : [];
+    } catch {
+      return [];
+    }
+  });
   const [currentId, setCurrentId] = useState<string | null>(readStoredTrackId);
   const [isPlaying, setIsPlaying] = useState(false);
   const [djMixStatus, setDjMixStatus] = useState<"standby" | "preloading" | "ready" | "mixing">("standby");
@@ -524,6 +533,22 @@ export function VibraModule() {
   useEffect(() => {
     if (currentId && !writeStoredValue(STORAGE_KEYS.trackId, currentId)) setError("No se pudo guardar la canción seleccionada.");
   }, [currentId]);
+
+  useEffect(() => {
+    if (tracks.length === 0) return;
+    setNormalQueueIds((current) => {
+      const available = new Set(tracks.map((track) => track.id));
+      const retained = current.filter((id) => available.has(id));
+      const additions = tracks.map((track) => track.id).filter((id) => !retained.includes(id));
+      return [...retained, ...additions];
+    });
+  }, [tracks]);
+
+  useEffect(() => {
+    if (!writeStoredValue(STORAGE_KEYS.normalQueue, JSON.stringify(normalQueueIds))) {
+      setError("No se pudo guardar el orden de la cola del reproductor.");
+    }
+  }, [normalQueueIds]);
   useEffect(() => {
     const saved =
       writeStoredValue("hbg_vibra_music_direction", JSON.stringify(musicDirection)) &&
@@ -1194,7 +1219,7 @@ export function VibraModule() {
 
     if (!autoDjEnabled) {
       const nextId = selectNextPlaybackId(
-        availableTracks.map((track) => track.id),
+        normalQueueIds.filter((id) => availableTracks.some((track) => track.id === id)),
         currentTrackId,
         shuffleEnabled,
         repeatMode,
@@ -1262,7 +1287,7 @@ export function VibraModule() {
       return playing;
     }
     const activeSequence = activeSequenceRef.current;
-    const queue = activeSequence ?? tracks.map((track) => track.id);
+    const queue = activeSequence ?? normalQueueIds;
     const nextId = selectNextPlaybackId(
       queue,
       currentId,
@@ -1282,7 +1307,7 @@ export function VibraModule() {
       return true;
     }
     const activeSequence = activeSequenceRef.current;
-    const queue = activeSequence ?? tracks.map((track) => track.id);
+    const queue = activeSequence ?? normalQueueIds;
     const previousFromHistory = shuffleEnabled
       ? recentTrackIds.find((id, index) => index > 0 && id !== currentId && queue.includes(id))
       : undefined;
@@ -1623,7 +1648,7 @@ export function VibraModule() {
       }),
     ];
     return () => unregister.forEach((off) => off());
-  }, [autoDjEnabled, currentId, favorites, isPlaying, musicDirection, nextTrack, playSequenceFrom, playTrack, playTrackSequence, prevTrack, recentTrackIds, tracks, togglePlay, volume]);
+  }, [autoDjEnabled, currentId, favorites, isPlaying, musicDirection, nextTrack, normalQueueIds, playSequenceFrom, playTrack, playTrackSequence, prevTrack, recentTrackIds, tracks, togglePlay, volume]);
 
   const seek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const audio = audioRef.current;
@@ -1907,6 +1932,22 @@ export function VibraModule() {
   const filteredTracks = tracks
     .filter((t) => !filterFavs || favorites.has(t.id))
     .filter((t) => !searchQ || t.title.toLowerCase().includes(searchQ.toLowerCase()) || t.artist.toLowerCase().includes(searchQ.toLowerCase()));
+
+  const normalQueueTracks = useMemo(
+    () => normalQueueIds.map((id) => tracks.find((track) => track.id === id)).filter((track): track is TrackMeta => Boolean(track)),
+    [normalQueueIds, tracks],
+  );
+
+  const moveNormalQueueTrack = (trackId: string, direction: -1 | 1) => {
+    setNormalQueueIds((current) => {
+      const index = current.indexOf(trackId);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= current.length) return current;
+      const reordered = [...current];
+      [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+      return reordered;
+    });
+  };
 
   const progressPct = Math.round(progress * 100);
   const horasEscuchadas = Math.round(tracks.reduce((a, t) => a + t.duration, 0) / 60);
@@ -2209,6 +2250,27 @@ export function VibraModule() {
                 style={{ flex: 1, accentColor: mood.color, cursor: "pointer" }} />
               <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: mood.color, minWidth: 32 }}>{volume}%</span>
             </div>
+            {!autoDjEnabled && (
+              <div style={{ marginTop: 16, borderTop: "1px solid var(--border-dim)", paddingTop: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <span style={{ fontFamily: "var(--font-display)", fontSize: 11, fontWeight: 700 }}>COLA DEL REPRODUCTOR</span>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>{normalQueueTracks.length} CANCIONES</span>
+                </div>
+                <div style={{ maxHeight: 260, overflowY: "auto", display: "flex", flexDirection: "column", gap: 5 }}>
+                  {normalQueueTracks.map((track, index) => (
+                    <div key={track.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 8px", borderRadius: 3, border: "1px solid var(--border-dim)", background: track.id === currentId ? "rgba(0, 220, 255, 0.08)" : "transparent" }}>
+                      <button type="button" className="hbg-btn hbg-btn-ghost" style={{ minWidth: 26, padding: "3px 5px", fontSize: 9 }} onClick={() => void playTrack(track.id)} aria-label={"Reproducir " + track.title}>▶</button>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: track.id === currentId ? mood.color : "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{index + 1}. {track.title}</div>
+                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track.artist || "Artista desconocido"}</div>
+                      </div>
+                      <button type="button" className="hbg-btn hbg-btn-ghost" style={{ minWidth: 27, padding: "3px 6px" }} onClick={() => moveNormalQueueTrack(track.id, -1)} disabled={index === 0} aria-label={"Subir " + track.title}>↑</button>
+                      <button type="button" className="hbg-btn hbg-btn-ghost" style={{ minWidth: 27, padding: "3px 6px" }} onClick={() => moveNormalQueueTrack(track.id, 1)} disabled={index === normalQueueTracks.length - 1} aria-label={"Bajar " + track.title}>↓</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
