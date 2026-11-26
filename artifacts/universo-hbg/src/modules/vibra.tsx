@@ -1636,7 +1636,7 @@ export function VibraModule() {
   };
 
   const seekAutoDjBy = (direction: -1 | 1) => {
-    if (!autoDjEnabled && !partyMode) return;
+    if (!autoDjEnabled) return;
     const audio = djMixEngineRef.current?.activeAudio ?? audioRef.current;
     const total = audio?.duration || duration;
     if (!audio || !Number.isFinite(total) || total <= 0) return;
@@ -2067,7 +2067,7 @@ export function VibraModule() {
             </div>
           </div>
 
-          {(autoDjEnabled || partyMode) && (
+          {autoDjEnabled && (
             <div className="vibra-dj-direction-panel" aria-label="Avance y retroceso de Auto DJ">
               <div className="vibra-dj-section-label">04 / NAVEGACIÓN DE PISTA</div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
