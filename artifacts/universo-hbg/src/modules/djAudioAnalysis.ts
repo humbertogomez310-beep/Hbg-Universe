@@ -96,7 +96,11 @@ export function estimateBpmFromSamples(
   peaks.sort((left, right) => right.score - left.score);
   const best = peaks[0];
   if (!best || best.score < 0.04) return { bpm: null, confidence: 0 };
-  const competing = peaks.find((peak) => Math.abs(peak.lag - best.lag) / best.lag > 0.08);
+  const competing = peaks.find((peak) => {
+    const ratio = peak.lag / best.lag;
+    const isHalfOrDoubleTempoAlias = Math.abs(ratio - 2) < 0.12 || Math.abs(ratio - 0.5) < 0.06;
+    return Math.abs(peak.lag - best.lag) / best.lag > 0.08 && !isHalfOrDoubleTempoAlias;
+  });
   const confidence = clamp((best.score - (competing?.score ?? 0)) / Math.max(best.score, 0.001), 0, 1);
   const rawBpm = (60 * sampleRate) / (best.lag * hopSize);
   const normalizedBpm = rawBpm < 85 ? rawBpm * 2 : rawBpm > 170 ? rawBpm / 2 : rawBpm;
