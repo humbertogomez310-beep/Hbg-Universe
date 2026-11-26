@@ -19,10 +19,10 @@ import {
   normalizeMusicText,
   readMusicDirection,
   selectTracksForDirection,
-  selectAutoDjCandidates,
   selectNextAutoDjTrack,
   type MusicDirection,
 } from "./musicDirector";
+import { analyzeAudioBlob } from "./djAudioAnalysis";
 import {
   selectNextPlaybackId,
   selectPreviousPlaybackId,
@@ -752,18 +752,10 @@ export function VibraModule() {
         while (true) {
           if (selectionGeneration !== manualSelectionGenerationRef.current) return;
           const candidates = availableTracks.filter((track) => !failedIds.has(track.id));
-          const autoDjCandidates = selectAutoDjCandidates(candidates, musicDirection);
-          const next = shuffleEnabled
-            ? autoDjCandidates.find((track) =>
-                track.id === selectNextPlaybackId(
-                  autoDjCandidates.map((candidate) => candidate.id),
-                  currentTrackId,
-                  true,
-                  repeatMode === "all" ? "all" : "off",
-                  recentTrackIds,
-                ),
-              )
-            : selectNextAutoDjTrack(candidates, currentTrackId, recentTrackIds, musicDirection);
+          // Auto DJ is deliberately ranked, never randomized: audio tempo/key
+          // compatibility is used when confidence is sufficient, with stable
+          // library order as the honest fallback for unanalyzed tracks.
+          const next = selectNextAutoDjTrack(candidates, currentTrackId, recentTrackIds, musicDirection);
           if (!next) {
             setError(
               musicDirection.goal
@@ -1182,6 +1174,16 @@ export function VibraModule() {
         await saveAudioBlob(id, blob);
         await saveTrackMeta(meta);
         setTracks((prev) => [...prev, meta]);
+        // Analyze locally after import. Playback and the import flow do not wait
+        // for CPU-heavy BPM/key estimation; results are cached in IndexedDB.
+        void analyzeAudioBlob(blob).then(async (analysis) => {
+          if (analysis.bpm === undefined && analysis.musicalKey === undefined) return;
+          const enriched = { ...meta, ...analysis };
+          await saveTrackMeta(enriched);
+          setTracks((prev) => prev.map((track) => track.id === id ? enriched : track));
+        }).catch(() => {
+          // Unsupported codecs/devices keep the imported track playable without fabricated metadata.
+        });
         imported++;
 
         // Auto-select first imported track
