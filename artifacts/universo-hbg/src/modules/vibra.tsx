@@ -180,13 +180,19 @@ function VisualizerBars({ active, color, analyser }: { active: boolean; color: s
 
     const values = new Uint8Array(analyser.frequencyBinCount);
     let frame = 0;
-    const draw = () => {
-      analyser.getByteFrequencyData(values);
-      const next = Array.from({ length: 24 }, (_, index) => {
-        const bin = Math.min(values.length - 1, Math.floor((index / 24) * values.length));
-        return 4 + (values[bin] / 255) * 50;
-      });
-      setHeights(next);
+    let lastUpdateAt = -80;
+    const draw = (timestamp: number) => {
+      // Keep the spectrum useful without forcing a React render on every
+      // display frame; mobile audio playback gets more main-thread headroom.
+      if (timestamp - lastUpdateAt >= 80) {
+        analyser.getByteFrequencyData(values);
+        const next = Array.from({ length: 24 }, (_, index) => {
+          const bin = Math.min(values.length - 1, Math.floor((index / 24) * values.length));
+          return 4 + (values[bin] / 255) * 50;
+        });
+        setHeights(next);
+        lastUpdateAt = timestamp;
+      }
       frame = window.requestAnimationFrame(draw);
     };
     frame = window.requestAnimationFrame(draw);
@@ -632,7 +638,8 @@ export function VibraModule() {
     let filters: BiquadFilterNode[] = [];
 
     try {
-      context = new AudioContext();
+      // Long-form music favors stable playback buffers over minimum interaction latency.
+      context = new AudioContext({ latencyHint: "playback" });
       filters = EQ_BANDS.map((band, index) => {
         const filter = context!.createBiquadFilter();
         filter.frequency.value = EQ_FREQUENCIES[index];
