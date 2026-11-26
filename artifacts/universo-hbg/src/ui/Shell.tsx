@@ -2,14 +2,14 @@
 import { lazy, Suspense, useState, useEffect, type ReactNode } from "react";
 import { hbgCore, type ModuleId } from "../core/hbgCore";
 import { ownerSession, useOwnerSession } from "../core/ownerSession";
-import { Sidebar } from "./Sidebar";
 import { useLogoGesture } from "./useLogoGesture";
 import { UniversoLanding } from "../components/UniversoLanding";
 import { PWAInstallButton } from "../components/PWAInstallButton";
-import { PWAUpdateButton } from "../components/PWAUpdateButton";
 
 // Cada aplicación se descarga solo cuando el usuario la abre.
 // VIBRA se conserva montada después de la primera apertura para no interrumpir audio.
+const LazySidebar = lazy(() => import("./Sidebar").then((module) => ({ default: module.Sidebar })));
+const LazyPWAUpdateButton = lazy(() => import("../components/PWAUpdateButton").then((module) => ({ default: module.PWAUpdateButton })));
 const LazyOwnerGate = lazy(() => import("./OwnerGate").then((module) => ({ default: module.OwnerGate })));
 const LazyInstintoModule = lazy(() => import("../modules/instinto").then((module) => ({ default: module.InstintoModule })));
 const LazyVibraModule = lazy(() => import("../modules/vibra").then((module) => ({ default: module.VibraModule })));
@@ -212,7 +212,11 @@ export function Shell() {
 
           <div className="hbg-topbar-status">
             <PWAInstallButton />
-            <PWAUpdateButton />
+            {voiceMounted && (
+              <Suspense fallback={null}>
+                <LazyPWAUpdateButton />
+              </Suspense>
+            )}
             {isOwner && !checking && (
               <button
                 type="button"
@@ -235,11 +239,13 @@ export function Shell() {
         </header>
 
         {!isMobile && (
-          <Sidebar
-            active={activeModule}
-            isOwner={isOwner && !checking}
-            onSelect={selectModule}
-          />
+          <Suspense fallback={null}>
+            <LazySidebar
+              active={activeModule}
+              isOwner={isOwner && !checking}
+              onSelect={selectModule}
+            />
+          </Suspense>
         )}
 
         <main className="hbg-main">
