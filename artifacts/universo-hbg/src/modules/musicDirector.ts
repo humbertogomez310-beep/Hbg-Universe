@@ -159,6 +159,35 @@ export function selectNextTrack(
   return notRecentlyPlayed[0] ?? candidates[0] ?? null;
 }
 
+/**
+ * Auto DJ keeps the local session moving when there is no fixed musical
+ * constraint. Energy is a soft metadata preference; an explicit goal or
+ * vocal-first request is a hard constraint and is never silently discarded.
+ */
+export function selectAutoDjCandidates(
+  tracks: TrackMeta[],
+  direction: MusicDirection,
+): TrackMeta[] {
+  const directed = selectTracksForDirection(tracks, direction, tracks.length);
+  if (directed.length > 0) return directed;
+  if (direction.goal.trim() || direction.vocalFocus) return [];
+  return tracks;
+}
+
+export function selectNextAutoDjTrack(
+  tracks: TrackMeta[],
+  currentId: string | null,
+  recentTrackIds: string[],
+  direction: MusicDirection,
+): TrackMeta | null {
+  const candidates = selectAutoDjCandidates(
+    tracks.filter((track) => track.id !== currentId),
+    direction,
+  );
+  const notRecentlyPlayed = candidates.filter((track) => !recentTrackIds.includes(track.id));
+  return notRecentlyPlayed[0] ?? candidates[0] ?? null;
+}
+
 export function readMusicDirection(storage: Storage): MusicDirection {
   try {
     const value: unknown = JSON.parse(storage.getItem("hbg_vibra_music_direction") ?? "null");
