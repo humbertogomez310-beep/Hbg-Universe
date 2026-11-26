@@ -743,3 +743,112 @@ body,
 .neon-purple { color: var(--neon-purple); text-shadow: 0 0 10px rgba(124, 77, 255, 0.5); }
 .neon-pink { color: var(--neon-pink); text-shadow: 0 0 10px rgba(255, 64, 129, 0.5); }
 .neon-green { color: var(--neon-green); text-shadow: 0 0 10px rgba(105, 255, 71, 0.5); }
+
+
+/* ─── DJ VIBRA PRO: unified Auto DJ / Fiesta console ─── */
+.vibra-dj-console {
+  --dj-accent: var(--neon-cyan);
+  position: relative;
+  overflow: hidden;
+  padding: clamp(16px, 3vw, 28px);
+  border: 1px solid rgba(24, 200, 255, 0.34);
+  background:
+    radial-gradient(ellipse at 88% 0%, rgba(24, 200, 255, 0.14), transparent 42%),
+    linear-gradient(145deg, rgba(9, 27, 56, 0.98), rgba(3, 11, 27, 0.98));
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.26), inset 0 1px rgba(255, 255, 255, 0.04);
+}
+.vibra-dj-console.is-party {
+  --dj-accent: var(--neon-pink);
+  border-color: rgba(223, 85, 232, 0.52);
+  background:
+    radial-gradient(ellipse at 88% 0%, rgba(223, 85, 232, 0.19), transparent 44%),
+    linear-gradient(145deg, rgba(32, 13, 48, 0.98), rgba(3, 11, 27, 0.98));
+}
+.vibra-dj-header, .vibra-dj-stage-top, .vibra-dj-stage-foot,
+.vibra-dj-controls, .vibra-dj-direction, .vibra-dj-direction-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.vibra-dj-header { margin-bottom: 20px; }
+.vibra-dj-eyebrow, .vibra-dj-section-label, .vibra-dj-stage-top, .vibra-dj-stage-foot {
+  color: var(--dj-accent);
+  font: 10px var(--font-mono);
+  letter-spacing: 0.14em;
+}
+.vibra-dj-title {
+  margin: 5px 0 3px;
+  color: var(--text-primary);
+  font: 700 clamp(22px, 4vw, 34px) var(--font-display);
+  letter-spacing: 0.04em;
+  text-shadow: 0 0 22px color-mix(in srgb, var(--dj-accent) 28%, transparent);
+}
+.vibra-dj-subtitle { color: var(--text-secondary); font-size: 13px; }
+.vibra-dj-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 8px 11px;
+  border: 1px solid var(--border-dim);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font: 10px var(--font-mono);
+  letter-spacing: 0.08em;
+}
+.vibra-dj-live.is-live { color: var(--neon-green); border-color: rgba(83, 224, 193, 0.42); }
+.vibra-dj-live-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 10px currentColor; }
+.vibra-dj-stage {
+  padding: 13px 16px 10px;
+  border: 1px solid color-mix(in srgb, var(--dj-accent) 25%, transparent);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(2, 8, 23, 0.92), rgba(7, 20, 43, 0.86));
+}
+.vibra-dj-stage-top, .vibra-dj-stage-foot { justify-content: space-between; font-size: 9px; }
+.vibra-dj-spectrum { height: 92px; display: flex; align-items: center; padding: 12px 4px 4px; }
+.vibra-dj-spectrum > div { width: 100%; height: 68px !important; }
+.vibra-dj-stage-foot { color: var(--text-muted); letter-spacing: 0.08em; }
+.vibra-dj-mode-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 14px 0; }
+.vibra-dj-mode {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  text-align: left;
+  color: var(--text-secondary);
+  background: rgba(9, 27, 56, 0.72);
+  border: 1px solid var(--border-dim);
+  border-radius: 7px;
+  cursor: pointer;
+  transition: border-color .18s ease, background .18s ease, transform .18s ease;
+}
+.vibra-dj-mode:hover { transform: translateY(-1px); border-color: var(--dj-accent); }
+.vibra-dj-mode.is-active { color: var(--text-primary); border-color: var(--dj-accent); background: color-mix(in srgb, var(--dj-accent) 11%, rgba(9, 27, 56, .9)); box-shadow: inset 0 0 24px color-mix(in srgb, var(--dj-accent) 8%, transparent); }
+.vibra-dj-mode-icon { color: var(--dj-accent); font-size: 24px; }
+.vibra-dj-mode-copy { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; }
+.vibra-dj-mode-copy strong { font: 700 12px var(--font-display); letter-spacing: .08em; }
+.vibra-dj-mode-copy small { color: var(--text-muted); font: 9px var(--font-mono); line-height: 1.4; }
+.vibra-dj-mode-state { color: var(--dj-accent); font: 700 10px var(--font-mono); }
+.vibra-dj-direction-panel { padding: 14px; border: 1px solid var(--border-dim); border-radius: 7px; background: rgba(5, 17, 37, .72); }
+.vibra-dj-direction { margin-top: 10px; }
+.vibra-dj-direction .hbg-input { flex: 1; min-width: 0; }
+.vibra-dj-direction-meta { justify-content: flex-start; flex-wrap: wrap; margin-top: 10px; color: var(--text-muted); font: 9px var(--font-mono); }
+.vibra-dj-direction-meta strong { color: var(--text-secondary); font-weight: 400; }
+.vibra-dj-track-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 14px 0; }
+.vibra-dj-track { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 13px; border-left: 2px solid var(--dj-accent); background: rgba(9, 27, 56, .62); }
+.vibra-dj-track strong { overflow: hidden; color: var(--text-primary); font: 600 14px var(--font-ui); text-overflow: ellipsis; white-space: nowrap; }
+.vibra-dj-track small { overflow: hidden; color: var(--text-muted); font: 10px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.vibra-dj-track-next { border-left-color: var(--neon-purple); }
+.vibra-dj-controls { justify-content: flex-start; flex-wrap: wrap; }
+.vibra-dj-footnote { margin-top: 14px; color: var(--text-muted); font: 10px/1.6 var(--font-mono); }
+@media (max-width: 600px) {
+  .vibra-dj-header { align-items: flex-start; }
+  .vibra-dj-live { padding: 6px 8px; font-size: 8px; }
+  .vibra-dj-mode-grid, .vibra-dj-track-grid { grid-template-columns: 1fr; }
+  .vibra-dj-mode { padding: 12px; }
+  .vibra-dj-direction { align-items: stretch; flex-direction: column; }
+  .vibra-dj-direction .hbg-btn { width: 100%; }
+  .vibra-dj-stage-top, .vibra-dj-stage-foot { font-size: 8px; }
+}
