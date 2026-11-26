@@ -192,7 +192,7 @@ export function parseIntent(text: string): VoiceAction {
   if (/^(desactiva|desactivar|apaga) (el )?modo fiesta$/.test(n)) return { type: "SET_MOOD", mood: "normal" };
   if (/^(activa|activar|enciende) (el )?modo fiesta pro$/.test(n)) return { type: "SET_PARTY", enabled: true };
   if (/^(desactiva|desactivar|apaga) (el )?modo fiesta pro$/.test(n)) return { type: "SET_PARTY", enabled: false };
-  if (/^(?:por que|porque)\b/.test(n) && /\b(cancion|pista)\b/.test(n) && /\b(esta|esa|pusiste|puso|elegiste|eligio|sonando|suena)\b/.test(n)) return { type: "WHY_TRACK" };
+  if (/^(?:por que|porque)\b/.test(n) && /\b(cancion|pista)\b/.test(n) && /\b(esta|esa|pone|pones|pongo|pusiste|puso|elige|eliges|elegiste|eligio|selecciono|seleccionaste|sonando|suena)\b/.test(n)) return { type: "WHY_TRACK" };
   if (/^que cancion (esta )?sonando$/.test(n) || /^que suena$/.test(n)) return { type: "NOW_PLAYING" };
 
   // Explicit levels take precedence over relative volume language.
