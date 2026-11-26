@@ -49,3 +49,22 @@ test("decoded analysis records a timestamp and only emits detected values", () =
   if ("bpmConfidence" in result) assert.ok(result.bpmConfidence >= 0 && result.bpmConfidence <= 1);
   if ("keyConfidence" in result) assert.ok(result.keyConfidence >= 0 && result.keyConfidence <= 1);
 });
+
+
+test("tempo analysis estimates a regular 120 BPM pulse train", () => {
+  const sampleRate = 44100;
+  const seconds = 24;
+  const samples = new Float32Array(sampleRate * seconds);
+  const beatLength = Math.round(sampleRate * 0.5);
+  for (let beat = 0; beat < seconds * 2; beat += 1) {
+    const start = beat * beatLength;
+    for (let index = 0; index < 700 && start + index < samples.length; index += 1) {
+      const envelope = 1 - index / 700;
+      samples[start + index] = Math.sin((2 * Math.PI * 110 * index) / sampleRate) * envelope * 0.8;
+    }
+  }
+  const result = estimateBpmFromSamples(samples, sampleRate);
+  assert.ok(result.bpm !== null);
+  assert.ok(Math.abs(result.bpm - 120) <= 2, `expected around 120 BPM, received ${result.bpm}`);
+  assert.ok(result.confidence > 0.25);
+});
