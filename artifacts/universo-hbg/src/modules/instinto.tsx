@@ -415,7 +415,9 @@ export function InstintoModule() {
         await replaceInstintoData(restoredData);
       } catch (storageError) {
         restoredToFallback = persistInstintoFallbackData(restoredData);
-        if (!restoredToFallback) throw storageError;
+        if (!restoredToFallback) {
+          throw new Error("No se pudo restaurar: IndexedDB no está disponible y el almacenamiento alternativo no tiene capacidad suficiente o está bloqueado.");
+        }
       }
 
       setNotes(backup.notes);
