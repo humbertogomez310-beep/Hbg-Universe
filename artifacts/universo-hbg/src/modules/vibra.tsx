@@ -303,12 +303,12 @@ export function VibraModule() {
   const currentTrack = tracks.find((t) => t.id === currentId) ?? null;
   const plannedNextTrack = selectNextAutoDjTrack(tracks, currentId, recentTrackIds, musicDirection);
   plannedNextTrackRef.current = plannedNextTrack;
-  djTransitionEnabledRef.current = autoDjEnabled || partyMode;
+  djTransitionEnabledRef.current = (autoDjEnabled || partyMode) && repeatMode !== "one";
 
   djTransitionCheckRef.current = (audio) => {
     const engine = djMixEngineRef.current;
     const candidate = plannedNextTrackRef.current;
-    if (!engine || !djTransitionEnabledRef.current || audio !== engine.activeAudio || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
+    if (!engine || !djTransitionEnabledRef.current || activeSequenceRef.current || audio !== engine.activeAudio || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
 
     if (!engine.isTransitioning && djCrossfadeStartedRef.current) {
       djCrossfadeStartedRef.current = false;
@@ -474,6 +474,10 @@ export function VibraModule() {
       if (!audio) throw new Error("El reproductor de audio no está disponible");
 
       if (engine) {
+        engine.clearPreparedNext();
+        djPreparedTrackIdRef.current = null;
+        djPreparingTrackIdRef.current = null;
+        djCrossfadeStartedRef.current = false;
         const loadedAudio = await engine.loadActive(blob, startTime, autoPlay);
         if (requestId !== loadGenerationRef.current) return false;
         if (!loadedAudio) throw new Error("No se pudo preparar la canción en el deck activo");
@@ -698,7 +702,8 @@ export function VibraModule() {
       void (async () => {
         try {
           await audioContextRef.current?.resume();
-          await audio.play();
+          if (djMixEngineRef.current) await djMixEngineRef.current.resumeActive();
+          else await audio.play();
         } catch {
           // The browser may retain audio focus until its capture pipeline fully closes.
           // The next explicit play command will retry without reloading the track.
@@ -763,8 +768,12 @@ export function VibraModule() {
     }
     if (audio.src && audio.src !== window.location.href) {
       if (isPlaying) {
-        if (djMixEngineRef.current) djMixEngineRef.current.pauseAll();
-        else audio.pause();
+        if (djMixEngineRef.current) {
+          djMixEngineRef.current.pauseAll();
+          djPreparedTrackIdRef.current = null;
+          djPreparingTrackIdRef.current = null;
+          djCrossfadeStartedRef.current = false;
+        } else audio.pause();
       } else {
         await resumePlayback();
       }
@@ -963,8 +972,12 @@ export function VibraModule() {
     play: () => { void resumePlayback(); },
     pause: () => {
       preventVoiceSessionPlaybackRestore();
-      if (djMixEngineRef.current) djMixEngineRef.current.pauseAll();
-      else audioRef.current?.pause();
+      if (djMixEngineRef.current) {
+        djMixEngineRef.current.pauseAll();
+        djPreparedTrackIdRef.current = null;
+        djPreparingTrackIdRef.current = null;
+        djCrossfadeStartedRef.current = false;
+      } else audioRef.current?.pause();
     },
     next: () => { void nextTrack(); },
     previous: () => { void prevTrack(); },
