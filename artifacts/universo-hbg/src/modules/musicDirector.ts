@@ -221,6 +221,36 @@ function scoreAutoDjTrack(track: TrackMeta, currentTrack: TrackMeta | null, dire
 }
 
 /**
+ * Explains the actual measurable signals used for an Auto DJ choice.
+ * It never claims to detect a genre, emotion or musical drop from filenames.
+ */
+export function explainAutoDjSelection(
+  currentTrack: TrackMeta | null,
+  selectedTrack: TrackMeta,
+  direction: MusicDirection,
+): string {
+  const reasons: string[] = [];
+  if (
+    currentTrack?.bpm && selectedTrack.bpm &&
+    (currentTrack.bpmConfidence ?? 0) >= 0.25 &&
+    (selectedTrack.bpmConfidence ?? 0) >= 0.25
+  ) {
+    reasons.push(`su pulso de ${Math.round(selectedTrack.bpm)} BPM es compatible con los ${Math.round(currentTrack.bpm)} BPM de la canción anterior`);
+  }
+  if ((selectedTrack.beatStrength ?? 0) >= 0.35) reasons.push("tiene un pulso rítmico bien marcado");
+  if (requestedEnergy(direction) === "up" && (selectedTrack.impactStrength ?? 0) >= 0.35) {
+    reasons.push("su energía e impacto son adecuados para mantener la sesión arriba");
+  }
+  if (direction.goal.trim()) {
+    return reasons.length
+      ? `La elegí porque ${reasons.join(" y ")}. También tomé “${direction.goal}” como guía; si no había coincidencia literal, prioricé una alternativa cercana por ritmo y energía dentro de tu biblioteca.`
+      : `Tomé “${direction.goal}” como guía y elegí una alternativa de tu biblioteca. Esta pista no tenía suficientes datos de BPM o pulso para afirmar una compatibilidad más precisa.`;
+  }
+  if (reasons.length) return `La elegí porque ${reasons.join(" y ")}.`;
+  return "La elegí al azar entre las canciones disponibles que todavía no habías escuchado en esta vuelta de la biblioteca.";
+}
+
+/**
  * Avoids current/recent tracks while unplayed alternatives remain. Once a
  * full library cycle is complete, it starts a new randomized cycle, never
  * choosing the current track as its own successor.
