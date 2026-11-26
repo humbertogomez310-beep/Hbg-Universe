@@ -17,6 +17,12 @@ export interface TrackMeta {
   /** Locally estimated tempo; omitted until analysis is available. */
   bpm?: number;
   bpmConfidence?: number;
+  /** Strength of the detected rhythmic pulse (0–1), estimated locally. */
+  beatStrength?: number;
+  /** Relative RMS energy of the track (0–1), estimated locally. */
+  energyLevel?: number;
+  /** Transient impact/punch estimate (0–1), not a semantic drop detector. */
+  impactStrength?: number;
   /** Locally estimated musical key, e.g. C major or A minor. */
   musicalKey?: string;
   keyConfidence?: number;
