@@ -6,6 +6,8 @@ export type AudioDuckingTarget = (factor: number) => void;
 export interface AudioSessionLifecycle {
   onStart?: () => void;
   onEnd?: (shouldRestorePlayback: boolean) => void;
+  onBeforeUpdate?: () => void | Promise<void>;
+  onUpdateCancelled?: () => void | Promise<void>;
 }
 
 const VOICE_DUCK_FACTOR = 0.55;
@@ -66,6 +68,28 @@ export function registerAudioSessionLifecycle(
   return () => {
     if (sessionLifecycles.get(id) === lifecycle) sessionLifecycles.delete(id);
   };
+}
+
+/** Pauses registered audio outputs safely before the PWA replaces its active document. */
+export async function prepareAudioForUpdate(): Promise<void> {
+  const callbacks = [...sessionLifecycles.values()]
+    .map((lifecycle) => lifecycle.onBeforeUpdate)
+    .filter((callback): callback is () => void | Promise<void> => Boolean(callback));
+  await Promise.all(callbacks.map((callback) => callback()));
+}
+
+/** Restores registered audio outputs if the update flow is cancelled before reload. */
+export async function cancelAudioUpdatePreparation(): Promise<void> {
+  const callbacks = [...sessionLifecycles.values()]
+    .map((lifecycle) => lifecycle.onUpdateCancelled)
+    .filter((callback): callback is () => void | Promise<void> => Boolean(callback));
+  await Promise.all(callbacks.map(async (callback) => {
+    try {
+      await callback();
+    } catch {
+      // One output's recovery must not prevent other registered outputs from recovering.
+    }
+  }));
 }
 
 /** Prevents automatic playback restoration after an explicit user pause command. */
