@@ -788,6 +788,7 @@ export function VibraModule() {
           djPreparedTrackIdRef.current = null;
           djPreparingTrackIdRef.current = null;
           djCrossfadeStartedRef.current = false;
+          setDjMixStatus("standby");
         } else audio.pause();
       } else {
         await resumePlayback();
