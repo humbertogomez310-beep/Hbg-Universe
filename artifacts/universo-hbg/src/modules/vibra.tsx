@@ -274,6 +274,7 @@ export function VibraModule() {
   const voicePlaybackSnapshotRef = useRef<{ wasPlaying: boolean; currentTime: number; audio: HTMLAudioElement | null } | null>(null);
   const backgroundPlaybackSnapshotRef = useRef<{ trackId: string | null; wasPlaying: boolean; currentTime: number; audio: HTMLAudioElement | null } | null>(null);
   const backgroundResumeSuppressedRef = useRef(false);
+  const backgroundRestoreInFlightRef = useRef(false);
   const lastKnownPlayingRef = useRef(false);
   const lastPlaybackCheckpointAtRef = useRef(0);
   const equalizerFiltersRef = useRef<BiquadFilterNode[]>([]);
@@ -831,47 +832,73 @@ export function VibraModule() {
 
   const restoreBackgroundPlayback = useCallback(() => {
     const snapshot = backgroundPlaybackSnapshotRef.current;
-    if (!snapshot) return;
-    backgroundPlaybackSnapshotRef.current = null;
+    if (!snapshot || backgroundRestoreInFlightRef.current) return;
+    // Do not consume the saved session while the PWA is still in the background.
+    if (document.visibilityState === "hidden") return;
     if (!shouldRestorePlaybackAfterInterruption(
       snapshot,
       currentIdRef.current,
       backgroundResumeSuppressedRef.current,
     )) {
+      backgroundPlaybackSnapshotRef.current = null;
       writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "false");
       return;
     }
 
+    backgroundRestoreInFlightRef.current = true;
     void (async () => {
-      // Android and iOS can release audio focus a moment after the page becomes visible.
-      await new Promise<void>((resolve) => window.setTimeout(resolve, 250));
-      const engine = djMixEngineRef.current;
-      const activeAudio = engine?.activeAudio ?? audioRef.current;
-      if (!activeAudio || activeAudio.ended) return;
-      if (activeAudio === snapshot.audio) {
-        const recoveredTime = recoverPlaybackPosition(activeAudio.currentTime, snapshot.currentTime);
-        if (recoveredTime > activeAudio.currentTime + 1) {
-          try { activeAudio.currentTime = recoveredTime; } catch { /* Keep the current decoder position. */ }
+      try {
+        // Android and iOS can release audio focus a moment after the page becomes visible.
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 250));
+        if (document.visibilityState === "hidden") return;
+
+        const engine = djMixEngineRef.current;
+        const activeAudio = engine?.activeAudio ?? audioRef.current;
+        if (!activeAudio || activeAudio.ended) {
+          backgroundPlaybackSnapshotRef.current = null;
+          writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "false");
+          return;
         }
-      }
-      await audioContextRef.current?.resume();
-      if (activeAudio.paused) {
-        if (engine) {
-          const resumed = await engine.resumeActive();
-          if (!resumed) throw new Error("No se pudo recuperar el deck activo.");
-        } else await activeAudio.play();
-      }
-      if (!activeAudio.paused) {
+        if (activeAudio === snapshot.audio) {
+          const recoveredTime = recoverPlaybackPosition(activeAudio.currentTime, snapshot.currentTime);
+          if (recoveredTime > activeAudio.currentTime + 1) {
+            try { activeAudio.currentTime = recoveredTime; } catch { /* Keep the current decoder position. */ }
+          }
+        }
+
+        const context = audioContextRef.current;
+        if (context?.state === "closed") throw new Error("El contexto de audio está cerrado.");
+        await context?.resume();
+        if (context && context.state !== "running") {
+          throw new Error("El navegador todavía mantiene suspendido el contexto de audio.");
+        }
+
+        if (activeAudio.paused) {
+          if (engine) {
+            const resumed = await engine.resumeActive();
+            if (!resumed) throw new Error("No se pudo recuperar el deck activo.");
+          } else await activeAudio.play();
+        }
+        if (activeAudio.paused) throw new Error("El navegador no reanudó la reproducción.");
+
+        // Consume the snapshot only after playback has really resumed. If the
+        // browser rejects resume/play, focus and visibility events can retry it.
+        if (backgroundPlaybackSnapshotRef.current === snapshot) {
+          backgroundPlaybackSnapshotRef.current = null;
+        }
         backgroundResumeSuppressedRef.current = false;
         lastKnownPlayingRef.current = true;
         writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "false");
         setIsPlaying(true);
+      } catch {
+        // Keep the in-memory snapshot: Android may grant audio focus on a later
+        // focus/statechange event, even after the first resume attempt was rejected.
+        writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "true");
+        setError("VIBRA conservó tu canción, pero el sistema aún no liberó el audio. Se intentará recuperar al volver a primer plano; si no reanuda, toca REPRODUCIR.");
+      } finally {
+        backgroundRestoreInFlightRef.current = false;
       }
-    })().catch(() => {
-      // A browser may require a fresh user gesture after suspending the installed PWA.
-      writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "true");
-      setError("VIBRA conservó tu canción. Toca REPRODUCIR para recuperar el audio desde donde quedó.");
-    });
+    })();
   }, []);
 
   // External apps (WhatsApp voice notes, calls, camera) can hide the installed PWA
@@ -897,6 +924,20 @@ export function VibraModule() {
       window.removeEventListener("focus", onFocus);
     };
   }, [captureBackgroundPlayback, restoreBackgroundPlayback]);
+
+  // Some mobile browsers report audio-focus recovery asynchronously. Retry the
+  // preserved snapshot when the same AudioContext returns to the running state.
+  useEffect(() => {
+    const context = audioContextRef.current;
+    if (!context) return;
+    const onStateChange = () => {
+      if (context.state === "running" && document.visibilityState !== "hidden") {
+        restoreBackgroundPlayback();
+      }
+    };
+    context.addEventListener("statechange", onStateChange);
+    return () => context.removeEventListener("statechange", onStateChange);
+  }, [restoreBackgroundPlayback]);
 
   // Restore the last track and its saved position if Android discarded the PWA process.
   const restoredRef = useRef(false);
