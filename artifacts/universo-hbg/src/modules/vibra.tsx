@@ -253,6 +253,7 @@ export function VibraModule() {
   const [newPlaylistQuery, setNewPlaylistQuery] = useState("");
   const [filterFavs, setFilterFavs] = useState(false);
   const [directionInput, setDirectionInput] = useState(() => musicDirection.goal);
+  const [analysisRevision, setAnalysisRevision] = useState(0);
   const analysisQueueRef = useRef<string[]>([]);
   const analysisQueuedIdsRef = useRef(new Set<string>());
   const analysisAttemptedIdsRef = useRef(new Set<string>());
@@ -322,7 +323,7 @@ export function VibraModule() {
   const currentTrack = tracks.find((t) => t.id === currentId) ?? null;
   const plannedNextTrack = useMemo(
     () => selectNextAutoDjTrack(tracks, currentId, recentTrackIds, musicDirection),
-    [tracks, currentId, recentTrackIds, musicDirection],
+    [tracks.length, currentId, recentTrackIds, musicDirection, analysisRevision],
   );
   plannedNextTrackRef.current = plannedNextTrack;
   // Auto DJ manages its own no-repeat rotation; manual repeat-one must not stop DJ transitions.
@@ -468,6 +469,7 @@ export function VibraModule() {
     if (analysisQueueRunningRef.current || analysisQueueRef.current.length === 0) return;
     analysisQueueRunningRef.current = true;
     void (async () => {
+      let updatedAny = false;
       try {
         while (analysisQueueRef.current.length > 0) {
           const id = analysisQueueRef.current.shift();
@@ -479,6 +481,7 @@ export function VibraModule() {
             const profile = await analyzeAudioBlob(blob);
             const enriched = { ...meta, ...profile };
             await saveTrackMeta(enriched);
+            updatedAny = true;
             setTracks((previous) => previous.map((item) => item.id === id ? enriched : item));
           } catch {
             // Unsupported codecs stay playable and cannot block the DJ rotation.
@@ -488,6 +491,7 @@ export function VibraModule() {
         }
       } finally {
         analysisQueueRunningRef.current = false;
+        if (updatedAny) setAnalysisRevision((value) => value + 1);
       }
     })();
   }, [tracks]);
@@ -1560,6 +1564,7 @@ export function VibraModule() {
           const enriched = { ...meta, ...analysis };
           await saveTrackMeta(enriched);
           setTracks((prev) => prev.map((track) => track.id === id ? enriched : track));
+          setAnalysisRevision((value) => value + 1);
         }).catch(() => {
           // Unsupported codecs/devices keep the imported track playable without fabricated metadata.
         }).finally(() => {
@@ -1827,7 +1832,7 @@ export function VibraModule() {
             <button type="button" className="hbg-btn hbg-btn-primary" onClick={togglePlay} disabled={!currentTrack || loading}>
               {isPlaying ? "Ⅱ PAUSAR" : "▶ REPRODUCIR"}
             </button>
-            <button type="button" className="hbg-btn hbg-btn-ghost" onClick={() => plannedNextTrack && void playTrack(plannedNextTrack.id)} disabled={!plannedNextTrack || loading}>
+            <button type="button" className="hbg-btn hbg-btn-ghost" onClick={() => plannedNextTrack && void playTrack(plannedNextTrack.id, false, true)} disabled={!plannedNextTrack || loading}>
               CARGAR SIGUIENTE
             </button>
             <button type="button" className="hbg-btn hbg-btn-ghost" onClick={() => setView("player")}>
