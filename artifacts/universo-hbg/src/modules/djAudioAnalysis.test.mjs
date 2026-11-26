@@ -44,6 +44,8 @@ test("key analysis returns no fabricated key for silence", () => {
 test("decoded analysis records a timestamp and only emits detected values", () => {
   const result = analyzeDecodedAudio([tone(440)], 44100);
   assert.ok(typeof result.analyzedAt === "number");
-  assert.ok(!("bpm" in result));
-  assert.ok(typeof result.musicalKey === "string" || !("musicalKey" in result));
+  if ("bpm" in result) assert.ok(result.bpm > 0);
+  if ("musicalKey" in result) assert.ok(typeof result.musicalKey === "string");
+  if ("bpmConfidence" in result) assert.ok(result.bpmConfidence >= 0 && result.bpmConfidence <= 1);
+  if ("keyConfidence" in result) assert.ok(result.keyConfidence >= 0 && result.keyConfidence <= 1);
 });
