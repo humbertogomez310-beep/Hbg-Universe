@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { interpretMusicDirection, selectNextTrack, selectTracksForDirection, selectAutoDjCandidates, selectNextAutoDjTrack, readMusicDirection } from "./musicDirector.ts";
+import { interpretMusicDirection, selectNextTrack, selectTracksForDirection, selectAutoDjCandidates, selectNextAutoDjTrack, explainAutoDjSelection, readMusicDirection } from "./musicDirector.ts";
 import { parseIntent } from "../voice/intentParser.ts";
 
 const tracks = [
@@ -67,21 +67,15 @@ test("Modo Fiesta continues with available tracks when metadata has no energy la
   assert.equal(selectNextAutoDjTrack(unlabeled, null, [], { goal: "", energy: "up" })?.id, "plain");
 });
 
-test("Auto DJ never drops an explicit genre or vocal-first constraint to fill the queue", () => {
-  assert.deepEqual(
-    selectAutoDjCandidates(tracks, { goal: "noventa", energy: "steady" }).map((track) => track.id),
-    ["90s-a", "90s-b"],
-  );
-  assert.equal(selectNextAutoDjTrack(tracks, null, [], { goal: "jazz", energy: "steady" }), null);
-  assert.equal(
-    selectNextAutoDjTrack(
-      [{ id: "plain", title: "Track One", artist: "Unknown", album: "", importedAt: 1 }],
-      null,
-      [],
-      { goal: "", energy: "steady", vocalFocus: true },
-    ),
+test("Auto DJ keeps the full library available when a request has no literal metadata match", () => {
+  assert.deepEqual(selectAutoDjCandidates(tracks, { goal: "noventa", energy: "steady" }), tracks);
+  assert.ok(selectNextAutoDjTrack(tracks, null, [], { goal: "jazz", energy: "steady" }));
+  assert.ok(selectNextAutoDjTrack(
+    [{ id: "plain", title: "Track One", artist: "Unknown", album: "", importedAt: 1 }],
     null,
-  );
+    [],
+    { goal: "", energy: "steady", vocalFocus: true },
+  ));
 });
 
 test("reads persisted direction and maps voice controls to concrete actions", () => {
@@ -132,5 +126,57 @@ test("Auto DJ does not trust low-confidence BPM/key estimates", () => {
     { id: "first", title: "First", artist: "B", album: "", importedAt: 2, bpm: 94, bpmConfidence: 0.1, musicalKey: "D major", keyConfidence: 0.1 },
     { id: "second", title: "Second", artist: "C", album: "", importedAt: 3, bpm: 122, bpmConfidence: 0.1, musicalKey: "G major", keyConfidence: 0.1 },
   ];
-  assert.equal(selectNextAutoDjTrack(analyzed, "current", [], { goal: "", energy: "steady" })?.id, "first");
+  assert.equal(selectNextAutoDjTrack(analyzed, "current", [], { goal: "", energy: "steady" }, () => 0)?.id, "first");
+});
+
+
+test("Auto DJ uses beat and energy when track names do not match the spoken activity", () => {
+  const library = [
+    { id: "current", title: "Unknown A", artist: "", album: "", importedAt: 1, bpm: 124, bpmConfidence: 0.9, beatStrength: 0.9, energyLevel: 0.8, impactStrength: 0.8 },
+    { id: "slow", title: "Unknown B", artist: "", album: "", importedAt: 2, bpm: 72, bpmConfidence: 0.9, beatStrength: 0.3, energyLevel: 0.25, impactStrength: 0.1 },
+    { id: "fast", title: "Unknown C", artist: "", album: "", importedAt: 3, bpm: 126, bpmConfidence: 0.9, beatStrength: 0.85, energyLevel: 0.82, impactStrength: 0.75 },
+    { id: "medium", title: "Unknown D", artist: "", album: "", importedAt: 4, bpm: 104, bpmConfidence: 0.9, beatStrength: 0.6, energyLevel: 0.55, impactStrength: 0.4 },
+  ];
+  assert.equal(selectNextAutoDjTrack(library, "current", [], { goal: "para brincar", energy: "steady" }, () => 0)?.id, "fast");
+  const relaxedLibrary = [
+    { id: "current-slow", title: "Unknown", artist: "", album: "", importedAt: 1, bpm: 72, bpmConfidence: 0.9, beatStrength: 0.7, energyLevel: 0.3 },
+    { id: "slow", title: "Unknown", artist: "", album: "", importedAt: 2, bpm: 74, bpmConfidence: 0.9, beatStrength: 0.65, energyLevel: 0.25 },
+    { id: "fast", title: "Unknown", artist: "", album: "", importedAt: 3, bpm: 126, bpmConfidence: 0.9, beatStrength: 0.9, energyLevel: 0.85 },
+  ];
+  assert.equal(selectNextAutoDjTrack(relaxedLibrary, "current-slow", [], { goal: "para tomar", energy: "steady" }, () => 0)?.id, "slow");
+});
+
+test("Auto DJ randomizes among close rhythmic matches and never picks the current track", () => {
+  const library = [
+    { id: "current", title: "Current", artist: "", album: "", importedAt: 1, bpm: 120, bpmConfidence: 0.9 },
+    { id: "a", title: "A", artist: "", album: "", importedAt: 2, bpm: 121, bpmConfidence: 0.9 },
+    { id: "b", title: "B", artist: "", album: "", importedAt: 3, bpm: 122, bpmConfidence: 0.9 },
+    { id: "c", title: "C", artist: "", album: "", importedAt: 4, bpm: 160, bpmConfidence: 0.9 },
+  ];
+  assert.equal(selectNextAutoDjTrack(library, "current", [], { goal: "", energy: "steady" }, () => 0)?.id, "a");
+  assert.equal(selectNextAutoDjTrack(library, "current", [], { goal: "", energy: "steady" }, () => 0.99)?.id, "b");
+});
+
+test("Auto DJ starts a new cycle only after all alternatives have played", () => {
+  const library = [
+    { id: "a", title: "A", artist: "", album: "", importedAt: 1 },
+    { id: "b", title: "B", artist: "", album: "", importedAt: 2 },
+    { id: "c", title: "C", artist: "", album: "", importedAt: 3 },
+  ];
+  assert.equal(selectNextAutoDjTrack(library, "a", ["a", "b", "c"], { goal: "", energy: "steady" }, () => 0)?.id, "b");
+  assert.equal(selectNextAutoDjTrack([library[0]], "a", ["a"], { goal: "", energy: "steady" }), null);
+});
+
+
+test("Auto DJ explains the actual rhythmic compatibility and does not invent unavailable analysis", () => {
+  const previous = { id: "previous", title: "Previous", artist: "", album: "", importedAt: 1, bpm: 120, bpmConfidence: 0.9 };
+  const selected = { id: "selected", title: "Selected", artist: "", album: "", importedAt: 2, bpm: 122, bpmConfidence: 0.9, beatStrength: 0.8, energyLevel: 0.75, impactStrength: 0.7 };
+  const explanation = explainAutoDjSelection(previous, selected, { goal: "para brincar", energy: "steady" });
+  assert.match(explanation, /122 BPM/);
+  assert.match(explanation, /120 BPM/);
+  assert.match(explanation, /pulso rítmico/);
+  assert.match(explanation, /ritmo y energía/);
+  const unknown = explainAutoDjSelection(null, { id: "plain", title: "Plain", artist: "", album: "", importedAt: 3 }, { goal: "", energy: "steady" });
+  assert.match(unknown, /al azar/);
+  assert.doesNotMatch(unknown, /BPM|tonalidad|drop/i);
 });

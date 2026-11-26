@@ -33,8 +33,8 @@ test("tempo scoring accepts close tempos and half/double-time matches", () => {
 });
 
 test("tempo analysis returns no fabricated BPM for silence or short clips", () => {
-  assert.deepEqual(estimateBpmFromSamples(new Float32Array(44100), 44100), { bpm: null, confidence: 0 });
-  assert.deepEqual(estimateBpmFromSamples(new Float32Array(44100 * 4), 44100), { bpm: null, confidence: 0 });
+  assert.deepEqual(estimateBpmFromSamples(new Float32Array(44100), 44100), { bpm: null, confidence: 0, beatStrength: 0 });
+  assert.deepEqual(estimateBpmFromSamples(new Float32Array(44100 * 4), 44100), { bpm: null, confidence: 0, beatStrength: 0 });
 });
 
 test("key analysis returns no fabricated key for silence", () => {
@@ -48,6 +48,9 @@ test("decoded analysis records a timestamp and only emits detected values", () =
   if ("musicalKey" in result) assert.ok(typeof result.musicalKey === "string");
   if ("bpmConfidence" in result) assert.ok(result.bpmConfidence >= 0 && result.bpmConfidence <= 1);
   if ("keyConfidence" in result) assert.ok(result.keyConfidence >= 0 && result.keyConfidence <= 1);
+  assert.ok(result.beatStrength !== undefined && result.beatStrength >= 0 && result.beatStrength <= 1);
+  assert.ok(result.energyLevel !== undefined && result.energyLevel >= 0 && result.energyLevel <= 1);
+  assert.ok(result.impactStrength !== undefined && result.impactStrength >= 0 && result.impactStrength <= 1);
 });
 
 
@@ -67,4 +70,5 @@ test("tempo analysis estimates a regular 120 BPM pulse train", () => {
   assert.ok(result.bpm !== null);
   assert.ok(Math.abs(result.bpm - 120) <= 2, `expected around 120 BPM, received ${result.bpm}`);
   assert.ok(result.confidence > 0.25);
+  assert.ok(result.beatStrength > 0.04);
 });

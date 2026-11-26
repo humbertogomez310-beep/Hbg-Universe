@@ -192,6 +192,11 @@ export async function executeVoiceAction(action: VoiceAction): Promise<string> {
         : res.error ?? "No se pudo cambiar Modo Fiesta PRO.";
     }
 
+    case "WHY_TRACK": {
+      const reason = hbgCore.getContext<string>("music.currentTrackReason");
+      return reason ?? "Todavía no tengo una explicación guardada para esta selección. Si Auto DJ está activo, puedo explicar la siguiente pista según su ritmo y energía.";
+    }
+
     case "NOW_PLAYING": {
       const track = hbgCore.getContext<{ title?: string; artist?: string }>("music.currentTrack");
       if (!track) return "No hay una canción seleccionada en VIBRA.";

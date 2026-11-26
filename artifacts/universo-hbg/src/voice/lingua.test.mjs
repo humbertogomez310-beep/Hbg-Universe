@@ -114,4 +114,19 @@ test("HBG LINGUA preserves user direction when asking for more energy or singing
     type: "SET_DIRECTION",
     text: "Pon música viejita",
   });
+  assert.deepEqual(interpretUtterance("Pon música para brincar").action, {
+    type: "SET_DIRECTION",
+    text: "Pon música para brincar",
+  });
+  assert.deepEqual(interpretUtterance("Pon música para tomar").action, {
+    type: "SET_DIRECTION",
+    text: "Pon música para tomar",
+  });
+});
+
+
+test("HBG LINGUA recognizes questions about why Auto DJ selected a track", () => {
+  for (const phrase of ["¿Por qué esta canción?", "¿Por qué pone esa canción?", "¿Por qué puso esa canción?", "¿Por qué eligió esta pista?"]) {
+    assert.deepEqual(interpretUtterance(phrase).action, { type: "WHY_TRACK" });
+  }
 });
