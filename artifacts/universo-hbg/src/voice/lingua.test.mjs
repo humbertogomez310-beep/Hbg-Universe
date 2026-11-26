@@ -115,3 +115,10 @@ test("HBG LINGUA preserves user direction when asking for more energy or singing
     text: "Pon música viejita",
   });
 });
+
+
+test("HBG LINGUA recognizes questions about why Auto DJ selected a track", () => {
+  for (const phrase of ["¿Por qué esta canción?", "¿Por qué puso esa canción?", "¿Por qué eligió esta pista?"]) {
+    assert.deepEqual(interpretUtterance(phrase).action, { type: "WHY_TRACK" });
+  }
+});
