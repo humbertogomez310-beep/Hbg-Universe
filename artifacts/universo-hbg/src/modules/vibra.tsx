@@ -284,6 +284,7 @@ export function VibraModule() {
   const [autoDjSeekStep, setAutoDjSeekStep] = useState<5 | 10>(5);
   const [analysisRevision, setAnalysisRevision] = useState(0);
   const [libraryScanStatus, setLibraryScanStatus] = useState<"idle" | "running" | "pausing" | "paused" | "completed">("idle");
+  const [deviceScanStatus, setDeviceScanStatus] = useState<string | null>(null);
   const [libraryScanProgress, setLibraryScanProgress] = useState({ processed: 0, total: 0, failed: 0, currentTitle: "" });
   const libraryScanQueueRef = useRef<string[]>([]);
   const libraryScanCheckpointRef = useRef<LibraryScanCheckpoint | null>(null);
@@ -315,6 +316,7 @@ export function VibraModule() {
   const [audioAnalyser, setAudioAnalyser] = useState<AnalyserNode | null>(null);
   const currentUrlRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const deviceScanFileInputRef = useRef<HTMLInputElement>(null);
   const progressRafRef = useRef<number | null>(null);
   const loadGenerationRef = useRef(0);
   const manualSelectionGenerationRef = useRef(0);
@@ -1802,6 +1804,113 @@ export function VibraModule() {
     libraryScanPauseRequestedRef.current = true;
     setLibraryScanStatus("pausing");
   };
+  const handleDeviceScan = async (files: FileList | null) => {
+    if (!files || files.length === 0 || deviceScanStatus === "ESCANEANDO") return;
+    setDeviceScanStatus("ESCANEANDO");
+    let imported = 0;
+    let duplicates = 0;
+    let shortFiles = 0;
+    let failed = 0;
+    let unsupported = 0;
+    const knownTracks = [...tracksRef.current];
+    const maxHashBytes = 32 * 1024 * 1024;
+
+    const hashBlob = async (blob: Blob): Promise<string | null> => {
+      if (!globalThis.crypto?.subtle || blob.size > maxHashBytes) return null;
+      const bytes = await blob.arrayBuffer();
+      const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+      return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+    };
+
+    try {
+      for (const file of Array.from(files)) {
+        try {
+          if (!/\.(mp3|wav|ogg|flac|aac|m4a)$/i.test(file.name)) {
+            unsupported++;
+            continue;
+          }
+
+          const duration = await getAudioDuration(file);
+          if (!Number.isFinite(duration) || duration < 60) {
+            shortFiles++;
+            continue;
+          }
+
+          const parsed = parseFilename(file.name);
+          const normalizedTitle = normalizeMusicText(parsed.title);
+          const normalizedArtist = normalizeMusicText(parsed.artist);
+          const candidates = knownTracks.filter((track) =>
+            track.size === file.size &&
+            Math.abs(track.duration - duration) <= 1.25 &&
+            normalizeMusicText(track.title) === normalizedTitle &&
+            normalizeMusicText(track.artist) === normalizedArtist
+          );
+
+          let contentHash: string | null = null;
+          if (candidates.length > 0) {
+            contentHash = await hashBlob(file);
+            if (contentHash) {
+              let exactDuplicate = false;
+              for (const candidate of candidates) {
+                let existingHash = candidate.contentHash ?? null;
+                if (!existingHash) {
+                  const existingBlob = await getAudioBlob(candidate.id);
+                  if (existingBlob) existingHash = await hashBlob(existingBlob);
+                  if (existingHash) {
+                    const enriched = { ...candidate, contentHash: existingHash };
+                    await saveTrackMeta(enriched);
+                    const knownIndex = knownTracks.findIndex((track) => track.id === candidate.id);
+                    if (knownIndex >= 0) knownTracks[knownIndex] = enriched;
+                    setTracks((previous) => previous.map((track) => track.id === candidate.id ? enriched : track));
+                  }
+                }
+                if (existingHash && existingHash === contentHash) {
+                  exactDuplicate = true;
+                  break;
+                }
+              }
+              if (exactDuplicate) {
+                duplicates++;
+                continue;
+              }
+            }
+          } else {
+            contentHash = await hashBlob(file);
+          }
+
+          const id = "track_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+          const meta: TrackMeta = {
+            id,
+            title: parsed.title,
+            artist: parsed.artist,
+            album: "",
+            duration,
+            size: file.size,
+            type: file.type || "audio/mpeg",
+            importedAt: Date.now(),
+            ...(contentHash ? { contentHash } : {}),
+          };
+          await saveAudioBlob(id, file);
+          await saveTrackMeta(meta);
+          knownTracks.push(meta);
+          setTracks((previous) => [...previous, meta]);
+          imported++;
+          if (!currentIdRef.current) {
+            setCurrentId(id);
+            void loadTrackRef.current(id, false);
+          }
+        } catch {
+          failed++;
+        }
+      }
+    } finally {
+      setDeviceScanStatus(
+        "ESCANEO TERMINADO · " + imported + " NUEVAS · " + duplicates + " DUPLICADAS · " +
+        shortFiles + " CORTAS (<60 S) · " + unsupported + " NO COMPATIBLES · " + failed + " ERRORES"
+      );
+    }
+  };
+
   const handleImport = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     setImporting(true);
@@ -2140,6 +2249,16 @@ export function VibraModule() {
         </section>
       )}
 
+      {/* Manual file selection only: the PWA cannot silently traverse Android MediaStore. */}
+      <input
+        ref={deviceScanFileInputRef}
+        type="file"
+        accept=".mp3,.wav,.ogg,.flac,.aac,.m4a,audio/*"
+        multiple
+        style={{ display: "none" }}
+        onChange={(event) => { void handleDeviceScan(event.target.files); }}
+        onClick={(event) => { (event.target as HTMLInputElement).value = ""; }}
+      />
       {/* Hidden file input */}
       <input
         ref={fileInputRef}
@@ -2319,10 +2438,23 @@ export function VibraModule() {
               {libraryScanProgress.processed} / {libraryScanProgress.total} canciones · {libraryScanProgress.failed} errores
             </div>
           </div>
+          <div className="hbg-card" style={{ marginTop: 10, border: "1px solid var(--border-dim)" }}>
+            <div style={{ fontFamily: "var(--font-display)", fontSize: 12, fontWeight: 700 }}>ESCANEAR DISPOSITIVO</div>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.6 }}>
+              Selecciona manualmente los archivos de audio. VIBRA filtra archivos de menos de 60 segundos, compara coincidencias exactas disponibles y solo incorpora canciones nuevas. No accede silenciosamente a toda la memoria del teléfono.
+            </div>
+            <button type="button" className="hbg-btn hbg-btn-primary" style={{ marginTop: 10 }} onClick={() => deviceScanFileInputRef.current?.click()} disabled={deviceScanStatus === "ESCANEANDO"}>
+              {deviceScanStatus === "ESCANEANDO" ? "◎ ESCANEANDO..." : "⌕ SELECCIONAR Y ESCANEAR ARCHIVOS"}
+            </button>
+            {deviceScanStatus && <div aria-live="polite" style={{ marginTop: 9, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-secondary)" }}>{deviceScanStatus}</div>}
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginTop: 7 }}>
+              La verificación SHA-256 se realiza secuencialmente para archivos de hasta 32 MB. Archivos mayores se importan sin hash para evitar picos grandes de memoria; podrán revisarse en el escaneo de duplicados.
+            </div>
+          </div>
           <div className="hbg-card" style={{ marginTop: 10, opacity: 0.75 }}>
-            <div style={{ fontFamily: "var(--font-display)", fontSize: 11, fontWeight: 700 }}>ESCANEAR DISPOSITIVO Y DUPLICADOS</div>
+            <div style={{ fontFamily: "var(--font-display)", fontSize: 11, fontWeight: 700 }}>ESCANEAR DUPLICADOS</div>
             <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginTop: 5 }}>
-              Estas dos operaciones se incorporarán en sus módulos propios. Todavía no se ejecutan desde esta pantalla.
+              La revisión global de duplicados, huella acústica y selección manual para conservar o eliminar copias sigue pendiente.
             </div>
           </div>
         </section>
