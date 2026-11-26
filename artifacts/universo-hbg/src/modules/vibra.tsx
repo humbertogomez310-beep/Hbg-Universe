@@ -1447,7 +1447,7 @@ export function VibraModule() {
           </div>
 
           <p className="vibra-dj-footnote">
-            El visualizador refleja el audio real cuando Web Audio está disponible. La selección DJ trabaja con tu biblioteca local y sus metadatos actuales; no simula BPM, mezcla entre pistas ni análisis ambiental.
+            El análisis local estima BPM y tonalidad cuando el navegador puede decodificar el archivo. La mezcla entre decks aún no está conectada al reproductor; no hay beatmatching ni análisis ambiental activo.
           </p>
         </section>
       )}
