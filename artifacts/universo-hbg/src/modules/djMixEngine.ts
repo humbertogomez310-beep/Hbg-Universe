@@ -50,8 +50,10 @@ export class VibraDjMixEngine {
   private transitionTimer: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;
   private masterVolume = 1;
+  private readonly context: AudioContext;
 
-  constructor(private readonly context: AudioContext) {
+  constructor(context: AudioContext) {
+    this.context = context;
     this.masterBus = context.createGain();
     this.musicBus = context.createGain();
     this.voiceBus = context.createGain();
