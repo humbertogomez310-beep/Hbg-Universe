@@ -323,6 +323,7 @@ export function VibraModule() {
         engine.clearPreparedNext();
         djPreparedTrackIdRef.current = null;
       }
+      setDjMixStatus("standby");
       return;
     }
 
@@ -341,7 +342,8 @@ export function VibraModule() {
       djCrossfadeStartedRef.current = true;
       setDjMixStatus("mixing");
       const outgoingId = currentIdRef.current;
-      void engine.crossfadeToNext(fadeSeconds * 1000).then((started) => {
+      const transitionSeconds = Math.max(0.5, Math.min(fadeSeconds, remaining));
+      void engine.crossfadeToNext(transitionSeconds * 1000).then((started) => {
         if (!started) {
           djCrossfadeStartedRef.current = false;
           engine.clearPreparedNext();
@@ -362,7 +364,7 @@ export function VibraModule() {
         if (outgoingId !== currentIdRef.current) setIsPlaying(true);
         window.setTimeout(() => {
           if (!engine.isTransitioning && djTransitionEnabledRef.current) setDjMixStatus("standby");
-        }, fadeSeconds * 1000 + 120);
+        }, transitionSeconds * 1000 + 120);
       });
       return;
     }
@@ -990,6 +992,7 @@ export function VibraModule() {
         djPreparedTrackIdRef.current = null;
         djPreparingTrackIdRef.current = null;
         djCrossfadeStartedRef.current = false;
+        setDjMixStatus("standby");
       } else audioRef.current?.pause();
     },
     next: () => { void nextTrack(); },
