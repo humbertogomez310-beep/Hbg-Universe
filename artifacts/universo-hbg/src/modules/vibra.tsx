@@ -54,6 +54,13 @@ interface LibraryScanCheckpoint {
   updatedAt: number;
 }
 
+interface DuplicateGroup {
+  id: string;
+  trackIds: string[];
+  kind: "exact" | "probable";
+  reason: string;
+}
+
 const LIBRARY_SCAN_CHECKPOINT_KEY = "library_scan_checkpoint";
 
 const STORAGE_KEYS = {
@@ -285,6 +292,9 @@ export function VibraModule() {
   const [analysisRevision, setAnalysisRevision] = useState(0);
   const [libraryScanStatus, setLibraryScanStatus] = useState<"idle" | "running" | "pausing" | "paused" | "completed">("idle");
   const [deviceScanStatus, setDeviceScanStatus] = useState<string | null>(null);
+  const [duplicateScanStatus, setDuplicateScanStatus] = useState<"idle" | "running" | "completed">("idle");
+  const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
+  const [duplicateKeepIds, setDuplicateKeepIds] = useState<Record<string, string>>({});
   const [libraryScanProgress, setLibraryScanProgress] = useState({ processed: 0, total: 0, failed: 0, currentTitle: "" });
   const libraryScanQueueRef = useRef<string[]>([]);
   const libraryScanCheckpointRef = useRef<LibraryScanCheckpoint | null>(null);
@@ -1804,6 +1814,77 @@ export function VibraModule() {
     libraryScanPauseRequestedRef.current = true;
     setLibraryScanStatus("pausing");
   };
+  const scanLibraryDuplicates = async () => {
+    if (duplicateScanStatus === "running") return;
+    setDuplicateScanStatus("running");
+    setDuplicateGroups([]);
+    const snapshot = [...tracksRef.current];
+    const exactGroups = new Map<string, string[]>();
+    const probableGroups = new Map<string, string[]>();
+    const maxHashBytes = 32 * 1024 * 1024;
+
+    const hashBlob = async (blob: Blob): Promise<string | null> => {
+      if (!globalThis.crypto?.subtle || blob.size > maxHashBytes) return null;
+      const bytes = await blob.arrayBuffer();
+      const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+      return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+    };
+
+    try {
+      for (const track of snapshot) {
+        const title = normalizeMusicText(track.title);
+        const artist = normalizeMusicText(track.artist);
+        const durationBucket = Math.round(track.duration / 3);
+        const probableKey = [title, artist, durationBucket].join("|");
+        const probable = probableGroups.get(probableKey) ?? [];
+        probable.push(track.id);
+        probableGroups.set(probableKey, probable);
+
+        let contentHash = track.contentHash ?? null;
+        if (!contentHash && track.size <= maxHashBytes) {
+          const blob = await getAudioBlob(track.id);
+          if (blob) contentHash = await hashBlob(blob);
+          if (contentHash) {
+            const enriched = { ...track, contentHash };
+            await saveTrackMeta(enriched);
+            setTracks((previous) => previous.map((item) => item.id === track.id ? enriched : item));
+          }
+        }
+        if (contentHash) {
+          const exact = exactGroups.get(contentHash) ?? [];
+          exact.push(track.id);
+          exactGroups.set(contentHash, exact);
+        }
+      }
+
+      const byIds = new Map<string, DuplicateGroup>();
+      const addGroup = (ids: string[], kind: "exact" | "probable", reason: string) => {
+        if (ids.length < 2) return;
+        const ordered = [...ids].sort((a, b) => {
+          const left = snapshot.find((track) => track.id === a)?.importedAt ?? 0;
+          const right = snapshot.find((track) => track.id === b)?.importedAt ?? 0;
+          return left - right;
+        });
+        const key = [...ordered].sort().join("|");
+        const previous = byIds.get(key);
+        if (!previous || kind === "exact") {
+          byIds.set(key, { id: key, trackIds: ordered, kind, reason });
+        }
+      };
+
+      for (const ids of exactGroups.values()) addGroup(ids, "exact", "SHA-256 idéntico: los bytes de audio son iguales.");
+      for (const ids of probableGroups.values()) addGroup(ids, "probable", "Coinciden título, artista y duración aproximada; requiere revisión humana.");
+
+      const groups = [...byIds.values()];
+      setDuplicateGroups(groups);
+      setDuplicateKeepIds(Object.fromEntries(groups.map((group) => [group.id, group.trackIds[0]])));
+      setDuplicateScanStatus("completed");
+    } catch (cause) {
+      setError(cause instanceof Error ? "Falló el escaneo de duplicados: " + cause.message : "Falló el escaneo de duplicados.");
+      setDuplicateScanStatus("idle");
+    }
+  };
+
   const handleDeviceScan = async (files: FileList | null) => {
     if (!files || files.length === 0 || deviceScanStatus === "ESCANEANDO") return;
     setDeviceScanStatus("ESCANEANDO");
