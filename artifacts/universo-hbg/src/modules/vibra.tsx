@@ -562,8 +562,8 @@ export function VibraModule() {
       setSavedAutoDjSession({
         ...saved,
         currentTime: Math.max(0, saved.currentTime),
-        queueIds: saved.queueIds.filter((id): id is string => typeof id === "string"),
-        recentTrackIds: saved.recentTrackIds.filter((id): id is string).slice(0, 5000),
+        queueIds: saved.queueIds.filter((id) => typeof id === "string") as string[],
+        recentTrackIds: saved.recentTrackIds.filter((id) => typeof id === "string").slice(0, 5000) as string[],
         wasPlaying: false,
       });
     }).catch(() => undefined);
