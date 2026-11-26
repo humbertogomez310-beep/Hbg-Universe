@@ -1,18 +1,21 @@
 
-import { useState, useEffect, type ReactNode } from "react";
+import { lazy, Suspense, useState, useEffect, type ReactNode } from "react";
 import { hbgCore, type ModuleId } from "../core/hbgCore";
 import { ownerSession, useOwnerSession } from "../core/ownerSession";
 import { Sidebar } from "./Sidebar";
-import { OwnerGate } from "./OwnerGate";
 import { useLogoGesture } from "./useLogoGesture";
 import { UniversoLanding } from "../components/UniversoLanding";
-import { InstintoModule } from "../modules/instinto";
-import { VibraModule } from "../modules/vibra";
-import { TerminadorModule } from "../modules/terminador";
-import { TerminadorAppsSection } from "../modules/terminador-apps";
-import { VoiceCommandBar } from "../voice/VoiceCommandBar";
 import { PWAInstallButton } from "../components/PWAInstallButton";
 import { PWAUpdateButton } from "../components/PWAUpdateButton";
+
+// Cada aplicación se descarga solo cuando el usuario la abre.
+// VIBRA se conserva montada después de la primera apertura para no interrumpir audio.
+const LazyOwnerGate = lazy(() => import("./OwnerGate").then((module) => ({ default: module.OwnerGate })));
+const LazyInstintoModule = lazy(() => import("../modules/instinto").then((module) => ({ default: module.InstintoModule })));
+const LazyVibraModule = lazy(() => import("../modules/vibra").then((module) => ({ default: module.VibraModule })));
+const LazyTerminadorModule = lazy(() => import("../modules/terminador").then((module) => ({ default: module.TerminadorModule })));
+const LazyTerminadorAppsSection = lazy(() => import("../modules/terminador-apps").then((module) => ({ default: module.TerminadorAppsSection })));
+const LazyVoiceCommandBar = lazy(() => import("../voice/VoiceCommandBar").then((module) => ({ default: module.VoiceCommandBar })));
 
 // Detección responsive compartida por escritorio y móvil.
 function useIsMobile(): boolean {
@@ -80,13 +83,23 @@ function ModulePanel({
 
   const panels: Record<ModuleId, ReactNode> = {
     universo: <UniversoLanding onSelect={onSelect} />,
-    instinto: <div className="hbg-app-experience hbg-app-experience-instinto"><InstintoModule /></div>,
-    vibra: <div className="hbg-app-experience hbg-app-experience-vibra"><VibraModule /></div>,
+    instinto: (
+      <Suspense fallback={<div className="hbg-card">CARGANDO INSTINTO…</div>}>
+        <div className="hbg-app-experience hbg-app-experience-instinto"><LazyInstintoModule /></div>
+      </Suspense>
+    ),
+    vibra: (
+      <Suspense fallback={<div className="hbg-card">CARGANDO VIBRA…</div>}>
+        <div className="hbg-app-experience hbg-app-experience-vibra"><LazyVibraModule /></div>
+      </Suspense>
+    ),
     terminador: (
-      <>
-        <TerminadorAppsSection />
-        <TerminadorModule />
-      </>
+      <Suspense fallback={<div className="hbg-card">CARGANDO TERMINADOR…</div>}>
+        <>
+          <LazyTerminadorAppsSection />
+          <LazyTerminadorModule />
+        </>
+      </Suspense>
     ),
   };
 
@@ -102,6 +115,7 @@ export function Shell() {
     hbgCore.init();
     return hbgCore.getModule();
   });
+  const [vibraMounted, setVibraMounted] = useState(() => hbgCore.getModule() === "vibra");
 
   const [showOwnerGate, setShowOwnerGate] = useState(false);
   const [showMenu, setShowMenu] = useState(true);
@@ -116,6 +130,10 @@ export function Shell() {
 
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    if (activeModule === "vibra") setVibraMounted(true);
+  }, [activeModule]);
 
   useEffect(() => {
     void ownerSession.checkSession();
@@ -221,17 +239,21 @@ export function Shell() {
           <div className="hbg-panel">
 
             {/* VIBRA permanece montada incluso cuando se abre el menú móvil. */}
-            <div
-              className="hbg-app-experience hbg-app-experience-vibra"
-              style={{
-                display:
-                  activeModule === "vibra" && !(isMobile && showMenu)
-                    ? "block"
-                    : "none",
-              }}
-            >
-              <VibraModule />
-            </div>
+            {vibraMounted && (
+              <div
+                className="hbg-app-experience hbg-app-experience-vibra"
+                style={{
+                  display:
+                    activeModule === "vibra" && !(isMobile && showMenu)
+                      ? "block"
+                      : "none",
+                }}
+              >
+                <Suspense fallback={<div className="hbg-card">CARGANDO VIBRA…</div>}>
+                  <LazyVibraModule />
+                </Suspense>
+              </div>
+            )}
 
             {isMobile && showMenu ? (
               <UniversoLanding onSelect={selectModule} />
@@ -248,17 +270,21 @@ export function Shell() {
         </main>
       </div>
 
-      <VoiceCommandBar accentColor={config.color} />
+      <Suspense fallback={null}>
+        <LazyVoiceCommandBar accentColor={config.color} />
+      </Suspense>
 
       {showOwnerGate && (
-        <OwnerGate
-          onClose={() => setShowOwnerGate(false)}
-          onSuccess={() => {
-            setShowOwnerGate(false);
-            hbgCore.setModule("terminador");
-            setShowMenu(false);
-          }}
-        />
+        <Suspense fallback={<div className="hbg-card">VERIFICANDO ACCESO…</div>}>
+          <LazyOwnerGate
+            onClose={() => setShowOwnerGate(false)}
+            onSuccess={() => {
+              setShowOwnerGate(false);
+              hbgCore.setModule("terminador");
+              setShowMenu(false);
+            }}
+          />
+        </Suspense>
       )}
     </>
   );
