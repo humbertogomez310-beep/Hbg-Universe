@@ -9,16 +9,24 @@ test("DJ VIBRA has its own navigation view", () => {
   assert.match(source, /\{ id: "dj", label: "DJ VIBRA" \}/);
 });
 
-test("musical direction and Auto DJ controls are isolated to DJ VIBRA", () => {
-  const panelIndex = source.indexOf('aria-label="Dirección musical"');
+test("Auto DJ and Fiesta PRO share one DJ console", () => {
+  const panelIndex = source.indexOf('aria-label="Consola DJ VIBRA"');
   const djGateIndex = source.lastIndexOf('{view === "dj" && (', panelIndex);
   const panelCloseIndex = source.indexOf("</section>", panelIndex);
   const gateCloseIndex = source.indexOf("      )}", panelCloseIndex);
   const playerIndex = source.indexOf('{/* PLAYER */}');
-  assert.ok(panelIndex >= 0, "direction panel exists");
-  assert.ok(djGateIndex >= 0 && djGateIndex < panelIndex, "direction panel is gated by DJ view");
-  assert.ok(panelCloseIndex > panelIndex && gateCloseIndex > panelCloseIndex, "DJ panel closes inside its conditional");
-  assert.ok(gateCloseIndex < playerIndex, "DJ panel closes before player view");
+  assert.ok(panelIndex >= 0, "unified DJ console exists");
+  assert.ok(djGateIndex >= 0 && djGateIndex < panelIndex, "console is gated by DJ view");
+  assert.ok(panelCloseIndex > panelIndex && gateCloseIndex > panelCloseIndex, "console closes inside its conditional");
+  assert.ok(gateCloseIndex < playerIndex, "console closes before player view");
+  assert.match(source, /AUTO DJ/);
+  assert.match(source, /FIESTA PRO/);
+  assert.match(source, /<VisualizerBars active=\{isPlaying\}/);
+});
+
+test("voice and HBG Core activation open the shared DJ console", () => {
+  assert.match(source, /registerAction\("music\.autoDj"[\s\S]*?if \(enabled\) setView\("dj"\)/);
+  assert.match(source, /registerAction\("music\.party"[\s\S]*?setView\("dj"\)/);
 });
 
 test("other VIBRA screens retain compact playback controls", () => {

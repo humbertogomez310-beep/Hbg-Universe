@@ -1,4 +1,5 @@
 import type { TrackMeta } from "../core/vibraDB";
+import { scoreHarmonicCompatibility, scoreTempoCompatibility } from "./djAudioAnalysis.ts";
 
 export interface MusicDirection {
   goal: string;
@@ -184,8 +185,26 @@ export function selectNextAutoDjTrack(
     tracks.filter((track) => track.id !== currentId),
     direction,
   );
-  const notRecentlyPlayed = candidates.filter((track) => !recentTrackIds.includes(track.id));
-  return notRecentlyPlayed[0] ?? candidates[0] ?? null;
+  const currentTrack = tracks.find((track) => track.id === currentId) ?? null;
+  const ranked = candidates
+    .map((track, index) => {
+      let compatibility = 0;
+      if (
+        currentTrack?.bpm && track.bpm &&
+        (currentTrack.bpmConfidence ?? 0) >= 0.25 &&
+        (track.bpmConfidence ?? 0) >= 0.25
+      ) compatibility += scoreTempoCompatibility(currentTrack.bpm, track.bpm) * 12;
+      if (
+        currentTrack?.musicalKey && track.musicalKey &&
+        (currentTrack.keyConfidence ?? 0) >= 0.25 &&
+        (track.keyConfidence ?? 0) >= 0.25
+      ) compatibility += scoreHarmonicCompatibility(currentTrack.musicalKey, track.musicalKey) * 10;
+      return { track, index, compatibility };
+    })
+    .sort((left, right) => right.compatibility - left.compatibility || left.index - right.index)
+    .map(({ track }) => track);
+  const notRecentlyPlayed = ranked.filter((track) => !recentTrackIds.includes(track.id));
+  return notRecentlyPlayed[0] ?? ranked[0] ?? null;
 }
 
 export function readMusicDirection(storage: Storage): MusicDirection {

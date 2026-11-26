@@ -19,10 +19,11 @@ import {
   normalizeMusicText,
   readMusicDirection,
   selectTracksForDirection,
-  selectAutoDjCandidates,
   selectNextAutoDjTrack,
   type MusicDirection,
 } from "./musicDirector";
+import { analyzeAudioBlob } from "./djAudioAnalysis";
+import { VibraDjMixEngine } from "./djMixEngine";
 import {
   selectNextPlaybackId,
   selectPreviousPlaybackId,
@@ -154,6 +155,14 @@ const MOODS: { mode: MoodMode; label: string; color: string; bpm: [number, numbe
 const EQ_BANDS = ["60Hz", "170Hz", "310Hz", "600Hz", "1kHz", "3kHz", "6kHz", "12kHz", "14kHz", "16kHz"];
 const EQ_FREQUENCIES = [60, 170, 310, 600, 1000, 3000, 6000, 12000, 14000, 16000];
 
+function formatDjAnalysis(track: TrackMeta | null): string {
+  if (!track) return "SIN DATOS DE ANÁLISIS";
+  const facts: string[] = [];
+  if (track.bpm && (track.bpmConfidence ?? 0) >= 0.25) facts.push(`${Math.round(track.bpm)} BPM`);
+  if (track.musicalKey && (track.keyConfidence ?? 0) >= 0.25) facts.push(track.musicalKey.toUpperCase());
+  return facts.length ? facts.join(" · ") : "ANÁLISIS NO DISPONIBLE";
+}
+
 function VisualizerBars({ active, color, analyser }: { active: boolean; color: string; analyser: AnalyserNode | null }) {
   const [heights, setHeights] = useState<number[]>(() => Array(24).fill(4));
   useEffect(() => {
@@ -210,6 +219,7 @@ export function VibraModule() {
   const [tracks, setTracks] = useState<TrackMeta[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(readStoredTrackId);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [djMixStatus, setDjMixStatus] = useState<"standby" | "preloading" | "ready" | "mixing">("standby");
   const [progress, setProgress] = useState(0); // 0–1
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -239,10 +249,17 @@ export function VibraModule() {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const djMixEngineRef = useRef<VibraDjMixEngine | null>(null);
+  const djPreparedTrackIdRef = useRef<string | null>(null);
+  const djPreparingTrackIdRef = useRef<string | null>(null);
+  const djCrossfadeStartedRef = useRef(false);
+  const plannedNextTrackRef = useRef<TrackMeta | null>(null);
+  const djTransitionEnabledRef = useRef(autoDjEnabled || partyMode);
+  const djTransitionCheckRef = useRef<(audio: HTMLAudioElement) => void>(() => undefined);
   const playbackGainRef = useRef<GainNode | null>(null);
   const volumeRef = useRef(volume);
   const playbackPositionRef = useRef(0);
-  const voicePlaybackSnapshotRef = useRef<{ wasPlaying: boolean; currentTime: number } | null>(null);
+  const voicePlaybackSnapshotRef = useRef<{ wasPlaying: boolean; currentTime: number; audio: HTMLAudioElement | null } | null>(null);
   const equalizerFiltersRef = useRef<BiquadFilterNode[]>([]);
   const [audioAnalyser, setAudioAnalyser] = useState<AnalyserNode | null>(null);
   const currentUrlRef = useRef<string | null>(null);
@@ -273,10 +290,13 @@ export function VibraModule() {
     const effectiveVolume = calculateEffectiveAudioVolume(volumeRef.current, factor);
     const gain = playbackGainRef.current;
     const context = audioContextRef.current;
+    const engine = djMixEngineRef.current;
     if (gain && context && context.state !== "closed") {
       const now = context.currentTime;
+      // Duck only the music branch; the master fader controls music, DJ voice and FX.
       gain.gain.cancelScheduledValues(now);
-      gain.gain.setTargetAtTime(effectiveVolume, now, 0.04);
+      gain.gain.setTargetAtTime(factor, now, 0.04);
+      engine?.setMasterVolume(volumeRef.current / 100);
       if (audioRef.current) audioRef.current.volume = 1;
       return;
     }
@@ -286,6 +306,111 @@ export function VibraModule() {
   const mood = MOODS.find((m) => m.mode === activeMode)!;
   const currentTrack = tracks.find((t) => t.id === currentId) ?? null;
   const plannedNextTrack = selectNextAutoDjTrack(tracks, currentId, recentTrackIds, musicDirection);
+  plannedNextTrackRef.current = plannedNextTrack;
+  djTransitionEnabledRef.current = (autoDjEnabled || partyMode) && repeatMode !== "one";
+
+  djTransitionCheckRef.current = (audio) => {
+    const engine = djMixEngineRef.current;
+    const candidate = plannedNextTrackRef.current;
+    if (!engine || !djTransitionEnabledRef.current || activeSequenceRef.current || audio !== engine.activeAudio || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
+
+    if (!engine.isTransitioning && djCrossfadeStartedRef.current) {
+      djCrossfadeStartedRef.current = false;
+      djPreparedTrackIdRef.current = null;
+    }
+    if (!candidate || candidate.id === currentIdRef.current) {
+      if (djPreparedTrackIdRef.current) {
+        engine.clearPreparedNext();
+        djPreparedTrackIdRef.current = null;
+      }
+      setDjMixStatus("standby");
+      return;
+    }
+
+    if (djPreparedTrackIdRef.current && djPreparedTrackIdRef.current !== candidate.id) {
+      engine.clearPreparedNext();
+      djPreparedTrackIdRef.current = null;
+    }
+    const fadeSeconds = Math.min(8, Math.max(1.5, audio.duration * 0.15));
+    const remaining = audio.duration - audio.currentTime;
+
+    if (
+      remaining <= fadeSeconds &&
+      djPreparedTrackIdRef.current === candidate.id &&
+      !djCrossfadeStartedRef.current
+    ) {
+      djCrossfadeStartedRef.current = true;
+      setDjMixStatus("mixing");
+      const outgoingId = currentIdRef.current;
+      const transitionSeconds = Math.max(0.5, Math.min(fadeSeconds, remaining));
+      void engine.crossfadeToNext(transitionSeconds * 1000).then((started) => {
+        if (!started) {
+          djCrossfadeStartedRef.current = false;
+          engine.clearPreparedNext();
+          djPreparedTrackIdRef.current = null;
+          setDjMixStatus("standby");
+          return;
+        }
+        audioRef.current = engine.activeAudio;
+        currentIdRef.current = candidate.id;
+        setCurrentId(candidate.id);
+        setRecentTrackIds((previous) => [candidate.id, ...previous.filter((id) => id !== candidate.id)].slice(0, 20));
+        hbgCore.setContext("music.currentTrack", candidate);
+        playbackPositionRef.current = engine.activeAudio.currentTime || 0;
+        setCurrentTime(engine.activeAudio.currentTime || 0);
+        setDuration(engine.activeAudio.duration || candidate.duration || 0);
+        setProgress(0);
+        djPreparedTrackIdRef.current = null;
+        if (outgoingId !== currentIdRef.current) setIsPlaying(true);
+        window.setTimeout(() => {
+          if (!engine.isTransitioning && djTransitionEnabledRef.current) setDjMixStatus("standby");
+        }, transitionSeconds * 1000 + 120);
+      });
+      return;
+    }
+
+    if (
+      remaining <= fadeSeconds + 18 &&
+      !djPreparedTrackIdRef.current &&
+      djPreparingTrackIdRef.current !== candidate.id
+    ) {
+      djPreparingTrackIdRef.current = candidate.id;
+      setDjMixStatus("preloading");
+      void (async () => {
+        try {
+          const blob = await getAudioBlob(candidate.id);
+          if (
+            !blob ||
+            !djTransitionEnabledRef.current ||
+            plannedNextTrackRef.current?.id !== candidate.id ||
+            currentIdRef.current === candidate.id
+          ) return;
+          const ready = await engine.prepareNext(blob);
+          if (ready && plannedNextTrackRef.current?.id === candidate.id && djTransitionEnabledRef.current) {
+            djPreparedTrackIdRef.current = candidate.id;
+            setDjMixStatus("ready");
+          } else if (ready) {
+            engine.clearPreparedNext();
+            setDjMixStatus("standby");
+          }
+        } catch {
+          // A failed preload leaves the current deck playing; ended() uses normal auto-advance.
+        } finally {
+          if (djPreparingTrackIdRef.current === candidate.id) {
+            djPreparingTrackIdRef.current = null;
+            if (djPreparedTrackIdRef.current !== candidate.id) setDjMixStatus("standby");
+          }
+        }
+      })();
+    }
+  };
+
+  useEffect(() => {
+    if (autoDjEnabled || partyMode) return;
+    djMixEngineRef.current?.clearPreparedNext();
+    djPreparedTrackIdRef.current = null;
+    djPreparingTrackIdRef.current = null;
+  }, [autoDjEnabled, partyMode]);
 
   useEffect(() => {
     hbgCore.setContext("music.currentTrack", currentTrack);
@@ -361,49 +486,62 @@ export function VibraModule() {
       if (requestId !== loadGenerationRef.current) return false;
       if (!blob) throw new Error("Archivo no encontrado en la biblioteca");
 
-      // Revoke previous URL
-      if (currentUrlRef.current) URL.revokeObjectURL(currentUrlRef.current);
-      const url = URL.createObjectURL(blob);
-      currentUrlRef.current = url;
-
-      const audio = audioRef.current!;
+      const engine = djMixEngineRef.current;
+      let audio = audioRef.current;
       if (!audio) throw new Error("El reproductor de audio no está disponible");
-      audio.src = url;
-      applyVibraVolume(getCurrentAudioDuckingFactor());
 
-      await new Promise<void>((resolve, reject) => {
-        let settled = false;
-        const cleanup = () => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timeout);
-          audio.removeEventListener("canplay", onReady);
-          audio.removeEventListener("error", onErr);
-          if (cancelPendingLoadRef.current === cancelLoad) cancelPendingLoadRef.current = null;
-        };
-        const timeout = setTimeout(() => {
-          cleanup();
-          reject(new Error("La canción tardó demasiado en cargar"));
-        }, 12000);
-        const onReady = () => { cleanup(); resolve(); };
-        const onErr = () => { cleanup(); reject(new Error("Error al cargar el audio")); };
-        const cancelLoad = () => { cleanup(); resolve(); };
-        cancelPendingLoadRef.current = cancelLoad;
-        audio.addEventListener("canplay", onReady);
-        audio.addEventListener("error", onErr);
-        audio.load();
-      });
-      if (requestId !== loadGenerationRef.current) return false;
+      if (engine) {
+        engine.clearPreparedNext();
+        djPreparedTrackIdRef.current = null;
+        djPreparingTrackIdRef.current = null;
+        djCrossfadeStartedRef.current = false;
+        const loadedAudio = await engine.loadActive(blob, startTime, autoPlay);
+        if (requestId !== loadGenerationRef.current) return false;
+        if (!loadedAudio) throw new Error("No se pudo preparar la canción en el deck activo");
+        audio = loadedAudio;
+        audioRef.current = loadedAudio;
+        currentUrlRef.current = null;
+      } else {
+        if (currentUrlRef.current) URL.revokeObjectURL(currentUrlRef.current);
+        const url = URL.createObjectURL(blob);
+        currentUrlRef.current = url;
+        audio.src = url;
+        applyVibraVolume(getCurrentAudioDuckingFactor());
+
+        await new Promise<void>((resolve, reject) => {
+          let settled = false;
+          const cleanup = () => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeout);
+            audio!.removeEventListener("canplay", onReady);
+            audio!.removeEventListener("error", onErr);
+            if (cancelPendingLoadRef.current === cancelLoad) cancelPendingLoadRef.current = null;
+          };
+          const timeout = setTimeout(() => {
+            cleanup();
+            reject(new Error("La canción tardó demasiado en cargar"));
+          }, 12000);
+          const onReady = () => { cleanup(); resolve(); };
+          const onErr = () => { cleanup(); reject(new Error("Error al cargar el audio")); };
+          const cancelLoad = () => { cleanup(); resolve(); };
+          cancelPendingLoadRef.current = cancelLoad;
+          audio!.addEventListener("canplay", onReady);
+          audio!.addEventListener("error", onErr);
+          audio!.load();
+        });
+        if (requestId !== loadGenerationRef.current) return false;
+        if (startTime > 0 && isFinite(startTime)) audio.currentTime = startTime;
+        if (autoPlay) {
+          await audioContextRef.current?.resume();
+          if (djMixEngineRef.current) await djMixEngineRef.current.resumeActive();
+          else await audio.play();
+          if (requestId !== loadGenerationRef.current) return false;
+          setIsPlaying(true);
+        }
+      }
 
       setDuration(audio.duration || 0);
-      if (startTime > 0 && isFinite(startTime)) audio.currentTime = startTime;
-
-      if (autoPlay) {
-        await audioContextRef.current?.resume();
-        await audio.play();
-        if (requestId !== loadGenerationRef.current) return false;
-        setIsPlaying(true);
-      }
       return true;
     } catch (e) {
       if (requestId !== loadGenerationRef.current) return false;
@@ -417,18 +555,17 @@ export function VibraModule() {
   }, []);
   loadTrackRef.current = loadTrack;
 
-  // Setup one persistent Web Audio graph for playback, EQ, and the real frequency visualizer.
+  // Two-deck playback graph: both decks share EQ/analyser/master processing.
+  // If Web Audio is unavailable, VIBRA keeps the single-element compatibility path.
   useEffect(() => {
-    const audio = new Audio();
-    audio.preload = "auto";
-    audioRef.current = audio;
-
     let context: AudioContext | null = null;
-    let source: MediaElementAudioSourceNode | null = null;
+    let engine: VibraDjMixEngine | null = null;
+    let audio: HTMLAudioElement;
+    let filters: BiquadFilterNode[] = [];
+
     try {
       context = new AudioContext();
-      source = context.createMediaElementSource(audio);
-      const filters = EQ_BANDS.map((band, index) => {
+      filters = EQ_BANDS.map((band, index) => {
         const filter = context!.createBiquadFilter();
         filter.frequency.value = EQ_FREQUENCIES[index];
         filter.type = index === 0 ? "lowshelf" : index === EQ_BANDS.length - 1 ? "highshelf" : "peaking";
@@ -439,102 +576,115 @@ export function VibraModule() {
       const analyser = context.createAnalyser();
       analyser.fftSize = 64;
       const outputGain = context.createGain();
-      outputGain.gain.value = calculateEffectiveAudioVolume(
-        volumeRef.current,
-        getCurrentAudioDuckingFactor(),
-      );
-      source.connect(filters[0]);
-      filters.forEach((filter, index) => {
-        if (index < filters.length - 1) filter.connect(filters[index + 1]);
-        else filter.connect(analyser);
-      });
-      analyser.connect(outputGain);
-      outputGain.connect(context.destination);
-      playbackGainRef.current = outputGain;
+      outputGain.gain.value = getCurrentAudioDuckingFactor();
+
+      engine = new VibraDjMixEngine(context);
+      engine.setMasterVolume(volumeRef.current / 100);
+      engine.connectMusicChain([...filters, analyser, outputGain]);
+      djMixEngineRef.current = engine;
+      audio = engine.activeAudio;
       audio.volume = 1;
+      playbackGainRef.current = outputGain;
       audioContextRef.current = context;
       equalizerFiltersRef.current = filters;
       setAudioAnalyser(analyser);
     } catch {
-      // If graph construction fails after creating the media source, reconnect it
-      // directly so the browser can still play audio without EQ or spectrum.
-      equalizerFiltersRef.current = [];
+      engine?.destroy();
+      engine = null;
+      djMixEngineRef.current = null;
+      filters = [];
       playbackGainRef.current = null;
+      equalizerFiltersRef.current = [];
       setAudioAnalyser(null);
-      if (context && source) {
-        try {
-          source.disconnect();
-          source.connect(context.destination);
-          audioContextRef.current = context;
-          applyVibraVolume(getCurrentAudioDuckingFactor());
-        } catch {
-          audioContextRef.current = null;
-          void context.close().catch(() => undefined);
-        }
-      } else {
-        audioContextRef.current = null;
-        if (context) void context.close().catch(() => undefined);
-      }
+      audio = new Audio();
+      audio.preload = "auto";
+      audio.volume = calculateEffectiveAudioVolume(volumeRef.current, getCurrentAudioDuckingFactor());
+      audioContextRef.current = null;
+      if (context) void context.close().catch(() => undefined);
     }
 
-    const onTimeUpdate = () => {
-      if (audio.duration && isFinite(audio.duration)) {
-        playbackPositionRef.current = audio.currentTime;
-        setCurrentTime(audio.currentTime);
-        setProgress(audio.currentTime / audio.duration);
+    audioRef.current = audio;
+    const managedAudios = engine ? [...engine.allAudios] : [audio];
+    const onTimeUpdate = (target: HTMLAudioElement) => {
+      if (target !== audioRef.current) return;
+      if (target.duration && isFinite(target.duration)) {
+        playbackPositionRef.current = target.currentTime;
+        setCurrentTime(target.currentTime);
+        setProgress(target.currentTime / target.duration);
       }
+      djTransitionCheckRef.current(target);
     };
-    const onDurationChange = () => { if (isFinite(audio.duration)) setDuration(audio.duration); };
-    const onEnded = () => {
+    const onDurationChange = (target: HTMLAudioElement) => {
+      if (target === audioRef.current && isFinite(target.duration)) setDuration(target.duration);
+    };
+    const onEnded = (target: HTMLAudioElement) => {
+      if (target !== audioRef.current) return;
       setIsPlaying(false);
       playbackPositionRef.current = 0;
       setProgress(0);
       setCurrentTime(0);
-
-      // Let React commit the stopped state before selecting the next item.
-      // Read the latest queue/config refs after the media element has ended.
       autoAdvanceInProgressRef.current = false;
       const endedTrackId = currentIdRef.current;
       window.setTimeout(() => {
-        if (audioRef.current !== audio || currentIdRef.current !== endedTrackId) return;
-        if (!audio.ended) return;
+        if (audioRef.current !== target || currentIdRef.current !== endedTrackId) return;
+        if (!target.ended) return;
         autoAdvanceRef.current();
       }, 0);
     };
-    const onError = () => {
+    const onError = (target: HTMLAudioElement) => {
+      if (target !== audioRef.current) return;
       setError("Error de reproducción — intenta reimportar el archivo");
       setIsPlaying(false);
     };
-    const onPlay = () => setIsPlaying(true);
-    const onPause = () => {
-      playbackPositionRef.current = audio.currentTime || playbackPositionRef.current;
+    const onPlay = (target: HTMLAudioElement) => {
+      if (target === audioRef.current) setIsPlaying(true);
+    };
+    const onPause = (target: HTMLAudioElement) => {
+      if (target !== audioRef.current) return;
+      playbackPositionRef.current = target.currentTime || playbackPositionRef.current;
       setIsPlaying(false);
     };
-
-    audio.addEventListener("timeupdate", onTimeUpdate);
-    audio.addEventListener("durationchange", onDurationChange);
-    audio.addEventListener("ended", onEnded);
-    audio.addEventListener("error", onError);
-    audio.addEventListener("play", onPlay);
-    audio.addEventListener("pause", onPause);
+    const listeners = managedAudios.map((target) => {
+      const time = () => onTimeUpdate(target);
+      const duration = () => onDurationChange(target);
+      const ended = () => onEnded(target);
+      const error = () => onError(target);
+      const play = () => onPlay(target);
+      const pause = () => onPause(target);
+      target.addEventListener("timeupdate", time);
+      target.addEventListener("durationchange", duration);
+      target.addEventListener("ended", ended);
+      target.addEventListener("error", error);
+      target.addEventListener("play", play);
+      target.addEventListener("pause", pause);
+      return { target, time, duration, ended, error, play, pause };
+    });
 
     return () => {
-      audio.pause();
-      audio.removeEventListener("timeupdate", onTimeUpdate);
-      audio.removeEventListener("durationchange", onDurationChange);
-      audio.removeEventListener("ended", onEnded);
-      audio.removeEventListener("error", onError);
-      audio.removeEventListener("play", onPlay);
-      audio.removeEventListener("pause", onPause);
+      for (const listener of listeners) {
+        listener.target.removeEventListener("timeupdate", listener.time);
+        listener.target.removeEventListener("durationchange", listener.duration);
+        listener.target.removeEventListener("ended", listener.ended);
+        listener.target.removeEventListener("error", listener.error);
+        listener.target.removeEventListener("play", listener.play);
+        listener.target.removeEventListener("pause", listener.pause);
+      }
+      if (engine) engine.destroy();
+      else audio.pause();
       if (currentUrlRef.current) URL.revokeObjectURL(currentUrlRef.current);
+      currentUrlRef.current = null;
       audioRef.current = null;
+      djMixEngineRef.current = null;
+      djPreparedTrackIdRef.current = null;
+      djPreparingTrackIdRef.current = null;
       playbackGainRef.current = null;
       equalizerFiltersRef.current = [];
       setAudioAnalyser(null);
-      const context = audioContextRef.current;
+      const activeContext = audioContextRef.current;
       audioContextRef.current = null;
-      if (context) void context.close().catch(() => undefined);
+      if (activeContext) void activeContext.close().catch(() => undefined);
     };
+
   }, []);
 
   // Register VIBRA once. The callback reads the latest user volume through volumeRef.
@@ -544,20 +694,22 @@ export function VibraModule() {
   // was playing and restore that same media position when the complete voice session ends.
   useEffect(() => registerAudioSessionLifecycle("vibra.playback", {
     onStart: () => {
+      djMixEngineRef.current?.setInteractionActive(true);
       const audio = audioRef.current;
       voicePlaybackSnapshotRef.current = audio
-        ? { wasPlaying: !audio.paused && !audio.ended, currentTime: audio.currentTime || 0 }
+        ? { wasPlaying: !audio.paused && !audio.ended, currentTime: audio.currentTime || 0, audio }
         : null;
       void audioContextRef.current?.resume().catch(() => undefined);
     },
     onEnd: (shouldRestorePlayback) => {
+      djMixEngineRef.current?.setInteractionActive(false);
       const snapshot = voicePlaybackSnapshotRef.current;
       voicePlaybackSnapshotRef.current = null;
       const audio = audioRef.current;
       if (!shouldRestorePlayback || !snapshot?.wasPlaying || !audio || !audio.paused || audio.ended) return;
 
-      // Some mobile browsers reset the media position when microphone capture takes focus.
-      if (audio.currentTime + 1 < snapshot.currentTime) {
+      // If no deck transition occurred, recover a mobile browser's reset position.
+      if (snapshot.audio === audio && audio.currentTime + 1 < snapshot.currentTime) {
         try {
           audio.currentTime = snapshot.currentTime;
           playbackPositionRef.current = snapshot.currentTime;
@@ -568,7 +720,8 @@ export function VibraModule() {
       void (async () => {
         try {
           await audioContextRef.current?.resume();
-          await audio.play();
+          if (djMixEngineRef.current) await djMixEngineRef.current.resumeActive();
+          else await audio.play();
         } catch {
           // The browser may retain audio focus until its capture pipeline fully closes.
           // The next explicit play command will retry without reloading the track.
@@ -600,7 +753,10 @@ export function VibraModule() {
     if (audio.src && audio.src !== window.location.href) {
       try {
         await audioContextRef.current?.resume();
-        await audio.play();
+        if (djMixEngineRef.current) {
+          const resumed = await djMixEngineRef.current.resumeActive();
+          if (!resumed) throw new Error("resume failed");
+        } else await audio.play();
         setIsPlaying(true);
         return true;
       } catch {
@@ -630,7 +786,13 @@ export function VibraModule() {
     }
     if (audio.src && audio.src !== window.location.href) {
       if (isPlaying) {
-        audio.pause();
+        if (djMixEngineRef.current) {
+          djMixEngineRef.current.pauseAll();
+          djPreparedTrackIdRef.current = null;
+          djPreparingTrackIdRef.current = null;
+          djCrossfadeStartedRef.current = false;
+          setDjMixStatus("standby");
+        } else audio.pause();
       } else {
         await resumePlayback();
       }
@@ -752,18 +914,10 @@ export function VibraModule() {
         while (true) {
           if (selectionGeneration !== manualSelectionGenerationRef.current) return;
           const candidates = availableTracks.filter((track) => !failedIds.has(track.id));
-          const autoDjCandidates = selectAutoDjCandidates(candidates, musicDirection);
-          const next = shuffleEnabled
-            ? autoDjCandidates.find((track) =>
-                track.id === selectNextPlaybackId(
-                  autoDjCandidates.map((candidate) => candidate.id),
-                  currentTrackId,
-                  true,
-                  repeatMode === "all" ? "all" : "off",
-                  recentTrackIds,
-                ),
-              )
-            : selectNextAutoDjTrack(candidates, currentTrackId, recentTrackIds, musicDirection);
+          // Auto DJ is deliberately ranked, never randomized: audio tempo/key
+          // compatibility is used when confidence is sufficient, with stable
+          // library order as the honest fallback for unanalyzed tracks.
+          const next = selectNextAutoDjTrack(candidates, currentTrackId, recentTrackIds, musicDirection);
           if (!next) {
             setError(
               musicDirection.goal
@@ -837,7 +991,13 @@ export function VibraModule() {
     play: () => { void resumePlayback(); },
     pause: () => {
       preventVoiceSessionPlaybackRestore();
-      audioRef.current?.pause();
+      if (djMixEngineRef.current) {
+        djMixEngineRef.current.pauseAll();
+        djPreparedTrackIdRef.current = null;
+        djPreparingTrackIdRef.current = null;
+        djCrossfadeStartedRef.current = false;
+        setDjMixStatus("standby");
+      } else audioRef.current?.pause();
     },
     next: () => { void nextTrack(); },
     previous: () => { void prevTrack(); },
@@ -979,6 +1139,8 @@ export function VibraModule() {
         }
         const enabled = payload.enabled;
         setAutoDjEnabled(enabled);
+        if (enabled) setView("dj");
+        else setPartyMode(false);
         if (enabled && audioRef.current?.paused !== false && tracks.length > 0) {
           if (audioRef.current?.src) {
             await togglePlay();
@@ -991,17 +1153,22 @@ export function VibraModule() {
         }
         return result(true, { enabled });
       }),
-      hbgCore.registerAction("music.party", (payload) => {
+      hbgCore.registerAction("music.party", async (payload) => {
         if (typeof payload?.enabled !== "boolean") {
           return result(false, undefined, "Indica si Modo Fiesta PRO debe activarse o desactivarse.");
         }
         const enabled = payload.enabled;
         setPartyMode(enabled);
         if (enabled) {
+          setView("dj");
           setAutoDjEnabled(true);
           setMusicDirection((current) => ({ ...current, energy: "up" }));
+          const autoDjResult = await hbgCore.dispatchAction("music.autoDj", { enabled: true });
+          if (!autoDjResult.success) {
+            return result(false, undefined, autoDjResult.error ?? "No se pudo iniciar Auto DJ para Modo Fiesta PRO.");
+          }
         }
-        return result(true, { enabled, autoDj: enabled || autoDjEnabled });
+        return result(true, { enabled, autoDj: enabled || autoDjEnabled, view: enabled ? "dj" : undefined });
       }),
       hbgCore.registerAction("music.search", (payload) => {
         const query = normalizeMusicText(String(payload?.query ?? ""));
@@ -1175,6 +1342,16 @@ export function VibraModule() {
         await saveAudioBlob(id, blob);
         await saveTrackMeta(meta);
         setTracks((prev) => [...prev, meta]);
+        // Analyze locally after import. Playback and the import flow do not wait
+        // for CPU-heavy BPM/key estimation; results are cached in IndexedDB.
+        void analyzeAudioBlob(blob).then(async (analysis) => {
+          if (analysis.bpm === undefined && analysis.musicalKey === undefined) return;
+          const enriched = { ...meta, ...analysis };
+          await saveTrackMeta(enriched);
+          setTracks((prev) => prev.map((track) => track.id === id ? enriched : track));
+        }).catch(() => {
+          // Unsupported codecs/devices keep the imported track playable without fabricated metadata.
+        });
         imported++;
 
         // Auto-select first imported track
@@ -1326,53 +1503,129 @@ export function VibraModule() {
       )}
 
       {view === "dj" && (
-        <section className="hbg-card" aria-label="Dirección musical" style={{ marginBottom: 14 }}>
-          <div className="section-title">// DJ VIBRA · DIRECCIÓN MUSICAL</div>
-          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-            <input
-              className="hbg-input"
-              style={{ flex: 1 }}
-              aria-label="Objetivo musical"
-              placeholder="Ej.: música romántica, canciones para cantar..."
-              value={directionInput}
-              onChange={(event) => setDirectionInput(event.target.value)}
-              onKeyDown={(event) => { if (event.key === "Enter") applyMusicDirection(); }}
-            />
-            <button className="hbg-btn hbg-btn-primary" onClick={applyMusicDirection}>APLICAR</button>
+        <section className={`hbg-card vibra-dj-console ${partyMode ? "is-party" : ""}`} aria-label="Consola DJ VIBRA">
+          <header className="vibra-dj-header">
+            <div>
+              <div className="vibra-dj-eyebrow">VIBRA PRO / LIVE SESSION</div>
+              <h2 className="vibra-dj-title">DJ CONSOLE</h2>
+              <p className="vibra-dj-subtitle">Una sola cabina. Auto DJ dirige la sesión; Fiesta PRO eleva su energía.</p>
+            </div>
+            <div className={`vibra-dj-live ${isPlaying ? "is-live" : ""}`} aria-live="polite">
+              <span className="vibra-dj-live-dot" />
+              {isPlaying ? "EN VIVO" : "EN ESPERA"}
+            </div>
+          </header>
+
+          <div className="vibra-dj-stage">
+            <div className="vibra-dj-stage-top">
+              <span>{partyMode ? "FIESTA PRO / HIGH ENERGY" : autoDjEnabled ? "AUTO DJ / SESSION CONTROL" : "MANUAL / SESSION READY"}</span>
+              <span>{tracks.length} PISTAS LOCALES</span>
+            </div>
+            <div className="vibra-dj-spectrum">
+              <VisualizerBars active={isPlaying} color={partyMode ? "var(--neon-pink)" : "var(--neon-cyan)"} analyser={audioAnalyser} />
+            </div>
+            <div className="vibra-dj-stage-foot">
+              <span>{isPlaying ? "AUDIO ACTIVO" : "REPRODUCCIÓN DETENIDA"}</span>
+              <span>{audioAnalyser ? "ESPECTRO REAL" : "ESPECTRO NO DISPONIBLE"}</span>
+              <span>
+                {djMixStatus === "mixing" ? "CROSSFADE EN CURSO" :
+                  djMixStatus === "ready" ? "SIGUIENTE DECK LISTO" :
+                    djMixStatus === "preloading" ? "PREPARANDO SIGUIENTE" :
+                      djMixEngineRef.current ? "MIXER 2 DECKS LISTO" : "MIXER SIMPLE"}
+              </span>
+            </div>
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+
+          <div className="vibra-dj-mode-grid">
             <button
-              className="hbg-btn hbg-btn-ghost"
+              type="button"
+              className={`vibra-dj-mode ${autoDjEnabled ? "is-active" : ""}`}
               aria-pressed={autoDjEnabled}
-              onClick={() => setAutoDjEnabled((enabled) => !enabled)}
+              onClick={() => {
+                const enabled = !autoDjEnabled;
+                void hbgCore.dispatchAction("music.autoDj", { enabled }).then((actionResult) => {
+                  if (!actionResult.success) setError(actionResult.error ?? "No se pudo cambiar Auto DJ.");
+                });
+              }}
             >
-              AUTO DJ: {autoDjEnabled ? "ACTIVO" : "INACTIVO"}
+              <span className="vibra-dj-mode-icon">◉</span>
+              <span className="vibra-dj-mode-copy">
+                <strong>AUTO DJ</strong>
+                <small>{autoDjEnabled ? "CONDUCCIÓN AUTOMÁTICA ACTIVA" : "SELECCIÓN AUTOMÁTICA DESACTIVADA"}</small>
+              </span>
+              <span className="vibra-dj-mode-state">{autoDjEnabled ? "ON" : "OFF"}</span>
             </button>
             <button
-              className="hbg-btn hbg-btn-ghost"
+              type="button"
+              className={`vibra-dj-mode vibra-dj-party ${partyMode ? "is-active" : ""}`}
               aria-pressed={partyMode}
               onClick={() => {
                 const enabled = !partyMode;
-                setPartyMode(enabled);
-                if (enabled) {
-                  setAutoDjEnabled(true);
-                  setMusicDirection((current) => ({ ...current, energy: "up" }));
-                }
+                void hbgCore.dispatchAction("music.party", { enabled }).then((actionResult) => {
+                  if (!actionResult.success) setError(actionResult.error ?? "No se pudo activar Modo Fiesta PRO.");
+                });
               }}
             >
-              FIESTA PRO: {partyMode ? "ACTIVA" : "INACTIVA"}
+              <span className="vibra-dj-mode-icon">✦</span>
+              <span className="vibra-dj-mode-copy">
+                <strong>FIESTA PRO</strong>
+                <small>{partyMode ? "PERFIL DE FIESTA ACTIVO" : "ACTIVA EL PERFIL DE FIESTA"}</small>
+              </span>
+              <span className="vibra-dj-mode-state">{partyMode ? "ON" : "OFF"}</span>
             </button>
-            <span style={{ alignSelf: "center", fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-secondary)" }}>
-              Objetivo: {musicDirection.goal || "sin fijar"} · Preferencia de energía: {musicDirection.energy === "up" ? "más alta" : "estable"}{musicDirection.vocalFocus ? " · prioridad vocal" : ""}
-              {plannedNextTrack ? ` · Siguiente candidata: ${plannedNextTrack.title}` : ""}
-            </span>
           </div>
-          <div style={{ marginTop: 7, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>
-            Auto DJ prioriza coincidencias locales de estilo, energía y voz; si no hay una intención fijada o faltan etiquetas de energía, continúa con canciones disponibles sin atribuirles género ni BPM. No analiza audio ambiental ni emoción del usuario.
+
+          <div className="vibra-dj-direction-panel">
+            <div className="vibra-dj-section-label">01 / DIRECCIÓN MUSICAL</div>
+            <div className="vibra-dj-direction">
+              <input
+                className="hbg-input"
+                aria-label="Objetivo musical"
+                placeholder="Ej.: más para cantar, música viejita, más bailable..."
+                value={directionInput}
+                onChange={(event) => setDirectionInput(event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Enter") applyMusicDirection(); }}
+              />
+              <button className="hbg-btn hbg-btn-primary" onClick={applyMusicDirection}>APLICAR</button>
+            </div>
+            <div className="vibra-dj-direction-meta">
+              <span>OBJETIVO: <strong>{musicDirection.goal || "LIBRE"}</strong></span>
+              <span>ENERGÍA: <strong>{musicDirection.energy === "up" ? "ALTA" : "ESTABLE"}</strong></span>
+              {musicDirection.vocalFocus && <span>PRIORIDAD VOCAL</span>}
+            </div>
           </div>
+
+          <div className="vibra-dj-track-grid">
+            <div className="vibra-dj-track">
+              <span className="vibra-dj-section-label">02 / SONANDO AHORA</span>
+              <strong title={currentTrack?.title ?? "Sin canción"}>{currentTrack?.title ?? "Sin canción seleccionada"}</strong>
+              <small>{currentTrack?.artist || (currentTrack ? "Artista desconocido" : "Importa música para iniciar")}</small>
+              <small>{formatDjAnalysis(currentTrack)}</small>
+            </div>
+            <div className="vibra-dj-track vibra-dj-track-next">
+              <span className="vibra-dj-section-label">03 / SIGUIENTE CANDIDATA</span>
+              <strong title={plannedNextTrack?.title ?? "Sin candidata"}>{plannedNextTrack?.title ?? "Sin coincidencia disponible"}</strong>
+              <small>{plannedNextTrack?.artist || (plannedNextTrack ? "Artista desconocido" : "Amplía tu biblioteca o cambia el objetivo")}</small>
+              <small>{formatDjAnalysis(plannedNextTrack)}</small>
+            </div>
+          </div>
+
+          <div className="vibra-dj-controls">
+            <button type="button" className="hbg-btn hbg-btn-primary" onClick={togglePlay} disabled={!currentTrack || loading}>
+              {isPlaying ? "Ⅱ PAUSAR" : "▶ REPRODUCIR"}
+            </button>
+            <button type="button" className="hbg-btn hbg-btn-ghost" onClick={() => plannedNextTrack && void playTrack(plannedNextTrack.id)} disabled={!plannedNextTrack || loading}>
+              CARGAR SIGUIENTE
+            </button>
+            <button type="button" className="hbg-btn hbg-btn-ghost" onClick={() => setView("player")}>
+              ABRIR REPRODUCTOR
+            </button>
+          </div>
+
+          <p className="vibra-dj-footnote">
+            El análisis local estima BPM y tonalidad cuando el navegador puede decodificar el archivo. La mezcla entre decks aún no está conectada al reproductor; no hay beatmatching ni análisis ambiental activo.
+          </p>
         </section>
-
-
       )}
 
       {/* Hidden file input */}

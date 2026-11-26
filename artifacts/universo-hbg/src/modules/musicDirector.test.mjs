@@ -115,3 +115,22 @@ test("does not create an unfiltered playlist when a query contains no usable int
   const unlabeled = [{ id: "plain", title: "Track One", artist: "Unknown", album: "", importedAt: 1 }];
   assert.deepEqual(selectTracksForDirection(unlabeled, { goal: "", energy: "up" }), []);
 });
+
+
+test("Auto DJ ranks the next track by confident tempo and harmonic compatibility", () => {
+  const analyzed = [
+    { id: "current", title: "Current", artist: "A", album: "", importedAt: 1, bpm: 120, bpmConfidence: 0.9, musicalKey: "C major", keyConfidence: 0.9 },
+    { id: "poor-match", title: "Poor Match", artist: "B", album: "", importedAt: 2, bpm: 94, bpmConfidence: 0.9, musicalKey: "D major", keyConfidence: 0.9 },
+    { id: "good-match", title: "Good Match", artist: "C", album: "", importedAt: 3, bpm: 122, bpmConfidence: 0.8, musicalKey: "G major", keyConfidence: 0.8 },
+  ];
+  assert.equal(selectNextAutoDjTrack(analyzed, "current", [], { goal: "", energy: "steady" })?.id, "good-match");
+});
+
+test("Auto DJ does not trust low-confidence BPM/key estimates", () => {
+  const analyzed = [
+    { id: "current", title: "Current", artist: "A", album: "", importedAt: 1, bpm: 120, bpmConfidence: 0.9, musicalKey: "C major", keyConfidence: 0.9 },
+    { id: "first", title: "First", artist: "B", album: "", importedAt: 2, bpm: 94, bpmConfidence: 0.1, musicalKey: "D major", keyConfidence: 0.1 },
+    { id: "second", title: "Second", artist: "C", album: "", importedAt: 3, bpm: 122, bpmConfidence: 0.1, musicalKey: "G major", keyConfidence: 0.1 },
+  ];
+  assert.equal(selectNextAutoDjTrack(analyzed, "current", [], { goal: "", energy: "steady" })?.id, "first");
+});
