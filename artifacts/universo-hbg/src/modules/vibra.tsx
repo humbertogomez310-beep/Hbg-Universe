@@ -280,6 +280,7 @@ export function VibraModule() {
   const playbackPositionRef = useRef(0);
   const voicePlaybackSnapshotRef = useRef<{ wasPlaying: boolean; currentTime: number; audio: HTMLAudioElement | null } | null>(null);
   const backgroundPlaybackSnapshotRef = useRef<{ trackId: string | null; wasPlaying: boolean; currentTime: number; audio: HTMLAudioElement | null } | null>(null);
+  const updatePlaybackSnapshotRef = useRef<{ trackId: string | null; wasPlaying: boolean; currentTime: number; audio: HTMLAudioElement; djTransitionEnabled: boolean } | null>(null);
   const backgroundResumeSuppressedRef = useRef(false);
   const backgroundRestoreInFlightRef = useRef(false);
   const lastKnownPlayingRef = useRef(false);
@@ -779,6 +780,62 @@ export function VibraModule() {
           // The next explicit play command will retry without reloading the track.
         }
       })();
+    },
+    // Preserve the current song and position, fade out, then pause before the PWA reloads.
+    onBeforeUpdate: async () => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      const snapshot = {
+        trackId: currentIdRef.current,
+        wasPlaying: !audio.paused && !audio.ended,
+        currentTime: Number.isFinite(audio.currentTime) ? audio.currentTime : playbackPositionRef.current,
+        audio,
+        djTransitionEnabled: djTransitionEnabledRef.current,
+      };
+      updatePlaybackSnapshotRef.current = snapshot;
+      if (snapshot.trackId) writeStoredValue(STORAGE_KEYS.trackId, snapshot.trackId);
+      writeStoredValue(STORAGE_KEYS.trackTime, String(snapshot.currentTime));
+      writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, snapshot.wasPlaying ? "true" : "false");
+      if (!snapshot.wasPlaying) return;
+
+      djTransitionEnabledRef.current = false;
+      const engine = djMixEngineRef.current;
+      engine?.clearPreparedNext();
+      djPreparedTrackIdRef.current = null;
+      djPreparingTrackIdRef.current = null;
+      if (engine) engine.setMasterVolume(0);
+      else audio.volume = 0;
+
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 350));
+      const activeAudio = audioRef.current ?? audio;
+      const finalPosition = Number.isFinite(activeAudio.currentTime) ? activeAudio.currentTime : snapshot.currentTime;
+      snapshot.currentTime = finalPosition;
+      writeStoredValue(STORAGE_KEYS.trackTime, String(finalPosition));
+      if (engine) engine.allAudios.forEach((deckAudio) => deckAudio.pause());
+      else activeAudio.pause();
+      setIsPlaying(false);
+      await audioContextRef.current?.suspend().catch(() => undefined);
+    },
+    // If the update is cancelled before reload, restore the same playback session.
+    onUpdateCancelled: async () => {
+      const snapshot = updatePlaybackSnapshotRef.current;
+      if (!snapshot) return;
+      updatePlaybackSnapshotRef.current = null;
+      djTransitionEnabledRef.current = snapshot.djTransitionEnabled;
+      const audio = audioRef.current ?? snapshot.audio;
+      const engine = djMixEngineRef.current;
+      if (engine) engine.setMasterVolume(volumeRef.current / 100);
+      else audio.volume = calculateEffectiveAudioVolume(volumeRef.current / 100, getCurrentAudioDuckingFactor());
+      if (!snapshot.wasPlaying) return;
+
+      await audioContextRef.current?.resume();
+      if (engine) {
+        const resumed = await engine.resumeActive();
+        if (!resumed) throw new Error("No se pudo reanudar el audio después de cancelar la actualización.");
+      } else {
+        await audio.play();
+      }
+      setIsPlaying(!audio.paused);
     },
   }), []);
 
