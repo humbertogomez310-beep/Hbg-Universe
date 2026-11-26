@@ -96,6 +96,16 @@ export class VibraDjMixEngine {
     return this.decks[1 - this.activeIndex].audio;
   }
 
+  get allAudios(): readonly HTMLAudioElement[] {
+    return this.decks.map((deck) => deck.audio);
+  }
+
+  /** Route both music decks through the host EQ/analyser chain before the master bus. */
+  connectMusicOutput(output: AudioNode): void {
+    this.musicBus.disconnect();
+    this.musicBus.connect(output);
+  }
+
   get isTransitioning(): boolean {
     return this.transitionTimer !== null;
   }
@@ -107,9 +117,8 @@ export class VibraDjMixEngine {
 
   setInteractionActive(active: boolean): void {
     const now = this.context.currentTime;
-    this.musicBus.gain.cancelScheduledValues(now);
-    this.musicBus.gain.setTargetAtTime(active ? 0.55 : 1, now, active ? 0.06 : 0.35);
-    // DJ voice and effects yield completely while the user is speaking.
+    // Music ducking is applied once by the shared output gain registered with
+    // HBG AudioManager. DJ voice and effects yield completely to user speech.
     this.voiceBus.gain.cancelScheduledValues(now);
     this.voiceBus.gain.setTargetAtTime(active ? 0 : 1, now, active ? 0.025 : 0.12);
     this.fxBus.gain.cancelScheduledValues(now);
@@ -124,12 +133,104 @@ export class VibraDjMixEngine {
     source.connect(this.fxBus);
   }
 
+  private releaseDeck(deck: Deck): void {
+    deck.audio.pause();
+    deck.audio.removeAttribute("src");
+    deck.audio.load();
+    if (deck.objectUrl) URL.revokeObjectURL(deck.objectUrl);
+    deck.objectUrl = null;
+  }
+
+  private settleTransitionOnActiveDeck(): void {
+    if (this.transitionTimer !== null) clearTimeout(this.transitionTimer);
+    this.transitionTimer = null;
+    const active = this.decks[this.activeIndex];
+    const inactive = this.decks[1 - this.activeIndex];
+    this.releaseDeck(inactive);
+    const now = this.context.currentTime;
+    active.gain.gain.cancelScheduledValues(now);
+    active.gain.gain.setValueAtTime(1, now);
+    inactive.gain.gain.cancelScheduledValues(now);
+    inactive.gain.gain.setValueAtTime(0, now);
+  }
+
+  /** Replace the active deck for a manual selection or a non-crossfade advance. */
+  async loadActive(blob: Blob, startTime = 0, autoplay = false): Promise<HTMLAudioElement | null> {
+    if (this.destroyed) return null;
+    this.settleTransitionOnActiveDeck();
+    const active = this.decks[this.activeIndex];
+    this.releaseDeck(active);
+    const objectUrl = URL.createObjectURL(blob);
+    active.objectUrl = objectUrl;
+    active.audio.src = objectUrl;
+    active.audio.load();
+
+    const ready = await new Promise<boolean>((resolve) => {
+      let settled = false;
+      const finish = (success: boolean) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        active.audio.removeEventListener("canplay", onReady);
+        active.audio.removeEventListener("error", onError);
+        resolve(success);
+      };
+      const onReady = () => finish(true);
+      const onError = () => finish(false);
+      const timeout = setTimeout(() => finish(false), 12000);
+      active.audio.addEventListener("canplay", onReady, { once: true });
+      active.audio.addEventListener("error", onError, { once: true });
+    });
+    if (!ready) {
+      this.releaseDeck(active);
+      return null;
+    }
+
+    if (startTime > 0 && Number.isFinite(startTime)) {
+      try { active.audio.currentTime = startTime; } catch { /* Some codecs are not seekable yet. */ }
+    }
+    if (autoplay) {
+      try {
+        await this.context.resume();
+        await active.audio.play();
+      } catch {
+        return null;
+      }
+    }
+    return active.audio;
+  }
+
+  /** Cancel a prepared but not-yet-started incoming track. */
+  clearPreparedNext(): void {
+    if (this.destroyed || this.transitionTimer !== null) return;
+    this.releaseDeck(this.decks[1 - this.activeIndex]);
+    const now = this.context.currentTime;
+    this.decks[1 - this.activeIndex].gain.gain.cancelScheduledValues(now);
+    this.decks[1 - this.activeIndex].gain.gain.setValueAtTime(0, now);
+  }
+
+  pauseAll(): void {
+    if (this.destroyed) return;
+    this.settleTransitionOnActiveDeck();
+    this.decks[this.activeIndex].audio.pause();
+  }
+
+  async resumeActive(): Promise<boolean> {
+    if (this.destroyed) return false;
+    try {
+      await this.context.resume();
+      await this.decks[this.activeIndex].audio.play();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   /** Load the inactive deck while the active deck continues playing. */
   async prepareNext(blob: Blob): Promise<boolean> {
     if (this.destroyed || this.transitionTimer !== null) return false;
     const deck = this.decks[1 - this.activeIndex];
-    deck.audio.pause();
-    if (deck.objectUrl) URL.revokeObjectURL(deck.objectUrl);
+    this.releaseDeck(deck);
     const objectUrl = URL.createObjectURL(blob);
     deck.objectUrl = objectUrl;
     deck.audio.src = objectUrl;
