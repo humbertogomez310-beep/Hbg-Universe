@@ -979,6 +979,8 @@ export function VibraModule() {
         }
         const enabled = payload.enabled;
         setAutoDjEnabled(enabled);
+        if (enabled) setView("dj");
+        else setPartyMode(false);
         if (enabled && audioRef.current?.paused !== false && tracks.length > 0) {
           if (audioRef.current?.src) {
             await togglePlay();
@@ -998,10 +1000,11 @@ export function VibraModule() {
         const enabled = payload.enabled;
         setPartyMode(enabled);
         if (enabled) {
+          setView("dj");
           setAutoDjEnabled(true);
           setMusicDirection((current) => ({ ...current, energy: "up" }));
         }
-        return result(true, { enabled, autoDj: enabled || autoDjEnabled });
+        return result(true, { enabled, autoDj: enabled || autoDjEnabled, view: enabled ? "dj" : undefined });
       }),
       hbgCore.registerAction("music.search", (payload) => {
         const query = normalizeMusicText(String(payload?.query ?? ""));
@@ -1326,30 +1329,54 @@ export function VibraModule() {
       )}
 
       {view === "dj" && (
-        <section className="hbg-card" aria-label="Dirección musical" style={{ marginBottom: 14 }}>
-          <div className="section-title">// DJ VIBRA · DIRECCIÓN MUSICAL</div>
-          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-            <input
-              className="hbg-input"
-              style={{ flex: 1 }}
-              aria-label="Objetivo musical"
-              placeholder="Ej.: música romántica, canciones para cantar..."
-              value={directionInput}
-              onChange={(event) => setDirectionInput(event.target.value)}
-              onKeyDown={(event) => { if (event.key === "Enter") applyMusicDirection(); }}
-            />
-            <button className="hbg-btn hbg-btn-primary" onClick={applyMusicDirection}>APLICAR</button>
+        <section className={`hbg-card vibra-dj-console ${partyMode ? "is-party" : ""}`} aria-label="Consola DJ VIBRA">
+          <header className="vibra-dj-header">
+            <div>
+              <div className="vibra-dj-eyebrow">VIBRA PRO / LIVE SESSION</div>
+              <h2 className="vibra-dj-title">DJ CONSOLE</h2>
+              <p className="vibra-dj-subtitle">Una sola cabina. Auto DJ dirige la sesión; Fiesta PRO eleva su energía.</p>
+            </div>
+            <div className={`vibra-dj-live ${isPlaying ? "is-live" : ""}`} aria-live="polite">
+              <span className="vibra-dj-live-dot" />
+              {isPlaying ? "EN VIVO" : "EN ESPERA"}
+            </div>
+          </header>
+
+          <div className="vibra-dj-stage">
+            <div className="vibra-dj-stage-top">
+              <span>{partyMode ? "FIESTA PRO / HIGH ENERGY" : autoDjEnabled ? "AUTO DJ / SESSION CONTROL" : "MANUAL / SESSION READY"}</span>
+              <span>{tracks.length} PISTAS LOCALES</span>
+            </div>
+            <div className="vibra-dj-spectrum">
+              <VisualizerBars active={isPlaying} color={partyMode ? "var(--neon-pink)" : "var(--neon-cyan)"} analyser={audioAnalyser} />
+            </div>
+            <div className="vibra-dj-stage-foot">
+              <span>{isPlaying ? "AUDIO ACTIVO" : "REPRODUCCIÓN DETENIDA"}</span>
+              <span>{audioAnalyser ? "ESPECTRO REAL" : "ESPECTRO NO DISPONIBLE"}</span>
+            </div>
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+
+          <div className="vibra-dj-mode-grid">
             <button
-              className="hbg-btn hbg-btn-ghost"
+              type="button"
+              className={`vibra-dj-mode ${autoDjEnabled ? "is-active" : ""}`}
               aria-pressed={autoDjEnabled}
-              onClick={() => setAutoDjEnabled((enabled) => !enabled)}
+              onClick={() => {
+                const enabled = !autoDjEnabled;
+                setAutoDjEnabled(enabled);
+                if (!enabled) setPartyMode(false);
+              }}
             >
-              AUTO DJ: {autoDjEnabled ? "ACTIVO" : "INACTIVO"}
+              <span className="vibra-dj-mode-icon">◉</span>
+              <span className="vibra-dj-mode-copy">
+                <strong>AUTO DJ</strong>
+                <small>{autoDjEnabled ? "CONDUCCIÓN AUTOMÁTICA ACTIVA" : "SELECCIÓN AUTOMÁTICA DESACTIVADA"}</small>
+              </span>
+              <span className="vibra-dj-mode-state">{autoDjEnabled ? "ON" : "OFF"}</span>
             </button>
             <button
-              className="hbg-btn hbg-btn-ghost"
+              type="button"
+              className={`vibra-dj-mode vibra-dj-party ${partyMode ? "is-active" : ""}`}
               aria-pressed={partyMode}
               onClick={() => {
                 const enabled = !partyMode;
@@ -1360,19 +1387,64 @@ export function VibraModule() {
                 }
               }}
             >
-              FIESTA PRO: {partyMode ? "ACTIVA" : "INACTIVA"}
+              <span className="vibra-dj-mode-icon">✦</span>
+              <span className="vibra-dj-mode-copy">
+                <strong>FIESTA PRO</strong>
+                <small>{partyMode ? "PERFIL DE FIESTA ACTIVO" : "ACTIVA EL PERFIL DE FIESTA"}</small>
+              </span>
+              <span className="vibra-dj-mode-state">{partyMode ? "ON" : "OFF"}</span>
             </button>
-            <span style={{ alignSelf: "center", fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-secondary)" }}>
-              Objetivo: {musicDirection.goal || "sin fijar"} · Preferencia de energía: {musicDirection.energy === "up" ? "más alta" : "estable"}{musicDirection.vocalFocus ? " · prioridad vocal" : ""}
-              {plannedNextTrack ? ` · Siguiente candidata: ${plannedNextTrack.title}` : ""}
-            </span>
           </div>
-          <div style={{ marginTop: 7, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>
-            Auto DJ prioriza coincidencias locales de estilo, energía y voz; si no hay una intención fijada o faltan etiquetas de energía, continúa con canciones disponibles sin atribuirles género ni BPM. No analiza audio ambiental ni emoción del usuario.
+
+          <div className="vibra-dj-direction-panel">
+            <div className="vibra-dj-section-label">01 / DIRECCIÓN MUSICAL</div>
+            <div className="vibra-dj-direction">
+              <input
+                className="hbg-input"
+                aria-label="Objetivo musical"
+                placeholder="Ej.: más para cantar, música viejita, más bailable..."
+                value={directionInput}
+                onChange={(event) => setDirectionInput(event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Enter") applyMusicDirection(); }}
+              />
+              <button className="hbg-btn hbg-btn-primary" onClick={applyMusicDirection}>APLICAR</button>
+            </div>
+            <div className="vibra-dj-direction-meta">
+              <span>OBJETIVO: <strong>{musicDirection.goal || "LIBRE"}</strong></span>
+              <span>ENERGÍA: <strong>{musicDirection.energy === "up" ? "ALTA" : "ESTABLE"}</strong></span>
+              {musicDirection.vocalFocus && <span>PRIORIDAD VOCAL</span>}
+            </div>
           </div>
+
+          <div className="vibra-dj-track-grid">
+            <div className="vibra-dj-track">
+              <span className="vibra-dj-section-label">02 / SONANDO AHORA</span>
+              <strong title={currentTrack?.title ?? "Sin canción"}>{currentTrack?.title ?? "Sin canción seleccionada"}</strong>
+              <small>{currentTrack?.artist || (currentTrack ? "Artista desconocido" : "Importa música para iniciar")}</small>
+            </div>
+            <div className="vibra-dj-track vibra-dj-track-next">
+              <span className="vibra-dj-section-label">03 / SIGUIENTE CANDIDATA</span>
+              <strong title={plannedNextTrack?.title ?? "Sin candidata"}>{plannedNextTrack?.title ?? "Sin coincidencia disponible"}</strong>
+              <small>{plannedNextTrack?.artist || (plannedNextTrack ? "Artista desconocido" : "Amplía tu biblioteca o cambia el objetivo")}</small>
+            </div>
+          </div>
+
+          <div className="vibra-dj-controls">
+            <button type="button" className="hbg-btn hbg-btn-primary" onClick={togglePlay} disabled={!currentTrack || loading}>
+              {isPlaying ? "Ⅱ PAUSAR" : "▶ REPRODUCIR"}
+            </button>
+            <button type="button" className="hbg-btn hbg-btn-ghost" onClick={() => plannedNextTrack && void playTrack(plannedNextTrack.id)} disabled={!plannedNextTrack || loading}>
+              CARGAR SIGUIENTE
+            </button>
+            <button type="button" className="hbg-btn hbg-btn-ghost" onClick={() => setView("player")}>
+              ABRIR REPRODUCTOR
+            </button>
+          </div>
+
+          <p className="vibra-dj-footnote">
+            El visualizador refleja el audio real cuando Web Audio está disponible. La selección DJ trabaja con tu biblioteca local y sus metadatos actuales; no simula BPM, mezcla entre pistas ni análisis ambiental.
+          </p>
         </section>
-
-
       )}
 
       {/* Hidden file input */}
