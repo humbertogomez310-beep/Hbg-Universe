@@ -20,6 +20,7 @@ import {
   readMusicDirection,
   selectTracksForDirection,
   selectNextAutoDjTrack,
+  explainAutoDjSelection,
   type MusicDirection,
 } from "./musicDirector";
 import { analyzeAudioBlob } from "./djAudioAnalysis";
@@ -163,7 +164,10 @@ function formatDjAnalysis(track: TrackMeta | null): string {
   const facts: string[] = [];
   if (track.bpm && (track.bpmConfidence ?? 0) >= 0.25) facts.push(`${Math.round(track.bpm)} BPM`);
   if (track.musicalKey && (track.keyConfidence ?? 0) >= 0.25) facts.push(track.musicalKey.toUpperCase());
-  return facts.length ? facts.join(" · ") : "ANÁLISIS NO DISPONIBLE";
+  if ((track.beatStrength ?? 0) >= 0.05) facts.push(`PULSO ${Math.round(track.beatStrength! * 100)}%`);
+  if (track.energyLevel !== undefined) facts.push(`ENERGÍA ${Math.round(track.energyLevel * 100)}%`);
+  if (track.impactStrength !== undefined) facts.push(`IMPACTO ${Math.round(track.impactStrength * 100)}%`);
+  return facts.length ? facts.join(" · ") : "ANÁLISIS EN PROCESO";
 }
 
 function VisualizerBars({ active, color, analyser }: { active: boolean; color: string; analyser: AnalyserNode | null }) {
@@ -370,6 +374,11 @@ export function VibraModule() {
         setCurrentId(candidate.id);
         setRecentTrackIds((previous) => [candidate.id, ...previous.filter((id) => id !== candidate.id)].slice(0, 5000));
         hbgCore.setContext("music.currentTrack", candidate);
+        hbgCore.setContext("music.currentTrackReason", explainAutoDjSelection(
+          tracksRef.current.find((track) => track.id === outgoingId) ?? null,
+          candidate,
+          musicDirection,
+        ));
         playbackPositionRef.current = engine.activeAudio.currentTime || 0;
         setCurrentTime(engine.activeAudio.currentTime || 0);
         setDuration(engine.activeAudio.duration || candidate.duration || 0);
@@ -982,11 +991,16 @@ export function VibraModule() {
       setError("La canción ya no está disponible en la biblioteca.");
       return false;
     }
+    const previousTrack = tracksRef.current.find((track) => track.id === currentIdRef.current) ?? null;
     const playing = await loadTrackRef.current(id, true);
     if (!playing) return false;
     setCurrentId(id);
     setRecentTrackIds((prev) => [id, ...prev.filter((trackId) => trackId !== id)].slice(0, 5000));
-    hbgCore.setContext("music.currentTrack", tracksRef.current.find((track) => track.id === id) ?? null);
+    const selectedTrack = tracksRef.current.find((track) => track.id === id) ?? null;
+    hbgCore.setContext("music.currentTrack", selectedTrack);
+    hbgCore.setContext("music.currentTrackReason", automatic && selectedTrack
+      ? explainAutoDjSelection(previousTrack, selectedTrack, musicDirection)
+      : "La canción fue seleccionada directamente desde la biblioteca o por una orden del usuario.");
     return true;
   };
 
@@ -1107,6 +1121,11 @@ export function VibraModule() {
               ...prev.filter((id) => id !== next.id),
             ].slice(0, 5000));
             hbgCore.setContext("music.currentTrack", next);
+            hbgCore.setContext("music.currentTrackReason", explainAutoDjSelection(
+              availableTracks.find((track) => track.id === currentTrackId) ?? null,
+              next,
+              musicDirection,
+            ));
             return;
           }
           failedIds.add(next.id);
@@ -1120,8 +1139,12 @@ export function VibraModule() {
 
   const nextTrack = async (): Promise<boolean> => {
     if (autoDjEnabled && !activeSequenceRef.current) {
+      const previousTrack = tracksRef.current.find((track) => track.id === currentIdRef.current) ?? null;
       const next = selectNextAutoDjTrack(tracksRef.current, currentIdRef.current, recentTrackIds, musicDirection);
-      return next ? playTrack(next.id) : false;
+      if (!next) return false;
+      const playing = await playTrack(next.id);
+      if (playing) hbgCore.setContext("music.currentTrackReason", explainAutoDjSelection(previousTrack, next, musicDirection));
+      return playing;
     }
     const activeSequence = activeSequenceRef.current;
     const queue = activeSequence ?? tracks.map((track) => track.id);
@@ -1330,8 +1353,10 @@ export function VibraModule() {
           if (!next) return result(false, undefined, tracks.length <= 1
             ? "Auto DJ necesita al menos dos canciones en la biblioteca para evitar repetir la misma pista."
             : "No se pudo encontrar una pista alternativa reproducible en la biblioteca.");
+          const previousTrack = tracks.find((track) => track.id === currentId) ?? null;
           const playing = await playTrack(next.id);
           if (!playing) return result(false, undefined, "Auto DJ no pudo cargar la canción seleccionada.");
+          hbgCore.setContext("music.currentTrackReason", explainAutoDjSelection(previousTrack, next, musicDirection));
         }
         return result(true, { enabled });
       }),
