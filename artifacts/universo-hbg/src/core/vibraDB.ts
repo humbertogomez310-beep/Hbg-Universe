@@ -28,6 +28,8 @@ export interface TrackMeta {
   musicalKey?: string;
   keyConfidence?: number;
   analyzedAt?: number;
+  /** SHA-256 of exact file bytes when safely available during a manual device scan. */
+  contentHash?: string;
 }
 
 function openDB(): Promise<IDBDatabase> {
