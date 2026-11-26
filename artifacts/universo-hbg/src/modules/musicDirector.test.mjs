@@ -126,7 +126,7 @@ test("Auto DJ does not trust low-confidence BPM/key estimates", () => {
     { id: "first", title: "First", artist: "B", album: "", importedAt: 2, bpm: 94, bpmConfidence: 0.1, musicalKey: "D major", keyConfidence: 0.1 },
     { id: "second", title: "Second", artist: "C", album: "", importedAt: 3, bpm: 122, bpmConfidence: 0.1, musicalKey: "G major", keyConfidence: 0.1 },
   ];
-  assert.equal(selectNextAutoDjTrack(analyzed, "current", [], { goal: "", energy: "steady" })?.id, "first");
+  assert.equal(selectNextAutoDjTrack(analyzed, "current", [], { goal: "", energy: "steady" }, () => 0)?.id, "first");
 });
 
 
