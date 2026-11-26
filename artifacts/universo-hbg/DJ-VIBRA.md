@@ -2,6 +2,8 @@
 
 ## Capacidades conectadas
 
+- Auto DJ y Modo Fiesta PRO comparten una única consola DJ VIBRA. Auto DJ es el motor de conducción; Fiesta PRO es un perfil de energía dentro de esa misma consola. La activación de cualquiera de los dos mediante las acciones `music.autoDj` o `music.party` abre la consola. El panel muestra el espectro real cuando Web Audio está disponible, pista actual, siguiente candidata y dirección musical.
+
 - VIBRA sigue siendo responsable del audio y de la biblioteca IndexedDB; DJ VIBRA dirige la sesión a través de acciones registradas en HBG Core. El módulo permanece montado y oculto al navegar a otras pantallas para no detener el reproductor.
 - El objetivo musical se conserva en `localStorage` durante la sesión y prioriza órdenes explícitas.
 - Auto DJ selecciona únicamente pistas de la biblioteca local cuyos títulos, artistas o álbumes coinciden con el objetivo. Evita las pistas recientes cuando hay alternativas y prueba otras pistas si una no carga.
