@@ -258,7 +258,7 @@ export function VibraModule() {
   const playbackGainRef = useRef<GainNode | null>(null);
   const volumeRef = useRef(volume);
   const playbackPositionRef = useRef(0);
-  const voicePlaybackSnapshotRef = useRef<{ wasPlaying: boolean; currentTime: number } | null>(null);
+  const voicePlaybackSnapshotRef = useRef<{ wasPlaying: boolean; currentTime: number; audio: HTMLAudioElement | null } | null>(null);
   const equalizerFiltersRef = useRef<BiquadFilterNode[]>([]);
   const [audioAnalyser, setAudioAnalyser] = useState<AnalyserNode | null>(null);
   const currentUrlRef = useRef<string | null>(null);
@@ -304,6 +304,96 @@ export function VibraModule() {
   const plannedNextTrack = selectNextAutoDjTrack(tracks, currentId, recentTrackIds, musicDirection);
   plannedNextTrackRef.current = plannedNextTrack;
   djTransitionEnabledRef.current = autoDjEnabled || partyMode;
+
+  djTransitionCheckRef.current = (audio) => {
+    const engine = djMixEngineRef.current;
+    const candidate = plannedNextTrackRef.current;
+    if (!engine || !djTransitionEnabledRef.current || audio !== engine.activeAudio || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
+
+    if (!engine.isTransitioning && djCrossfadeStartedRef.current) {
+      djCrossfadeStartedRef.current = false;
+      djPreparedTrackIdRef.current = null;
+    }
+    if (!candidate || candidate.id === currentIdRef.current) {
+      if (djPreparedTrackIdRef.current) {
+        engine.clearPreparedNext();
+        djPreparedTrackIdRef.current = null;
+      }
+      return;
+    }
+
+    if (djPreparedTrackIdRef.current && djPreparedTrackIdRef.current !== candidate.id) {
+      engine.clearPreparedNext();
+      djPreparedTrackIdRef.current = null;
+    }
+    const fadeSeconds = Math.min(8, Math.max(1.5, audio.duration * 0.15));
+    const remaining = audio.duration - audio.currentTime;
+
+    if (
+      remaining <= fadeSeconds &&
+      djPreparedTrackIdRef.current === candidate.id &&
+      !djCrossfadeStartedRef.current
+    ) {
+      djCrossfadeStartedRef.current = true;
+      const outgoingId = currentIdRef.current;
+      void engine.crossfadeToNext(fadeSeconds * 1000).then((started) => {
+        if (!started) {
+          djCrossfadeStartedRef.current = false;
+          engine.clearPreparedNext();
+          djPreparedTrackIdRef.current = null;
+          return;
+        }
+        audioRef.current = engine.activeAudio;
+        currentIdRef.current = candidate.id;
+        setCurrentId(candidate.id);
+        setRecentTrackIds((previous) => [candidate.id, ...previous.filter((id) => id !== candidate.id)].slice(0, 20));
+        hbgCore.setContext("music.currentTrack", candidate);
+        playbackPositionRef.current = engine.activeAudio.currentTime || 0;
+        setCurrentTime(engine.activeAudio.currentTime || 0);
+        setDuration(engine.activeAudio.duration || candidate.duration || 0);
+        setProgress(0);
+        djPreparedTrackIdRef.current = null;
+        if (outgoingId !== currentIdRef.current) setIsPlaying(true);
+      });
+      return;
+    }
+
+    if (
+      remaining <= fadeSeconds + 18 &&
+      !djPreparedTrackIdRef.current &&
+      djPreparingTrackIdRef.current !== candidate.id
+    ) {
+      djPreparingTrackIdRef.current = candidate.id;
+      void (async () => {
+        try {
+          const blob = await getAudioBlob(candidate.id);
+          if (
+            !blob ||
+            !djTransitionEnabledRef.current ||
+            plannedNextTrackRef.current?.id !== candidate.id ||
+            currentIdRef.current === candidate.id
+          ) return;
+          const ready = await engine.prepareNext(blob);
+          if (ready && plannedNextTrackRef.current?.id === candidate.id && djTransitionEnabledRef.current) {
+            djPreparedTrackIdRef.current = candidate.id;
+          } else if (ready) {
+            engine.clearPreparedNext();
+          }
+        } catch {
+          // A failed preload leaves the current deck playing; ended() uses normal auto-advance.
+        } finally {
+          if (djPreparingTrackIdRef.current === candidate.id) djPreparingTrackIdRef.current = null;
+        }
+      })();
+    }
+  };
+
+  useEffect(() => {
+    if (autoDjEnabled || partyMode) return;
+    djMixEngineRef.current?.clearPreparedNext();
+    djPreparedTrackIdRef.current = null;
+    djPreparingTrackIdRef.current = null;
+  }, [autoDjEnabled, partyMode]);
 
   useEffect(() => {
     hbgCore.setContext("music.currentTrack", currentTrack);
@@ -423,7 +513,8 @@ export function VibraModule() {
         if (startTime > 0 && isFinite(startTime)) audio.currentTime = startTime;
         if (autoPlay) {
           await audioContextRef.current?.resume();
-          await audio.play();
+          if (djMixEngineRef.current) await djMixEngineRef.current.resumeActive();
+          else await audio.play();
           if (requestId !== loadGenerationRef.current) return false;
           setIsPlaying(true);
         }
@@ -468,7 +559,7 @@ export function VibraModule() {
 
       engine = new VibraDjMixEngine(context);
       engine.connectMusicChain([...filters, analyser, outputGain]);
-      engineRefSet(engine);
+      djMixEngineRef.current = engine;
       audio = engine.activeAudio;
       audio.volume = 1;
       playbackGainRef.current = outputGain;
@@ -572,9 +663,6 @@ export function VibraModule() {
       if (activeContext) void activeContext.close().catch(() => undefined);
     };
 
-    function engineRefSet(value: VibraDjMixEngine): void {
-      djMixEngineRef.current = value;
-    }
   }, []);
 
   // Register VIBRA once. The callback reads the latest user volume through volumeRef.
@@ -587,7 +675,7 @@ export function VibraModule() {
       djMixEngineRef.current?.setInteractionActive(true);
       const audio = audioRef.current;
       voicePlaybackSnapshotRef.current = audio
-        ? { wasPlaying: !audio.paused && !audio.ended, currentTime: audio.currentTime || 0 }
+        ? { wasPlaying: !audio.paused && !audio.ended, currentTime: audio.currentTime || 0, audio }
         : null;
       void audioContextRef.current?.resume().catch(() => undefined);
     },
@@ -598,8 +686,8 @@ export function VibraModule() {
       const audio = audioRef.current;
       if (!shouldRestorePlayback || !snapshot?.wasPlaying || !audio || !audio.paused || audio.ended) return;
 
-      // Some mobile browsers reset the media position when microphone capture takes focus.
-      if (audio.currentTime + 1 < snapshot.currentTime) {
+      // If no deck transition occurred, recover a mobile browser's reset position.
+      if (snapshot.audio === audio && audio.currentTime + 1 < snapshot.currentTime) {
         try {
           audio.currentTime = snapshot.currentTime;
           playbackPositionRef.current = snapshot.currentTime;
@@ -642,7 +730,10 @@ export function VibraModule() {
     if (audio.src && audio.src !== window.location.href) {
       try {
         await audioContextRef.current?.resume();
-        await audio.play();
+        if (djMixEngineRef.current) {
+          const resumed = await djMixEngineRef.current.resumeActive();
+          if (!resumed) throw new Error("resume failed");
+        } else await audio.play();
         setIsPlaying(true);
         return true;
       } catch {
@@ -672,7 +763,8 @@ export function VibraModule() {
     }
     if (audio.src && audio.src !== window.location.href) {
       if (isPlaying) {
-        audio.pause();
+        if (djMixEngineRef.current) djMixEngineRef.current.pauseAll();
+        else audio.pause();
       } else {
         await resumePlayback();
       }
@@ -871,7 +963,8 @@ export function VibraModule() {
     play: () => { void resumePlayback(); },
     pause: () => {
       preventVoiceSessionPlaybackRestore();
-      audioRef.current?.pause();
+      if (djMixEngineRef.current) djMixEngineRef.current.pauseAll();
+      else audioRef.current?.pause();
     },
     next: () => { void nextTrack(); },
     previous: () => { void prevTrack(); },
