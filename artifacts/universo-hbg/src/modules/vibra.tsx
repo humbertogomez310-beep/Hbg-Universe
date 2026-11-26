@@ -292,6 +292,8 @@ export function VibraModule() {
   const [analysisRevision, setAnalysisRevision] = useState(0);
   const [libraryScanStatus, setLibraryScanStatus] = useState<"idle" | "running" | "pausing" | "paused" | "completed">("idle");
   const [deviceScanStatus, setDeviceScanStatus] = useState<string | null>(null);
+  const [includeShortDeviceAudio, setIncludeShortDeviceAudio] = useState(false);
+  const [includeVoiceNotes, setIncludeVoiceNotes] = useState(false);
   const [duplicateScanStatus, setDuplicateScanStatus] = useState<"idle" | "running" | "completed">("idle");
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
   const [duplicateKeepIds, setDuplicateKeepIds] = useState<Record<string, string>>({});
@@ -1891,6 +1893,7 @@ export function VibraModule() {
     let imported = 0;
     let duplicates = 0;
     let shortFiles = 0;
+    let voiceNotes = 0;
     let failed = 0;
     let unsupported = 0;
     const knownTracks = [...tracksRef.current];
@@ -1911,8 +1914,13 @@ export function VibraModule() {
             continue;
           }
 
+          const voiceNoteName = /(?:whatsapp[ _-]*audio|voice[ _-]*note|nota[ _-]*de[ _-]*voz|grabaci[oó]n|recording|voice[ _-]*memo|audio[ _-]*message|^ptt[ _-])/i.test(file.name);
+          if (voiceNoteName && !includeVoiceNotes) {
+            voiceNotes++;
+            continue;
+          }
           const duration = await getAudioDuration(file);
-          if (!Number.isFinite(duration) || duration < 60) {
+          if (!Number.isFinite(duration) || (duration < 60 && !includeShortDeviceAudio)) {
             shortFiles++;
             continue;
           }
@@ -1987,7 +1995,7 @@ export function VibraModule() {
     } finally {
       setDeviceScanStatus(
         "ESCANEO TERMINADO · " + imported + " NUEVAS · " + duplicates + " DUPLICADAS · " +
-        shortFiles + " CORTAS (<60 S) · " + unsupported + " NO COMPATIBLES · " + failed + " ERRORES"
+        shortFiles + " CORTAS · " + voiceNotes + " NOTAS DE VOZ · " + unsupported + " NO COMPATIBLES · " + failed + " ERRORES"
       );
     }
   };
@@ -2572,11 +2580,21 @@ export function VibraModule() {
           <div className="hbg-card" style={{ marginTop: 10, border: "1px solid var(--border-dim)" }}>
             <div style={{ fontFamily: "var(--font-display)", fontSize: 12, fontWeight: 700 }}>ESCANEAR DISPOSITIVO</div>
             <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.6 }}>
-              Selecciona manualmente los archivos de audio. VIBRA filtra archivos de menos de 60 segundos, compara coincidencias exactas disponibles y solo incorpora canciones nuevas. No accede silenciosamente a toda la memoria del teléfono.
+              Selecciona manualmente los archivos de audio. VIBRA filtra canciones cortas y nombres típicos de notas de voz (con opción de incluirlos), compara coincidencias exactas disponibles y solo incorpora canciones nuevas. No accede silenciosamente a toda la memoria del teléfono.
             </div>
             <button type="button" className="hbg-btn hbg-btn-primary" style={{ marginTop: 10 }} onClick={() => deviceScanFileInputRef.current?.click()} disabled={deviceScanStatus === "ESCANEANDO"}>
               {deviceScanStatus === "ESCANEANDO" ? "◎ ESCANEANDO..." : "⌕ SELECCIONAR Y ESCANEAR ARCHIVOS"}
             </button>
+            <div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 10, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-secondary)" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <input type="checkbox" checked={includeShortDeviceAudio} onChange={(event) => setIncludeShortDeviceAudio(event.target.checked)} />
+                Permitir canciones de menos de 60 segundos
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <input type="checkbox" checked={includeVoiceNotes} onChange={(event) => setIncludeVoiceNotes(event.target.checked)} />
+                Incluir archivos que parecen notas de voz por su nombre
+              </label>
+            </div>
             {deviceScanStatus && <div aria-live="polite" style={{ marginTop: 9, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-secondary)" }}>{deviceScanStatus}</div>}
             <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginTop: 7 }}>
               La verificación SHA-256 se realiza secuencialmente para archivos de hasta 32 MB. Archivos mayores se importan sin hash para evitar picos grandes de memoria; podrán revisarse en el escaneo de duplicados.
