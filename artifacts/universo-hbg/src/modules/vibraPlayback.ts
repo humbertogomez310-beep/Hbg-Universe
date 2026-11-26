@@ -58,3 +58,26 @@ export function selectPreviousPlaybackId(
   if (currentIndex > 0) return trackIds[currentIndex - 1] ?? null;
   return repeat === "all" ? trackIds[trackIds.length - 1] ?? null : null;
 }
+
+
+export interface PlaybackInterruptionSnapshot {
+  trackId: string | null;
+  wasPlaying: boolean;
+  currentTime: number;
+}
+
+/** Resume only the same track that was playing before the app lost visibility. */
+export function shouldRestorePlaybackAfterInterruption(
+  snapshot: PlaybackInterruptionSnapshot,
+  currentTrackId: string | null,
+  explicitlyPaused: boolean,
+): boolean {
+  return snapshot.wasPlaying && !explicitlyPaused && snapshot.trackId !== null && snapshot.trackId === currentTrackId;
+}
+
+/** Recover a browser-reset media position without rewinding a track that kept advancing. */
+export function recoverPlaybackPosition(currentTime: number, savedTime: number): number {
+  const current = Number.isFinite(currentTime) ? Math.max(0, currentTime) : 0;
+  const saved = Number.isFinite(savedTime) ? Math.max(0, savedTime) : 0;
+  return saved > current + 1 ? saved : current;
+}
