@@ -2068,6 +2068,56 @@ export function VibraModule() {
     }
   };
 
+  const removeDuplicateCopies = async (group: DuplicateGroup) => {
+    const keepId = duplicateKeepIds[group.id] ?? group.trackIds[0];
+    if (!group.trackIds.includes(keepId)) return;
+    const removeIds = group.trackIds.filter((id) => id !== keepId);
+    if (removeIds.length === 0) return;
+    const keepTrack = tracksRef.current.find((track) => track.id === keepId);
+    if (!keepTrack) {
+      setError("No se encontró la canción elegida para conservar.");
+      return;
+    }
+    const confirmed = window.confirm(
+      "Se conservará: " + keepTrack.title + "\nSe eliminarán " + removeIds.length +
+      " copia(s). Las playlists y colas que apunten a esas copias se redirigirán a la canción conservada. ¿Continuar?"
+    );
+    if (!confirmed) return;
+
+    const wasCurrentRemoved = currentIdRef.current !== null && removeIds.includes(currentIdRef.current);
+    const wasPlaying = isPlaying;
+    try {
+      for (const id of removeIds) {
+        await deleteAudioBlob(id);
+        await deleteTrackMeta(id);
+      }
+      setTracks((previous) => previous.filter((track) => !removeIds.includes(track.id)));
+      setFavorites((previous) => {
+        const next = new Set(previous);
+        const keepFavorite = next.has(keepId) || removeIds.some((id) => next.has(id));
+        removeIds.forEach((id) => next.delete(id));
+        if (keepFavorite) next.add(keepId);
+        return next;
+      });
+      const remap = (ids: string[]) => {
+        const mapped = ids.map((id) => removeIds.includes(id) ? keepId : id);
+        return mapped.filter((id, index) => mapped.indexOf(id) === index);
+      };
+      setPlaylists((previous) => previous.map((playlist) => ({ ...playlist, trackIds: remap(playlist.trackIds) })));
+      setNormalQueueIds((previous) => remap(previous));
+      activeSequenceRef.current = activeSequenceRef.current ? remap(activeSequenceRef.current) : null;
+      setRecentTrackIds((previous) => remap(previous));
+      setDuplicateGroups((previous) => previous.filter((item) => item.id !== group.id));
+      if (wasCurrentRemoved) {
+        setCurrentId(keepId);
+        await loadTrackRef.current(keepId, wasPlaying);
+      }
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? "No se pudieron retirar todas las copias: " + cause.message : "No se pudieron retirar todas las copias.");
+    }
+  };
+
   const toggleFav = (id: string) => setFavorites((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   const addPlaylist = () => {
