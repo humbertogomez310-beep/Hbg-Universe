@@ -33,6 +33,7 @@ export const VOICE_COMMAND_CATALOG: readonly VoiceCommandGroup[] = [
       { label: "Pausar", phrases: ["Pausa", "Páusalo", "Pon pausa", "Ponlo en pausa", "Detén la música"] },
       { label: "Continuar", phrases: ["Continúa", "Sigue reproduciendo", "Reanúdalo", "Quita la pausa"] },
       { label: "Cambiar canción", phrases: ["Siguiente canción", "Canción anterior", "Qué canción está sonando"] },
+      { label: "Explicar selección DJ", phrases: ["Por qué esta canción", "Por qué puso esa canción", "Por qué eligió esta pista"] },
       { label: "Controlar volumen", phrases: ["Sube el volumen", "Bájale un poquito", "Pon el volumen al 50%"] },
       { label: "DJ y ambiente", phrases: ["Activa Auto DJ", "Activa modo fiesta", "Activa modo fiesta PRO"] },
       { label: "Playlists", phrases: ["Crea playlist rock", "Reproduce mi playlist favoritos"] },
