@@ -290,10 +290,13 @@ export function VibraModule() {
     const effectiveVolume = calculateEffectiveAudioVolume(volumeRef.current, factor);
     const gain = playbackGainRef.current;
     const context = audioContextRef.current;
+    const engine = djMixEngineRef.current;
     if (gain && context && context.state !== "closed") {
       const now = context.currentTime;
+      // Duck only the music branch; the master fader controls music, DJ voice and FX.
       gain.gain.cancelScheduledValues(now);
-      gain.gain.setTargetAtTime(effectiveVolume, now, 0.04);
+      gain.gain.setTargetAtTime(factor, now, 0.04);
+      engine?.setMasterVolume(volumeRef.current / 100);
       if (audioRef.current) audioRef.current.volume = 1;
       return;
     }
@@ -568,9 +571,10 @@ export function VibraModule() {
       const analyser = context.createAnalyser();
       analyser.fftSize = 64;
       const outputGain = context.createGain();
-      outputGain.gain.value = calculateEffectiveAudioVolume(volumeRef.current, getCurrentAudioDuckingFactor());
+      outputGain.gain.value = getCurrentAudioDuckingFactor();
 
       engine = new VibraDjMixEngine(context);
+      engine.setMasterVolume(volumeRef.current / 100);
       engine.connectMusicChain([...filters, analyser, outputGain]);
       djMixEngineRef.current = engine;
       audio = engine.activeAudio;
