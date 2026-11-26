@@ -847,8 +847,8 @@ export function VibraModule() {
     const savedId = readStoredTrackId();
     const savedTime = Number(readStoredValue(STORAGE_KEYS.trackTime) ?? 0);
     const restoreTime = Number.isFinite(savedTime) && savedTime > 0 ? savedTime : 0;
-    const shouldResume = readStoredValue(STORAGE_KEYS.resumeAfterInterruption) === "true";
     const trackToRestore = savedId && tracks.some((track) => track.id === savedId) ? savedId : tracks[0].id;
+    const shouldResume = readStoredValue(STORAGE_KEYS.resumeAfterInterruption) === "true" && savedId === trackToRestore;
     setCurrentId(trackToRestore);
     restoredRef.current = true;
     void loadTrack(trackToRestore, false, trackToRestore === savedId ? restoreTime : 0).then(async (loaded) => {
