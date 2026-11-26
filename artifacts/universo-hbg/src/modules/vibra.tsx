@@ -255,6 +255,7 @@ export function VibraModule() {
   const [directionInput, setDirectionInput] = useState(() => musicDirection.goal);
   const analysisQueueRef = useRef<string[]>([]);
   const analysisQueuedIdsRef = useRef(new Set<string>());
+  const analysisAttemptedIdsRef = useRef(new Set<string>());
   const analysisQueueRunningRef = useRef(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -459,7 +460,8 @@ export function VibraModule() {
   useEffect(() => {
     for (const track of tracks) {
       if (track.beatStrength !== undefined && track.energyLevel !== undefined && track.impactStrength !== undefined) continue;
-      if (analysisQueuedIdsRef.current.has(track.id)) continue;
+      if (analysisAttemptedIdsRef.current.has(track.id)) continue;
+      analysisAttemptedIdsRef.current.add(track.id);
       analysisQueuedIdsRef.current.add(track.id);
       analysisQueueRef.current.push(track.id);
     }
@@ -1052,7 +1054,7 @@ export function VibraModule() {
         activeSequence,
         currentTrackId,
         shuffleEnabled,
-        repeatMode,
+        autoDjEnabled ? "off" : repeatMode,
         recentTrackIds,
       );
       if (nextId) {
@@ -1553,6 +1555,7 @@ export function VibraModule() {
         setTracks((prev) => [...prev, meta]);
         // Analyze rhythm, pulse, energy and key locally without delaying import/playback.
         analysisQueuedIdsRef.current.add(id);
+        analysisAttemptedIdsRef.current.add(id);
         void analyzeAudioBlob(blob).then(async (analysis) => {
           const enriched = { ...meta, ...analysis };
           await saveTrackMeta(enriched);
