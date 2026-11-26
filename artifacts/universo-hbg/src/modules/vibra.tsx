@@ -27,6 +27,8 @@ import { VibraDjMixEngine } from "./djMixEngine";
 import {
   selectNextPlaybackId,
   selectPreviousPlaybackId,
+  shouldRestorePlaybackAfterInterruption,
+  recoverPlaybackPosition,
   type RepeatMode,
 } from "./vibraPlayback";
 
@@ -451,7 +453,10 @@ export function VibraModule() {
     if (!writeStoredValue(STORAGE_KEYS.playlists, JSON.stringify(playlists))) setError("No se pudieron guardar las playlists.");
   }, [playlists]);
   useEffect(() => {
-    if (currentId && !writeStoredValue(STORAGE_KEYS.trackId, currentId)) setError("No se pudo guardar la canción seleccionada.");
+    if (currentId) {
+      if (!writeStoredValue(STORAGE_KEYS.trackId, currentId)) setError("No se pudo guardar la canción seleccionada.");
+      writeStoredValue(STORAGE_KEYS.trackTime, "0");
+    }
   }, [currentId]);
   useEffect(() => {
     const saved =
@@ -635,6 +640,8 @@ export function VibraModule() {
       playbackPositionRef.current = 0;
       setProgress(0);
       setCurrentTime(0);
+      writeStoredValue(STORAGE_KEYS.trackTime, "0");
+      writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "false");
       autoAdvanceInProgressRef.current = false;
       const endedTrackId = currentIdRef.current;
       window.setTimeout(() => {
@@ -768,7 +775,10 @@ export function VibraModule() {
       snapshot,
       currentIdRef.current,
       backgroundResumeSuppressedRef.current,
-    )) return;
+    )) {
+      writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "false");
+      return;
+    }
 
     void (async () => {
       // Android and iOS can release audio focus a moment after the page becomes visible.
@@ -784,8 +794,10 @@ export function VibraModule() {
       }
       await audioContextRef.current?.resume();
       if (activeAudio.paused) {
-        if (engine) await engine.resumeActive();
-        else await activeAudio.play();
+        if (engine) {
+          const resumed = await engine.resumeActive();
+          if (!resumed) throw new Error("No se pudo recuperar el deck activo.");
+        } else await activeAudio.play();
       }
       if (!activeAudio.paused) {
         backgroundResumeSuppressedRef.current = false;
@@ -839,8 +851,10 @@ export function VibraModule() {
       try {
         await audioContextRef.current?.resume();
         const engine = djMixEngineRef.current;
-        if (engine) await engine.resumeActive();
-        else await audioRef.current?.play();
+        if (engine) {
+          const resumed = await engine.resumeActive();
+          if (!resumed) throw new Error("El navegador no permitió reanudar el audio.");
+        } else if (audioRef.current) await audioRef.current.play();
         if (audioRef.current && !audioRef.current.paused) {
           writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "false");
           setIsPlaying(true);
