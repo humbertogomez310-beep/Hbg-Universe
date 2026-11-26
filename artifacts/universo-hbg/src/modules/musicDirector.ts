@@ -12,7 +12,8 @@ const STOP_WORDS = new Set([
   "ahora", "algo", "baila", "bailable", "cancion", "canciones", "con",
   "de", "el", "en", "estilo", "la", "las", "lo", "los", "mas", "musica",
   "para", "pero", "pon", "quiero", "reproduce", "mantén", "manten", "un",
-  "una", "este", "más",
+  "una", "este", "más", "brincar", "saltar", "tomar", "relajar", "relajarse",
+  "tranquilo", "tranquila", "platicar", "entrenar", "correr",
 ]);
 
 const HIGH_ENERGY_HINTS = new Set([
@@ -27,6 +28,10 @@ const VOCAL_HINTS = new Set([
   "karaoke", "sing", "cantar", "cantable", "live", "voz", "vocal", "balada",
   "acoustic", "acustico",
 ]);
+const ACTIVITY_ENERGY_HINTS = {
+  up: ["brincar", "saltar", "bailar", "bailable", "fiesta", "entrenar", "correr", "energia", "movida"],
+  down: ["tomar", "relajar", "relajarse", "tranquilo", "tranquila", "platicar", "descansar", "suave", "chill"],
+} as const;
 
 const ERA_ALIASES: Record<string, string[]> = {
   noventa: ["noventa", "noventas", "noventera", "noventero", "90s", "1990", "1990s"],
@@ -161,50 +166,89 @@ export function selectNextTrack(
 }
 
 /**
- * Auto DJ keeps the local session moving when there is no fixed musical
- * constraint. Energy is a soft metadata preference; an explicit goal or
- * vocal-first request is a hard constraint and is never silently discarded.
+ * Auto DJ always considers the complete local library. Text, mood and vocal
+ * hints are soft preferences; when metadata has no literal match, rhythm is
+ * still used to find the closest available alternative instead of stopping.
  */
 export function selectAutoDjCandidates(
   tracks: TrackMeta[],
-  direction: MusicDirection,
+  _direction: MusicDirection,
 ): TrackMeta[] {
-  const directed = selectTracksForDirection(tracks, direction, tracks.length);
-  if (directed.length > 0) return directed;
-  if (direction.goal.trim() || direction.vocalFocus) return [];
   return tracks;
 }
 
+function requestedEnergy(direction: MusicDirection): "up" | "down" | "steady" {
+  if (direction.energy === "up") return "up";
+  const goal = normalizeMusicText(direction.goal);
+  if (ACTIVITY_ENERGY_HINTS.up.some((hint) => goal.includes(hint))) return "up";
+  if (ACTIVITY_ENERGY_HINTS.down.some((hint) => goal.includes(hint))) return "down";
+  return "steady";
+}
+
+function scoreAutoDjTrack(track: TrackMeta, currentTrack: TrackMeta | null, direction: MusicDirection, terms: string[]): number {
+  const metadata = metadataTerms(track);
+  const matchedTerms = terms.filter((term) => metadata.has(term)).length;
+  const textAffinity = terms.length ? matchedTerms / terms.length : 0;
+  const vocalHintCount = [...VOCAL_HINTS].filter((hint) => metadata.has(hint)).length;
+  const targetEnergy = requestedEnergy(direction);
+  let score = textAffinity * 8;
+
+  // Rhythm and beat compatibility are the main selection criteria.
+  const hasReliableTempo = Boolean(track.bpm && (track.bpmConfidence ?? 0) >= 0.25);
+  if (currentTrack?.bpm && hasReliableTempo && (currentTrack.bpmConfidence ?? 0) >= 0.25) {
+    score += scoreTempoCompatibility(currentTrack.bpm, track.bpm) * 48;
+  } else if (hasReliableTempo) {
+    score += 7 + (track.bpmConfidence ?? 0) * 5;
+  }
+  score += Math.max(0, Math.min(1, track.beatStrength ?? 0)) * 16;
+
+  if (track.energyLevel !== undefined) {
+    const target = targetEnergy === "up" ? 0.78 : targetEnergy === "down" ? 0.3 : 0.53;
+    score += (1 - Math.min(1, Math.abs(track.energyLevel - target))) * 10;
+  }
+  if (targetEnergy === "up") {
+    score += Math.max(0, Math.min(1, track.impactStrength ?? 0)) * 6;
+    if ([...HIGH_ENERGY_HINTS].some((hint) => metadata.has(hint))) score += 2;
+  } else if (targetEnergy === "down" && [...LOW_ENERGY_HINTS].some((hint) => metadata.has(hint))) {
+    score += 2;
+  }
+  if (direction.vocalFocus && vocalHintCount > 0) score += Math.min(4, vocalHintCount);
+  if (currentTrack?.musicalKey && track.musicalKey &&
+      (currentTrack.keyConfidence ?? 0) >= 0.25 && (track.keyConfidence ?? 0) >= 0.25) {
+    score += scoreHarmonicCompatibility(currentTrack.musicalKey, track.musicalKey) * 8;
+  }
+  return score;
+}
+
+/**
+ * Avoids current/recent tracks while unplayed alternatives remain. Once a
+ * full library cycle is complete, it starts a new randomized cycle, never
+ * choosing the current track as its own successor.
+ */
 export function selectNextAutoDjTrack(
   tracks: TrackMeta[],
   currentId: string | null,
   recentTrackIds: string[],
   direction: MusicDirection,
+  random: () => number = Math.random,
 ): TrackMeta | null {
-  const candidates = selectAutoDjCandidates(
-    tracks.filter((track) => track.id !== currentId),
-    direction,
-  );
+  const available = tracks.filter((track) => track.id !== currentId);
+  if (!available.length) return null;
+  const unseen = available.filter((track) => !recentTrackIds.includes(track.id));
+  const cycle = unseen.length ? unseen : available;
   const currentTrack = tracks.find((track) => track.id === currentId) ?? null;
-  const ranked = candidates
-    .map((track, index) => {
-      let compatibility = 0;
-      if (
-        currentTrack?.bpm && track.bpm &&
-        (currentTrack.bpmConfidence ?? 0) >= 0.25 &&
-        (track.bpmConfidence ?? 0) >= 0.25
-      ) compatibility += scoreTempoCompatibility(currentTrack.bpm, track.bpm) * 12;
-      if (
-        currentTrack?.musicalKey && track.musicalKey &&
-        (currentTrack.keyConfidence ?? 0) >= 0.25 &&
-        (track.keyConfidence ?? 0) >= 0.25
-      ) compatibility += scoreHarmonicCompatibility(currentTrack.musicalKey, track.musicalKey) * 10;
-      return { track, index, compatibility };
-    })
-    .sort((left, right) => right.compatibility - left.compatibility || left.index - right.index)
-    .map(({ track }) => track);
-  const notRecentlyPlayed = ranked.filter((track) => !recentTrackIds.includes(track.id));
-  return notRecentlyPlayed[0] ?? ranked[0] ?? null;
+  const terms = goalTerms(direction.goal);
+  const ranked = cycle.map((track) => ({
+    track,
+    score: scoreAutoDjTrack(track, currentTrack, direction, terms),
+  })).sort((left, right) => right.score - left.score);
+  const bestScore = ranked[0]?.score ?? 0;
+  const tolerance = Math.max(4, Math.abs(bestScore) * 0.12);
+  const shortlist = ranked.filter((item) => item.score >= bestScore - tolerance);
+  if (!shortlist.length) return ranked[0]?.track ?? null;
+  const value = random();
+  const safe = Number.isFinite(value) ? Math.max(0, Math.min(0.999999, value)) : 0;
+  return shortlist[Math.floor(safe * shortlist.length)]?.track ?? ranked[0]?.track ?? null;
 }
 
 export function readMusicDirection(storage: Storage): MusicDirection {
