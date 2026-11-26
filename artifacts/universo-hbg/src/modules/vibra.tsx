@@ -2582,10 +2582,45 @@ export function VibraModule() {
               La verificación SHA-256 se realiza secuencialmente para archivos de hasta 32 MB. Archivos mayores se importan sin hash para evitar picos grandes de memoria; podrán revisarse en el escaneo de duplicados.
             </div>
           </div>
-          <div className="hbg-card" style={{ marginTop: 10, opacity: 0.75 }}>
-            <div style={{ fontFamily: "var(--font-display)", fontSize: 11, fontWeight: 700 }}>ESCANEAR DUPLICADOS</div>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginTop: 5 }}>
-              La revisión global de duplicados, huella acústica y selección manual para conservar o eliminar copias sigue pendiente.
+          <div className="hbg-card" style={{ marginTop: 10, border: "1px solid var(--border-dim)" }}>
+            <div style={{ fontFamily: "var(--font-display)", fontSize: 12, fontWeight: 700 }}>ESCANEAR DUPLICADOS</div>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.6 }}>
+              Compara archivos por SHA-256 y agrupa posibles coincidencias por título, artista y duración. No elimina nada automáticamente.
+            </div>
+            <button type="button" className="hbg-btn hbg-btn-primary" style={{ marginTop: 10 }} onClick={() => void scanLibraryDuplicates()} disabled={duplicateScanStatus === "running" || tracks.length < 2}>
+              {duplicateScanStatus === "running" ? "◎ REVISANDO BIBLIOTECA..." : "⌕ ESCANEAR DUPLICADOS"}
+            </button>
+            {duplicateScanStatus === "completed" && (
+              <div style={{ marginTop: 8, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-secondary)" }}>
+                {duplicateGroups.length === 0 ? "NO SE ENCONTRARON GRUPOS DUPLICADOS" : duplicateGroups.length + " GRUPO(S) PARA REVISAR"}
+              </div>
+            )}
+            {duplicateGroups.map((group) => (
+              <div key={group.id} style={{ marginTop: 12, padding: 9, border: "1px solid var(--border-dim)", borderRadius: 3 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                  <strong style={{ fontFamily: "var(--font-display)", fontSize: 10 }}>{group.kind === "exact" ? "DUPLICADO EXACTO" : "POSIBLE DUPLICADO"}</strong>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>{group.trackIds.length} ARCHIVOS</span>
+                </div>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginTop: 4 }}>{group.reason}</div>
+                {group.trackIds.map((id) => {
+                  const track = tracks.find((item) => item.id === id);
+                  if (!track) return null;
+                  const keep = duplicateKeepIds[group.id] === id;
+                  return (
+                    <div key={id} style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 7, padding: 6, background: keep ? "rgba(0, 220, 255, 0.08)" : "transparent", border: "1px solid var(--border-dim)", borderRadius: 3 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track.title}</div>
+                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>{track.artist} · {formatDuration(track.duration)} · {(track.size / (1024 * 1024)).toFixed(1)} MB</div>
+                      </div>
+                      <button type="button" className={keep ? "hbg-btn hbg-btn-primary" : "hbg-btn hbg-btn-ghost"} style={{ padding: "4px 7px", fontSize: 9 }} aria-pressed={keep} onClick={() => setDuplicateKeepIds((previous) => ({ ...previous, [group.id]: id }))}>{keep ? "CONSERVAR" : "ELEGIR"}</button>
+                    </div>
+                  );
+                })}
+                <button type="button" className="hbg-btn hbg-btn-ghost" style={{ marginTop: 8, width: "100%", justifyContent: "center" }} onClick={() => void removeDuplicateCopies(group)}>ELIMINAR COPIAS NO CONSERVADAS</button>
+              </div>
+            ))}
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginTop: 9 }}>
+              La huella acústica para detectar la misma grabación con otra codificación aún no está integrada. Las coincidencias probables requieren tu revisión; eliminar siempre pide confirmación y redirige las referencias de playlists y colas.
             </div>
           </div>
         </section>
