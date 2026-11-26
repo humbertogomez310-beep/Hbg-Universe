@@ -998,9 +998,11 @@ export function VibraModule() {
     setRecentTrackIds((prev) => [id, ...prev.filter((trackId) => trackId !== id)].slice(0, 5000));
     const selectedTrack = tracksRef.current.find((track) => track.id === id) ?? null;
     hbgCore.setContext("music.currentTrack", selectedTrack);
-    hbgCore.setContext("music.currentTrackReason", automatic && selectedTrack
-      ? explainAutoDjSelection(previousTrack, selectedTrack, musicDirection)
-      : "La canción fue seleccionada directamente desde la biblioteca o por una orden del usuario.");
+    if (!automatic) {
+      hbgCore.setContext("music.currentTrackReason", "La canción fue seleccionada directamente desde la biblioteca o por una orden del usuario.");
+    } else if (autoDjEnabled && selectedTrack) {
+      hbgCore.setContext("music.currentTrackReason", explainAutoDjSelection(previousTrack, selectedTrack, musicDirection));
+    }
     return true;
   };
 
