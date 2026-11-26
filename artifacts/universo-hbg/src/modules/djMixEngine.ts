@@ -52,6 +52,8 @@ export class VibraDjMixEngine {
   private masterVolume = 1;
   private prepareGeneration = 0;
   private activeLoadGeneration = 0;
+  private cancelActiveLoad: (() => void) | null = null;
+  private cancelPrepare: (() => void) | null = null;
   private readonly context: AudioContext;
 
   constructor(context: AudioContext) {
@@ -150,6 +152,11 @@ export class VibraDjMixEngine {
 
   private settleTransitionOnActiveDeck(): void {
     this.prepareGeneration += 1;
+    this.cancelPrepare?.();
+    this.cancelPrepare = null;
+    this.activeLoadGeneration += 1;
+    this.cancelActiveLoad?.();
+    this.cancelActiveLoad = null;
     if (this.transitionTimer !== null) clearTimeout(this.transitionTimer);
     this.transitionTimer = null;
     const active = this.decks[this.activeIndex];
@@ -166,7 +173,7 @@ export class VibraDjMixEngine {
   async loadActive(blob: Blob, startTime = 0, autoplay = false): Promise<HTMLAudioElement | null> {
     if (this.destroyed) return null;
     this.settleTransitionOnActiveDeck();
-    const generation = ++this.activeLoadGeneration;
+    const generation = this.activeLoadGeneration;
     const active = this.decks[this.activeIndex];
     this.releaseDeck(active);
     const objectUrl = URL.createObjectURL(blob);
@@ -181,11 +188,14 @@ export class VibraDjMixEngine {
         clearTimeout(timeout);
         active.audio.removeEventListener("canplay", onReady);
         active.audio.removeEventListener("error", onError);
+        if (this.cancelActiveLoad === cancelLoad) this.cancelActiveLoad = null;
         resolve(success);
       };
       const onReady = () => finish(true);
       const onError = () => finish(false);
       const timeout = setTimeout(() => finish(false), 12000);
+      const cancelLoad = () => finish(false);
+      this.cancelActiveLoad = cancelLoad;
       active.audio.addEventListener("canplay", onReady, { once: true });
       active.audio.addEventListener("error", onError, { once: true });
       active.audio.load();
@@ -214,6 +224,8 @@ export class VibraDjMixEngine {
   clearPreparedNext(): void {
     if (this.destroyed || this.transitionTimer !== null) return;
     this.prepareGeneration += 1;
+    this.cancelPrepare?.();
+    this.cancelPrepare = null;
     this.releaseDeck(this.decks[1 - this.activeIndex]);
     const now = this.context.currentTime;
     this.decks[1 - this.activeIndex].gain.gain.cancelScheduledValues(now);
@@ -240,7 +252,9 @@ export class VibraDjMixEngine {
   /** Load the inactive deck while the active deck continues playing. */
   async prepareNext(blob: Blob): Promise<boolean> {
     if (this.destroyed || this.transitionTimer !== null) return false;
-    const generation = ++this.prepareGeneration;
+    this.prepareGeneration += 1;
+    this.cancelPrepare?.();
+    const generation = this.prepareGeneration;
     const deck = this.decks[1 - this.activeIndex];
     this.releaseDeck(deck);
     const objectUrl = URL.createObjectURL(blob);
@@ -255,11 +269,14 @@ export class VibraDjMixEngine {
         clearTimeout(timeout);
         deck.audio.removeEventListener("canplay", onReady);
         deck.audio.removeEventListener("error", onError);
+        if (this.cancelPrepare === cancelLoad) this.cancelPrepare = null;
         resolve(success);
       };
       const onReady = () => finish(true);
       const onError = () => finish(false);
       const timeout = setTimeout(() => finish(false), 12000);
+      const cancelLoad = () => finish(false);
+      this.cancelPrepare = cancelLoad;
       deck.audio.addEventListener("canplay", onReady, { once: true });
       deck.audio.addEventListener("error", onError, { once: true });
       deck.audio.load();
@@ -319,6 +336,10 @@ export class VibraDjMixEngine {
     this.destroyed = true;
     this.prepareGeneration += 1;
     this.activeLoadGeneration += 1;
+    this.cancelPrepare?.();
+    this.cancelPrepare = null;
+    this.cancelActiveLoad?.();
+    this.cancelActiveLoad = null;
     if (this.transitionTimer !== null) clearTimeout(this.transitionTimer);
     this.transitionTimer = null;
     for (const deck of this.decks) {
