@@ -338,6 +338,7 @@ export function VibraModule() {
   const lastKnownPlayingRef = useRef(false);
   const lastPlaybackCheckpointAtRef = useRef(0);
   const autoDjSessionSaveInFlightRef = useRef(false);
+  const autoDjQueueIdsRef = useRef<string[] | null>(null);
   const equalizerFiltersRef = useRef<BiquadFilterNode[]>([]);
   const [audioAnalyser, setAudioAnalyser] = useState<AnalyserNode | null>(null);
   const currentUrlRef = useRef<string | null>(null);
@@ -384,10 +385,11 @@ export function VibraModule() {
 
   const mood = MOODS.find((m) => m.mode === activeMode)!;
   const currentTrack = tracks.find((t) => t.id === currentId) ?? null;
-  const plannedNextTrack = useMemo(
-    () => selectNextAutoDjTrack(tracks, currentId, recentTrackIds, musicDirection),
-    [tracks.length, currentId, recentTrackIds, musicDirection, analysisRevision],
-  );
+  const plannedNextTrack = useMemo(() => {
+    const sessionIds = autoDjEnabled ? autoDjQueueIdsRef.current : null;
+    const candidatePool = sessionIds ? tracks.filter((track) => sessionIds.includes(track.id)) : tracks;
+    return selectNextAutoDjTrack(candidatePool, currentId, recentTrackIds, musicDirection);
+  }, [tracks, currentId, recentTrackIds, musicDirection, analysisRevision, autoDjEnabled]);
   plannedNextTrackRef.current = plannedNextTrack;
   // Auto DJ manages its own no-repeat rotation; manual repeat-one must not stop DJ transitions.
   djTransitionEnabledRef.current = autoDjEnabled || partyMode;
@@ -1144,6 +1146,7 @@ export function VibraModule() {
       setError("La biblioteca ya no contiene canciones de la sesión Auto DJ guardada.");
       return false;
     }
+    autoDjQueueIdsRef.current = sessionTracks;
     setMusicDirection(checkpoint.direction);
     setRecentTrackIds(checkpoint.recentTrackIds.filter((id) => availableIds.has(id)));
     setAutoDjEnabled(true);
@@ -1171,6 +1174,7 @@ export function VibraModule() {
     setIsPlaying(false);
     setAutoDjEnabled(false);
     setPartyMode(false);
+    autoDjQueueIdsRef.current = null;
     setDjMixStatus("standby");
     await deleteAppState(AUTO_DJ_SESSION_CHECKPOINT_KEY).catch(() => undefined);
     setSavedAutoDjSession(null);
@@ -1287,7 +1291,10 @@ export function VibraModule() {
 
   autoAdvanceRef.current = () => {
     if (autoAdvanceInProgressRef.current) return;
-    const availableTracks = tracksRef.current;
+    const sessionIds = autoDjQueueIdsRef.current;
+    const availableTracks = sessionIds
+      ? tracksRef.current.filter((track) => sessionIds.includes(track.id))
+      : tracksRef.current;
     const currentTrackId = currentIdRef.current;
     const activeSequence = activeSequenceRef.current;
 
@@ -1394,7 +1401,11 @@ export function VibraModule() {
   const nextTrack = async (): Promise<boolean> => {
     if (autoDjEnabled && !activeSequenceRef.current) {
       const previousTrack = tracksRef.current.find((track) => track.id === currentIdRef.current) ?? null;
-      const next = selectNextAutoDjTrack(tracksRef.current, currentIdRef.current, recentTrackIds, musicDirection);
+      const sessionIds = autoDjQueueIdsRef.current;
+      const candidatePool = sessionIds
+        ? tracksRef.current.filter((track) => sessionIds.includes(track.id))
+        : tracksRef.current;
+      const next = selectNextAutoDjTrack(candidatePool, currentIdRef.current, recentTrackIds, musicDirection);
       if (!next) return false;
       const playing = await playTrack(next.id);
       if (playing) hbgCore.setContext("music.currentTrackReason", explainAutoDjSelection(previousTrack, next, musicDirection));
@@ -1595,6 +1606,7 @@ export function VibraModule() {
           return result(false, undefined, "Indica si Auto DJ debe activarse o desactivarse.");
         }
         const enabled = payload.enabled;
+        if (enabled && !autoDjQueueIdsRef.current) autoDjQueueIdsRef.current = tracks.map((track) => track.id);
         setAutoDjEnabled(enabled);
         if (enabled) setView("dj");
         else setPartyMode(false);
