@@ -1,11 +1,13 @@
 # UNIVERSO HBG — HOJA MAESTRA Y CHECKPOINT OFICIAL DE CONTINUIDAD
 
-**Versión:** 2.0 — auditoría y consolidación del 25 de noviembre de 2026  
-**Estado del documento:** checkpoint oficial de continuidad propuesto sobre el código de producción auditado.  
+**Versión:** 2.1 — auditoría base del 25 de noviembre y continuidad actualizada el 26 de noviembre de 2026  
+**Estado del documento:** checkpoint oficial de continuidad; la auditoría integral base se conserva y los addenda registran promociones posteriores verificadas.  
 **Repositorio:** https://github.com/humbertogomez310-beep/Hbg-Universe  
 **Rama de referencia de producción:** deploy/pwa-render  
-**Commit exacto de producción auditado:** ad70d37ae71da09620b5b0cb1d6decef536270bb  
-**Deploy Render:** dep-dc3hute0tbcc73detto0 — LIVE  
+**Commit exacto de producción vigente al último addendum:** 0c8ca86177b5a7fcbd2efc6a100b485ed1f05f28  
+**Commit de la auditoría integral base:** ad70d37ae71da09620b5b0cb1d6decef536270bb  
+**Último deploy Render:** dep-dc3o1qo473hc738k3ggg — LIVE  
+**Deploy de la auditoría integral base:** dep-dc3hute0tbcc73detto0 — LIVE  
 **URL pública:** https://universo-hbg-pwa-public.onrender.com
 
 ---
@@ -651,4 +653,39 @@ No declarar las aplicaciones terminadas como productos independientes hasta cerr
 - El deployment confirma publicación del build, no la actualización de la PWA ya instalada ni el funcionamiento físico del audio/voz/almacenamiento en el teléfono.
 
 
-**FIN — UNIVERSO HBG / HOJA MAESTRA Y CHECKPOINT OFICIAL / 25-11-2026**
+### 15.7 Addendum — continuidad de Auto DJ en VIBRA
+
+**Fecha:** 26-11-2026  
+**PR:** #33 — https://github.com/humbertogomez310-beep/Hbg-Universe/pull/33  
+**Commit de producción:** `0c8ca86177b5a7fcbd2efc6a100b485ed1f05f28`  
+**Commit candidato validado por CI:** `9bfc58a80e0f70a1de7307f56bd3464726276ad1`  
+**CI:** ejecución 45730686548 — SUCCESS.  
+**Render:** deployment `dep-dc3o1qo473hc738k3ggg` — LIVE.
+
+#### Cambio verificado
+
+- Auto DJ ahora continúa con canciones disponibles de la biblioteca local cuando no existe una dirección musical explícita.
+- En Modo Fiesta, si no hay etiquetas textuales de energía, puede continuar con canciones disponibles sin afirmar que sean de alta energía.
+- Una intención explícita de estilo/época o prioridad vocal sigue siendo una restricción: si no hay coincidencias, no se sustituye por canciones ajenas a la petición.
+- La misma selección restringida se aplica con reproducción aleatoria.
+- Se agregaron pruebas de regresión para continuidad neutral, Modo Fiesta sin etiquetas de energía y conservación de intención.
+
+#### Alcance y límites
+
+- El cambio solo modifica el selector local de Auto DJ, su integración en VIBRA y pruebas.
+- No implementa análisis de BPM, tonalidad, beatmatching, mezcla armónica, lectura ambiental ni detección real del ánimo.
+- No certifica el comportamiento de audio/voz simultáneos en un teléfono.
+- No cambia el alcance de Manos Libres: el reconocimiento de voz de la PWA sigue siendo iniciado por el usuario y depende del navegador.
+- No cambia INSTINTO ni sus datos.
+
+#### Estado de cierre
+
+- VIBRA e INSTINTO conservan el estado de beta local-first descrito en 15.2 y 15.3.
+- La corrección de continuidad de Auto DJ está integrada y publicada.
+- Siguen pendientes las pruebas físicas Android/iOS, la distribución independiente de cada aplicación y la matriz FREE/PRO.
+- Para VIBRA siguen pendientes las capacidades avanzadas de Manos Libres, análisis musical profundo y adaptación por señales ambientales.
+- Para INSTINTO sigue pendiente la certificación física de persistencia y backup/restore.
+
+**Siguiente paso obligatorio:** pruebas físicas en el dispositivo del OWNER antes de declarar VIBRA e INSTINTO concluidas como productos independientes.
+
+**FIN — UNIVERSO HBG / HOJA MAESTRA Y CHECKPOINT OFICIAL / 26-11-2026**
