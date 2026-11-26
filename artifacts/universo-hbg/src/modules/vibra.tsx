@@ -23,6 +23,7 @@ import {
   type MusicDirection,
 } from "./musicDirector";
 import { analyzeAudioBlob } from "./djAudioAnalysis";
+import { VibraDjMixEngine } from "./djMixEngine";
 import {
   selectNextPlaybackId,
   selectPreviousPlaybackId,
@@ -247,6 +248,13 @@ export function VibraModule() {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const djMixEngineRef = useRef<VibraDjMixEngine | null>(null);
+  const djPreparedTrackIdRef = useRef<string | null>(null);
+  const djPreparingTrackIdRef = useRef<string | null>(null);
+  const djCrossfadeStartedRef = useRef(false);
+  const plannedNextTrackRef = useRef<TrackMeta | null>(null);
+  const djTransitionEnabledRef = useRef(autoDjEnabled || partyMode);
+  const djTransitionCheckRef = useRef<(audio: HTMLAudioElement) => void>(() => undefined);
   const playbackGainRef = useRef<GainNode | null>(null);
   const volumeRef = useRef(volume);
   const playbackPositionRef = useRef(0);
@@ -294,6 +302,8 @@ export function VibraModule() {
   const mood = MOODS.find((m) => m.mode === activeMode)!;
   const currentTrack = tracks.find((t) => t.id === currentId) ?? null;
   const plannedNextTrack = selectNextAutoDjTrack(tracks, currentId, recentTrackIds, musicDirection);
+  plannedNextTrackRef.current = plannedNextTrack;
+  djTransitionEnabledRef.current = autoDjEnabled || partyMode;
 
   useEffect(() => {
     hbgCore.setContext("music.currentTrack", currentTrack);
@@ -369,49 +379,57 @@ export function VibraModule() {
       if (requestId !== loadGenerationRef.current) return false;
       if (!blob) throw new Error("Archivo no encontrado en la biblioteca");
 
-      // Revoke previous URL
-      if (currentUrlRef.current) URL.revokeObjectURL(currentUrlRef.current);
-      const url = URL.createObjectURL(blob);
-      currentUrlRef.current = url;
-
-      const audio = audioRef.current!;
+      const engine = djMixEngineRef.current;
+      let audio = audioRef.current;
       if (!audio) throw new Error("El reproductor de audio no está disponible");
-      audio.src = url;
-      applyVibraVolume(getCurrentAudioDuckingFactor());
 
-      await new Promise<void>((resolve, reject) => {
-        let settled = false;
-        const cleanup = () => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timeout);
-          audio.removeEventListener("canplay", onReady);
-          audio.removeEventListener("error", onErr);
-          if (cancelPendingLoadRef.current === cancelLoad) cancelPendingLoadRef.current = null;
-        };
-        const timeout = setTimeout(() => {
-          cleanup();
-          reject(new Error("La canción tardó demasiado en cargar"));
-        }, 12000);
-        const onReady = () => { cleanup(); resolve(); };
-        const onErr = () => { cleanup(); reject(new Error("Error al cargar el audio")); };
-        const cancelLoad = () => { cleanup(); resolve(); };
-        cancelPendingLoadRef.current = cancelLoad;
-        audio.addEventListener("canplay", onReady);
-        audio.addEventListener("error", onErr);
-        audio.load();
-      });
-      if (requestId !== loadGenerationRef.current) return false;
+      if (engine) {
+        const loadedAudio = await engine.loadActive(blob, startTime, autoPlay);
+        if (requestId !== loadGenerationRef.current) return false;
+        if (!loadedAudio) throw new Error("No se pudo preparar la canción en el deck activo");
+        audio = loadedAudio;
+        audioRef.current = loadedAudio;
+        currentUrlRef.current = null;
+      } else {
+        if (currentUrlRef.current) URL.revokeObjectURL(currentUrlRef.current);
+        const url = URL.createObjectURL(blob);
+        currentUrlRef.current = url;
+        audio.src = url;
+        applyVibraVolume(getCurrentAudioDuckingFactor());
+
+        await new Promise<void>((resolve, reject) => {
+          let settled = false;
+          const cleanup = () => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeout);
+            audio!.removeEventListener("canplay", onReady);
+            audio!.removeEventListener("error", onErr);
+            if (cancelPendingLoadRef.current === cancelLoad) cancelPendingLoadRef.current = null;
+          };
+          const timeout = setTimeout(() => {
+            cleanup();
+            reject(new Error("La canción tardó demasiado en cargar"));
+          }, 12000);
+          const onReady = () => { cleanup(); resolve(); };
+          const onErr = () => { cleanup(); reject(new Error("Error al cargar el audio")); };
+          const cancelLoad = () => { cleanup(); resolve(); };
+          cancelPendingLoadRef.current = cancelLoad;
+          audio!.addEventListener("canplay", onReady);
+          audio!.addEventListener("error", onErr);
+          audio!.load();
+        });
+        if (requestId !== loadGenerationRef.current) return false;
+        if (startTime > 0 && isFinite(startTime)) audio.currentTime = startTime;
+        if (autoPlay) {
+          await audioContextRef.current?.resume();
+          await audio.play();
+          if (requestId !== loadGenerationRef.current) return false;
+          setIsPlaying(true);
+        }
+      }
 
       setDuration(audio.duration || 0);
-      if (startTime > 0 && isFinite(startTime)) audio.currentTime = startTime;
-
-      if (autoPlay) {
-        await audioContextRef.current?.resume();
-        await audio.play();
-        if (requestId !== loadGenerationRef.current) return false;
-        setIsPlaying(true);
-      }
       return true;
     } catch (e) {
       if (requestId !== loadGenerationRef.current) return false;
@@ -425,18 +443,17 @@ export function VibraModule() {
   }, []);
   loadTrackRef.current = loadTrack;
 
-  // Setup one persistent Web Audio graph for playback, EQ, and the real frequency visualizer.
+  // Two-deck playback graph: both decks share EQ/analyser/master processing.
+  // If Web Audio is unavailable, VIBRA keeps the single-element compatibility path.
   useEffect(() => {
-    const audio = new Audio();
-    audio.preload = "auto";
-    audioRef.current = audio;
-
     let context: AudioContext | null = null;
-    let source: MediaElementAudioSourceNode | null = null;
+    let engine: VibraDjMixEngine | null = null;
+    let audio: HTMLAudioElement;
+    let filters: BiquadFilterNode[] = [];
+
     try {
       context = new AudioContext();
-      source = context.createMediaElementSource(audio);
-      const filters = EQ_BANDS.map((band, index) => {
+      filters = EQ_BANDS.map((band, index) => {
         const filter = context!.createBiquadFilter();
         filter.frequency.value = EQ_FREQUENCIES[index];
         filter.type = index === 0 ? "lowshelf" : index === EQ_BANDS.length - 1 ? "highshelf" : "peaking";
@@ -447,102 +464,117 @@ export function VibraModule() {
       const analyser = context.createAnalyser();
       analyser.fftSize = 64;
       const outputGain = context.createGain();
-      outputGain.gain.value = calculateEffectiveAudioVolume(
-        volumeRef.current,
-        getCurrentAudioDuckingFactor(),
-      );
-      source.connect(filters[0]);
-      filters.forEach((filter, index) => {
-        if (index < filters.length - 1) filter.connect(filters[index + 1]);
-        else filter.connect(analyser);
-      });
-      analyser.connect(outputGain);
-      outputGain.connect(context.destination);
-      playbackGainRef.current = outputGain;
+      outputGain.gain.value = calculateEffectiveAudioVolume(volumeRef.current, getCurrentAudioDuckingFactor());
+
+      engine = new VibraDjMixEngine(context);
+      engine.connectMusicChain([...filters, analyser, outputGain]);
+      engineRefSet(engine);
+      audio = engine.activeAudio;
       audio.volume = 1;
+      playbackGainRef.current = outputGain;
       audioContextRef.current = context;
       equalizerFiltersRef.current = filters;
       setAudioAnalyser(analyser);
     } catch {
-      // If graph construction fails after creating the media source, reconnect it
-      // directly so the browser can still play audio without EQ or spectrum.
-      equalizerFiltersRef.current = [];
+      engine?.destroy();
+      engine = null;
+      djMixEngineRef.current = null;
+      filters = [];
       playbackGainRef.current = null;
+      equalizerFiltersRef.current = [];
       setAudioAnalyser(null);
-      if (context && source) {
-        try {
-          source.disconnect();
-          source.connect(context.destination);
-          audioContextRef.current = context;
-          applyVibraVolume(getCurrentAudioDuckingFactor());
-        } catch {
-          audioContextRef.current = null;
-          void context.close().catch(() => undefined);
-        }
-      } else {
-        audioContextRef.current = null;
-        if (context) void context.close().catch(() => undefined);
-      }
+      audio = new Audio();
+      audio.preload = "auto";
+      audio.volume = calculateEffectiveAudioVolume(volumeRef.current, getCurrentAudioDuckingFactor());
+      audioContextRef.current = null;
+      if (context) void context.close().catch(() => undefined);
     }
 
-    const onTimeUpdate = () => {
-      if (audio.duration && isFinite(audio.duration)) {
-        playbackPositionRef.current = audio.currentTime;
-        setCurrentTime(audio.currentTime);
-        setProgress(audio.currentTime / audio.duration);
+    audioRef.current = audio;
+    const managedAudios = engine ? [...engine.allAudios] : [audio];
+    const onTimeUpdate = (target: HTMLAudioElement) => {
+      if (target !== audioRef.current) return;
+      if (target.duration && isFinite(target.duration)) {
+        playbackPositionRef.current = target.currentTime;
+        setCurrentTime(target.currentTime);
+        setProgress(target.currentTime / target.duration);
       }
+      djTransitionCheckRef.current(target);
     };
-    const onDurationChange = () => { if (isFinite(audio.duration)) setDuration(audio.duration); };
-    const onEnded = () => {
+    const onDurationChange = (target: HTMLAudioElement) => {
+      if (target === audioRef.current && isFinite(target.duration)) setDuration(target.duration);
+    };
+    const onEnded = (target: HTMLAudioElement) => {
+      if (target !== audioRef.current) return;
       setIsPlaying(false);
       playbackPositionRef.current = 0;
       setProgress(0);
       setCurrentTime(0);
-
-      // Let React commit the stopped state before selecting the next item.
-      // Read the latest queue/config refs after the media element has ended.
       autoAdvanceInProgressRef.current = false;
       const endedTrackId = currentIdRef.current;
       window.setTimeout(() => {
-        if (audioRef.current !== audio || currentIdRef.current !== endedTrackId) return;
-        if (!audio.ended) return;
+        if (audioRef.current !== target || currentIdRef.current !== endedTrackId) return;
+        if (!target.ended) return;
         autoAdvanceRef.current();
       }, 0);
     };
-    const onError = () => {
+    const onError = (target: HTMLAudioElement) => {
+      if (target !== audioRef.current) return;
       setError("Error de reproducción — intenta reimportar el archivo");
       setIsPlaying(false);
     };
-    const onPlay = () => setIsPlaying(true);
-    const onPause = () => {
-      playbackPositionRef.current = audio.currentTime || playbackPositionRef.current;
+    const onPlay = (target: HTMLAudioElement) => {
+      if (target === audioRef.current) setIsPlaying(true);
+    };
+    const onPause = (target: HTMLAudioElement) => {
+      if (target !== audioRef.current) return;
+      playbackPositionRef.current = target.currentTime || playbackPositionRef.current;
       setIsPlaying(false);
     };
-
-    audio.addEventListener("timeupdate", onTimeUpdate);
-    audio.addEventListener("durationchange", onDurationChange);
-    audio.addEventListener("ended", onEnded);
-    audio.addEventListener("error", onError);
-    audio.addEventListener("play", onPlay);
-    audio.addEventListener("pause", onPause);
+    const listeners = managedAudios.map((target) => {
+      const time = () => onTimeUpdate(target);
+      const duration = () => onDurationChange(target);
+      const ended = () => onEnded(target);
+      const error = () => onError(target);
+      const play = () => onPlay(target);
+      const pause = () => onPause(target);
+      target.addEventListener("timeupdate", time);
+      target.addEventListener("durationchange", duration);
+      target.addEventListener("ended", ended);
+      target.addEventListener("error", error);
+      target.addEventListener("play", play);
+      target.addEventListener("pause", pause);
+      return { target, time, duration, ended, error, play, pause };
+    });
 
     return () => {
-      audio.pause();
-      audio.removeEventListener("timeupdate", onTimeUpdate);
-      audio.removeEventListener("durationchange", onDurationChange);
-      audio.removeEventListener("ended", onEnded);
-      audio.removeEventListener("error", onError);
-      audio.removeEventListener("play", onPlay);
-      audio.removeEventListener("pause", onPause);
+      for (const listener of listeners) {
+        listener.target.removeEventListener("timeupdate", listener.time);
+        listener.target.removeEventListener("durationchange", listener.duration);
+        listener.target.removeEventListener("ended", listener.ended);
+        listener.target.removeEventListener("error", listener.error);
+        listener.target.removeEventListener("play", listener.play);
+        listener.target.removeEventListener("pause", listener.pause);
+      }
+      if (engine) engine.destroy();
+      else audio.pause();
       if (currentUrlRef.current) URL.revokeObjectURL(currentUrlRef.current);
+      currentUrlRef.current = null;
       audioRef.current = null;
+      djMixEngineRef.current = null;
+      djPreparedTrackIdRef.current = null;
+      djPreparingTrackIdRef.current = null;
       playbackGainRef.current = null;
       equalizerFiltersRef.current = [];
       setAudioAnalyser(null);
-      const context = audioContextRef.current;
+      const activeContext = audioContextRef.current;
       audioContextRef.current = null;
-      if (context) void context.close().catch(() => undefined);
+      if (activeContext) void activeContext.close().catch(() => undefined);
     };
+
+    function engineRefSet(value: VibraDjMixEngine): void {
+      djMixEngineRef.current = value;
+    }
   }, []);
 
   // Register VIBRA once. The callback reads the latest user volume through volumeRef.
@@ -552,6 +584,7 @@ export function VibraModule() {
   // was playing and restore that same media position when the complete voice session ends.
   useEffect(() => registerAudioSessionLifecycle("vibra.playback", {
     onStart: () => {
+      djMixEngineRef.current?.setInteractionActive(true);
       const audio = audioRef.current;
       voicePlaybackSnapshotRef.current = audio
         ? { wasPlaying: !audio.paused && !audio.ended, currentTime: audio.currentTime || 0 }
@@ -559,6 +592,7 @@ export function VibraModule() {
       void audioContextRef.current?.resume().catch(() => undefined);
     },
     onEnd: (shouldRestorePlayback) => {
+      djMixEngineRef.current?.setInteractionActive(false);
       const snapshot = voicePlaybackSnapshotRef.current;
       voicePlaybackSnapshotRef.current = null;
       const audio = audioRef.current;
