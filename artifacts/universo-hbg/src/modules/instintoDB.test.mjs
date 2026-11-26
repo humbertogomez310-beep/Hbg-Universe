@@ -4,6 +4,7 @@ import {
   getInstintoMigrationKeys,
   persistInstintoFallbackData,
   persistInstintoFallbackRecord,
+  readInstintoFallbackData,
   readLegacyInstintoData,
 } from "./instintoDB.ts";
 
@@ -61,7 +62,7 @@ test("fallback writes mark each changed record for reconciliation after IndexedD
   assert.deepEqual(getInstintoMigrationKeys(true, storage.values.__hbg_instinto_fallback_pending_v1__), ["lyrics"]);
 });
 
-test("full backup can be staged in fallback storage without losing any collection", () => {
+test("full backup is staged as one atomic fallback record", () => {
   const storage = createStorage();
   const data = {
     notes: [{ id: "n1" }],
@@ -70,9 +71,48 @@ test("full backup can be staged in fallback storage without losing any collectio
     draft: { title: "Draft", content: "Text", category: "notas", tags: [] },
   };
   assert.equal(persistInstintoFallbackData(data, storage), true);
-  assert.deepEqual(getInstintoMigrationKeys(true, storage.values.__hbg_instinto_fallback_pending_v1__), ["notes", "lyrics", "projects", "draft"]);
-  assert.deepEqual(JSON.parse(storage.values.hbg_instinto_notes_v2), data.notes);
-  assert.deepEqual(JSON.parse(storage.values.hbg_instinto_lyrics_v2), data.lyrics);
-  assert.deepEqual(JSON.parse(storage.values.hbg_instinto_projects), data.projects);
-  assert.deepEqual(JSON.parse(storage.values.hbg_instinto_draft_v1), data.draft);
+  assert.deepEqual(readInstintoFallbackData(storage), data);
+  assert.deepEqual(Object.keys(storage.values), ["__hbg_instinto_fallback_backup_v1__"]);
+});
+
+test("later edits update the staged full backup instead of creating split fallback records", () => {
+  const storage = createStorage();
+  const data = {
+    notes: [{ id: "n1", title: "Original" }],
+    lyrics: [{ id: "l1" }],
+    projects: [{ id: "p1" }],
+    draft: { title: "Draft", content: "Text", category: "notas", tags: [] },
+  };
+  assert.equal(persistInstintoFallbackData(data, storage), true);
+  const updatedNotes = [{ id: "n1", title: "Updated" }];
+  assert.equal(persistInstintoFallbackRecord("notes", updatedNotes, storage), true);
+  assert.deepEqual(readInstintoFallbackData(storage), { ...data, notes: updatedNotes });
+  assert.deepEqual(Object.keys(storage.values), ["__hbg_instinto_fallback_backup_v1__"]);
+});
+
+test("invalid staged full backup blocks partial per-record fallback writes", () => {
+  const storage = createStorage();
+  storage.values.__hbg_instinto_fallback_backup_v1__ = "{invalid";
+  assert.equal(
+    persistInstintoFallbackRecord("notes", [{ id: "n1" }], storage),
+    false,
+  );
+  assert.deepEqual(Object.keys(storage.values), ["__hbg_instinto_fallback_backup_v1__"]);
+});
+
+test("failed atomic backup staging leaves no partial collection writes", () => {
+  const values = {};
+  const storage = {
+    getItem(key) { return values[key] ?? null; },
+    setItem() { throw new Error("quota exceeded"); },
+    removeItem(key) { delete values[key]; },
+  };
+  const data = {
+    notes: [{ id: "n1" }],
+    lyrics: [{ id: "l1" }],
+    projects: [{ id: "p1" }],
+    draft: { title: "Draft", content: "Text", category: "notas", tags: [] },
+  };
+  assert.equal(persistInstintoFallbackData(data, storage), false);
+  assert.deepEqual(values, {});
 });

@@ -21,6 +21,7 @@ const DB_VERSION = 1;
 const STORE_NAME = "records";
 const MIGRATION_KEY = "__local_storage_migrated_v1__";
 const PENDING_FALLBACK_KEY = "__hbg_instinto_fallback_pending_v1__";
+const FALLBACK_BACKUP_KEY = "__hbg_instinto_fallback_backup_v1__";
 const RECORD_KEYS: InstintoRecordKey[] = ["notes", "lyrics", "projects", "draft"];
 const LEGACY_KEYS: Record<InstintoRecordKey, string> = {
   notes: "hbg_instinto_notes_v2",
@@ -82,6 +83,21 @@ export function persistInstintoFallbackRecord(
   storage: LegacyStorage | null = getLegacyStorage(),
 ): boolean {
   if (!storage) return false;
+  const fallbackBackupRaw = safeReadLegacyValue(storage, FALLBACK_BACKUP_KEY);
+  if (fallbackBackupRaw !== null) {
+    const fallbackBackup = readInstintoFallbackData(storage);
+    if (!fallbackBackup) return false;
+    try {
+      storage.setItem(FALLBACK_BACKUP_KEY, JSON.stringify({
+        format: "hbg-instinto-fallback-v1",
+        ...fallbackBackup,
+        [key]: value,
+      }));
+      return true;
+    } catch {
+      return false;
+    }
+  }
   try {
     storage.setItem(LEGACY_KEYS[key], JSON.stringify(value));
     const pending = new Set(readPendingFallbackKeys(storage));
@@ -98,28 +114,41 @@ export function persistInstintoFallbackData(
   storage: LegacyStorage | null = getLegacyStorage(),
 ): boolean {
   if (!storage) return false;
-  for (const key of RECORD_KEYS) {
-    if (!persistInstintoFallbackRecord(key, data[key], storage)) return false;
+  try {
+    // One localStorage write makes fallback restoration all-or-nothing.
+    // Separate per-collection writes could leave a partially restored backup
+    // marked for later migration when storage quota is reached mid-restore.
+    storage.setItem(FALLBACK_BACKUP_KEY, JSON.stringify({
+      format: "hbg-instinto-fallback-v1",
+      notes: data.notes,
+      lyrics: data.lyrics,
+      projects: data.projects,
+      draft: data.draft,
+    }));
+    return true;
+  } catch {
+    return false;
   }
-  return true;
 }
 
 function clearInstintoFallbackKeys(
   keys: InstintoRecordKey[],
   storage: LegacyStorage | null,
-): void {
-  if (!storage || !keys.length) return;
+): boolean {
+  if (!keys.length) return true;
+  if (!storage) return false;
   try {
     const pending = readPendingFallbackKeys(storage).filter((key) => !keys.includes(key));
     if (pending.length) storage.setItem(PENDING_FALLBACK_KEY, JSON.stringify(pending));
     else storage.removeItem(PENDING_FALLBACK_KEY);
   } catch {
-    // Keep the fallback records marked if their reconciliation marker cannot be updated.
-    return;
+    // Keep fallback data available if its reconciliation marker cannot be updated.
+    return false;
   }
   for (const key of keys) {
     try { storage.removeItem(LEGACY_KEYS[key]); } catch { /* The marker is already cleared. */ }
   }
+  return true;
 }
 
 function parseArray<T>(raw: string | null): T[] {
@@ -160,6 +189,47 @@ function safeReadLegacyValue(storage: LegacyStorage | null, key: string): string
   try { return storage?.getItem(key) ?? null; } catch { return null; }
 }
 
+export function readInstintoFallbackData(storage: LegacyStorage | null): InstintoData | null {
+  const raw = safeReadLegacyValue(storage, FALLBACK_BACKUP_KEY);
+  if (!raw) return null;
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      Array.isArray(value) ||
+      (value as Record<string, unknown>).format !== "hbg-instinto-fallback-v1"
+    ) return null;
+    const record = value as Record<string, unknown>;
+    if (
+      !Array.isArray(record.notes) ||
+      !Array.isArray(record.lyrics) ||
+      !Array.isArray(record.projects) ||
+      typeof record.draft !== "object" ||
+      record.draft === null ||
+      Array.isArray(record.draft)
+    ) return null;
+    return {
+      notes: record.notes as InstintoNote[],
+      lyrics: record.lyrics as InstintoLyric[],
+      projects: record.projects as InstintoProject[],
+      draft: parseDraft(JSON.stringify(record.draft)),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function clearInstintoFallbackBackup(storage: LegacyStorage | null): boolean {
+  if (!storage) return false;
+  try {
+    storage.removeItem(FALLBACK_BACKUP_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function readLegacyInstintoData(storage: LegacyStorage | null): InstintoData {
   return {
     notes: parseArray<InstintoNote>(safeReadLegacyValue(storage, LEGACY_KEYS.notes)),
@@ -197,12 +267,27 @@ export async function initializeInstintoStorage(): Promise<void> {
   const storage = getLegacyStorage();
   await new Promise<void>((resolve, reject) => {
     let syncedKeys: InstintoRecordKey[] = [];
+    let syncedFullBackup = false;
     let transaction: IDBTransaction;
     try {
       transaction = database.transaction(STORE_NAME, "readwrite");
       const store = transaction.objectStore(STORE_NAME);
       const markerRequest = store.get(MIGRATION_KEY);
       markerRequest.onsuccess = () => {
+        const fallbackBackupRaw = safeReadLegacyValue(storage, FALLBACK_BACKUP_KEY);
+        if (fallbackBackupRaw !== null) {
+          const fallbackBackup = readInstintoFallbackData(storage);
+          if (!fallbackBackup) {
+            transaction.abort();
+            return;
+          }
+          syncedKeys = [...RECORD_KEYS];
+          syncedFullBackup = true;
+          for (const key of syncedKeys) store.put(fallbackBackup[key], key);
+          store.put(true, MIGRATION_KEY);
+          return;
+        }
+
         const migrationComplete = markerRequest.result === true;
         let pendingValue: string | null = null;
         try { pendingValue = storage?.getItem(PENDING_FALLBACK_KEY) ?? null; } catch { /* storage unavailable */ }
@@ -216,7 +301,8 @@ export async function initializeInstintoStorage(): Promise<void> {
       markerRequest.onerror = () => transaction.abort();
       transaction.oncomplete = () => {
         database.close();
-        clearInstintoFallbackKeys(syncedKeys, storage);
+        const fallbackMarkersCleared = clearInstintoFallbackKeys(syncedKeys, storage);
+        if (syncedFullBackup && fallbackMarkersCleared) clearInstintoFallbackBackup(storage);
         resolve();
       };
       transaction.onerror = () => {
@@ -319,7 +405,9 @@ export async function replaceInstintoData(data: InstintoData): Promise<void> {
       store.put(true, MIGRATION_KEY);
       transaction.oncomplete = () => {
         database.close();
-        clearInstintoFallbackKeys(RECORD_KEYS, getLegacyStorage());
+        const storage = getLegacyStorage();
+        const fallbackMarkersCleared = clearInstintoFallbackKeys(RECORD_KEYS, storage);
+        if (fallbackMarkersCleared) clearInstintoFallbackBackup(storage);
         resolve();
       };
       transaction.onerror = () => {

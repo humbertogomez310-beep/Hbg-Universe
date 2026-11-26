@@ -7,7 +7,7 @@ import {
   resolveInstintoMood,
   type InstintoMood,
 } from "./instintoInspiration";
-import { loadInstintoData, saveInstintoRecord, replaceInstintoData, persistInstintoFallbackRecord, persistInstintoFallbackData } from "./instintoDB";
+import { loadInstintoData, saveInstintoRecord, replaceInstintoData, persistInstintoFallbackRecord, persistInstintoFallbackData, readInstintoFallbackData } from "./instintoDB";
 import {
   createInstintoBackup,
   parseInstintoBackup,
@@ -134,7 +134,21 @@ export function InstintoModule() {
         setStorageWarning("");
       } catch (error) {
         if (!cancelled) {
-          setStorageWarning(error instanceof Error ? error.message : "No se pudo abrir el almacenamiento de INSTINTO.");
+          const fallbackData = readInstintoFallbackData(browserStorage());
+          if (fallbackData) {
+            setNotes(fallbackData.notes);
+            setLyrics(fallbackData.lyrics);
+            setProjects(fallbackData.projects);
+            setDraft(fallbackData.draft);
+            setNewTitle(fallbackData.draft.title);
+            setNewContent(fallbackData.draft.content);
+            setNewCategory(fallbackData.draft.category);
+            setActiveTags(fallbackData.draft.tags);
+            setActiveLyric(fallbackData.lyrics[0] ?? null);
+            setStorageWarning("IndexedDB no disponible; se está mostrando el respaldo local pendiente de sincronización.");
+          } else {
+            setStorageWarning(error instanceof Error ? error.message : "No se pudo abrir el almacenamiento de INSTINTO.");
+          }
         }
       } finally {
         if (!cancelled) setStorageReady(true);
@@ -401,7 +415,9 @@ export function InstintoModule() {
         await replaceInstintoData(restoredData);
       } catch (storageError) {
         restoredToFallback = persistInstintoFallbackData(restoredData);
-        if (!restoredToFallback) throw storageError;
+        if (!restoredToFallback) {
+          throw new Error("No se pudo restaurar: IndexedDB no está disponible y el almacenamiento alternativo no tiene capacidad suficiente o está bloqueado.");
+        }
       }
 
       setNotes(backup.notes);
