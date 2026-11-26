@@ -548,7 +548,8 @@ export function VibraModule() {
   // Recover Auto DJ metadata without autoplay. The user must explicitly resume the session.
   useEffect(() => {
     let cancelled = false;
-    void getAppState<AutoDjSessionCheckpoint>(AUTO_DJ_SESSION_CHECKPOINT_KEY).then((saved) => {
+    void getAppState(AUTO_DJ_SESSION_CHECKPOINT_KEY).then((savedValue) => {
+      const saved = savedValue as AutoDjSessionCheckpoint | null;
       if (cancelled || !saved || saved.version !== 1) return;
       if (
         typeof saved.currentTrackId !== "string" ||
