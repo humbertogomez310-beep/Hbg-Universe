@@ -7,6 +7,9 @@ import {
   getAudioBlob,
   saveTrackMeta,
   getAllTrackMeta,
+  saveAppState,
+  getAppState,
+  deleteAppState,
   deleteAudioBlob,
   deleteTrackMeta,
   getAudioDuration,
@@ -42,6 +45,16 @@ interface Playlist {
   trackIds: string[];
   color: string;
 }
+
+interface LibraryScanCheckpoint {
+  queueIds: string[];
+  processed: number;
+  total: number;
+  failed: number;
+  updatedAt: number;
+}
+
+const LIBRARY_SCAN_CHECKPOINT_KEY = "library_scan_checkpoint";
 
 const STORAGE_KEYS = {
   volume: "hbg_vibra_volume",
@@ -263,6 +276,7 @@ export function VibraModule() {
   const [libraryScanStatus, setLibraryScanStatus] = useState<"idle" | "running" | "pausing" | "paused" | "completed">("idle");
   const [libraryScanProgress, setLibraryScanProgress] = useState({ processed: 0, total: 0, failed: 0, currentTitle: "" });
   const libraryScanQueueRef = useRef<string[]>([]);
+  const libraryScanCheckpointRef = useRef<LibraryScanCheckpoint | null>(null);
   const libraryScanWorkerRef = useRef(false);
   const libraryScanPauseRequestedRef = useRef(false);
 
@@ -463,6 +477,28 @@ export function VibraModule() {
       setTracks([]);
       setError(cause instanceof Error ? `No se pudo leer la biblioteca local: ${cause.message}` : "No se pudo leer la biblioteca local.");
     });
+  }, []);
+
+  // Restore an interrupted scan as PAUSED. Never resume analysis automatically on app launch.
+  useEffect(() => {
+    let cancelled = false;
+    getAppState<LibraryScanCheckpoint>(LIBRARY_SCAN_CHECKPOINT_KEY)
+      .then((checkpoint) => {
+        if (cancelled || !checkpoint || checkpoint.queueIds.length === 0) return;
+        libraryScanCheckpointRef.current = checkpoint;
+        libraryScanQueueRef.current = [...checkpoint.queueIds];
+        setLibraryScanProgress({
+          processed: checkpoint.processed,
+          total: checkpoint.total,
+          failed: checkpoint.failed,
+          currentTitle: "",
+        });
+        setLibraryScanStatus("paused");
+      })
+      .catch(() => {
+        if (!cancelled) setError("No se pudo recuperar el progreso del escaneo anterior.");
+      });
+    return () => { cancelled = true; };
   }, []);
 
   // El análisis musical se ejecuta únicamente cuando el usuario lo inicia desde Centro de Escaneo.
@@ -1596,6 +1632,15 @@ export function VibraModule() {
     setProgress(t / duration);
   };
 
+  const persistLibraryScanCheckpoint = async (checkpoint: LibraryScanCheckpoint) => {
+    libraryScanCheckpointRef.current = checkpoint;
+    try {
+      await saveAppState(LIBRARY_SCAN_CHECKPOINT_KEY, checkpoint);
+    } catch {
+      setError("No se pudo guardar el progreso del escaneo. Mantén VIBRA abierta hasta terminar.");
+    }
+  };
+
   const runLibraryScan = async () => {
     if (libraryScanWorkerRef.current) return;
     libraryScanWorkerRef.current = true;
@@ -1604,28 +1649,45 @@ export function VibraModule() {
 
     try {
       while (libraryScanQueueRef.current.length > 0 && !libraryScanPauseRequestedRef.current) {
-        const id = libraryScanQueueRef.current.shift();
-        if (!id) continue;
+        // Keep the current ID in the persisted queue until it finishes. If the app closes,
+        // this song is safely retried on the next manual resume.
+        const id = libraryScanQueueRef.current[0];
         const meta = tracksRef.current.find((track) => track.id === id);
-        if (!meta) {
-          setLibraryScanProgress((previous) => ({ ...previous, processed: previous.processed + 1, currentTitle: "" }));
-          continue;
+        let failed = false;
+
+        if (meta) {
+          setLibraryScanProgress((previous) => ({ ...previous, currentTitle: meta.title }));
+          try {
+            const blob = await getAudioBlob(id);
+            if (!blob) throw new Error("El archivo ya no está disponible en la biblioteca.");
+            const analysis = await analyzeAudioBlob(blob);
+            const enriched = { ...meta, ...analysis };
+            await saveTrackMeta(enriched);
+            setTracks((previous) => previous.map((track) => track.id === id ? enriched : track));
+            setAnalysisRevision((previous) => previous + 1);
+          } catch {
+            failed = true;
+          }
         }
 
-        setLibraryScanProgress((previous) => ({ ...previous, currentTitle: meta.title }));
-        try {
-          const blob = await getAudioBlob(id);
-          if (!blob) throw new Error("El archivo ya no está disponible en la biblioteca.");
-          const analysis = await analyzeAudioBlob(blob);
-          const enriched = { ...meta, ...analysis };
-          await saveTrackMeta(enriched);
-          setTracks((previous) => previous.map((track) => track.id === id ? enriched : track));
-          setAnalysisRevision((previous) => previous + 1);
-        } catch {
-          setLibraryScanProgress((previous) => ({ ...previous, failed: previous.failed + 1 }));
-        } finally {
-          setLibraryScanProgress((previous) => ({ ...previous, processed: Math.min(previous.total, previous.processed + 1) }));
-        }
+        libraryScanQueueRef.current.shift();
+        const previous = libraryScanCheckpointRef.current ?? {
+          queueIds: [], processed: 0, total: libraryScanProgress.total, failed: 0, updatedAt: Date.now(),
+        };
+        const checkpoint: LibraryScanCheckpoint = {
+          queueIds: [...libraryScanQueueRef.current],
+          processed: Math.min(previous.total, previous.processed + 1),
+          total: previous.total,
+          failed: previous.failed + (failed ? 1 : 0),
+          updatedAt: Date.now(),
+        };
+        setLibraryScanProgress({
+          processed: checkpoint.processed,
+          total: checkpoint.total,
+          failed: checkpoint.failed,
+          currentTitle: "",
+        });
+        await persistLibraryScanCheckpoint(checkpoint);
       }
     } finally {
       libraryScanWorkerRef.current = false;
@@ -1633,6 +1695,9 @@ export function VibraModule() {
       if (libraryScanPauseRequestedRef.current && libraryScanQueueRef.current.length > 0) {
         setLibraryScanStatus("paused");
       } else {
+        libraryScanQueueRef.current = [];
+        libraryScanCheckpointRef.current = null;
+        await deleteAppState(LIBRARY_SCAN_CHECKPOINT_KEY).catch(() => undefined);
         setLibraryScanStatus("completed");
       }
     }
@@ -1658,9 +1723,17 @@ export function VibraModule() {
     }
 
     libraryScanQueueRef.current = pending.map((track) => track.id);
+    const checkpoint: LibraryScanCheckpoint = {
+      queueIds: [...libraryScanQueueRef.current],
+      processed: 0,
+      total: pending.length,
+      failed: 0,
+      updatedAt: Date.now(),
+    };
+    libraryScanCheckpointRef.current = checkpoint;
     setLibraryScanProgress({ processed: 0, total: pending.length, failed: 0, currentTitle: "" });
     libraryScanPauseRequestedRef.current = false;
-    void runLibraryScan();
+    void persistLibraryScanCheckpoint(checkpoint).then(() => runLibraryScan());
   };
 
   const pauseLibraryScan = () => {
