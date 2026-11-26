@@ -116,6 +116,7 @@ export function Shell() {
     return hbgCore.getModule();
   });
   const [vibraMounted, setVibraMounted] = useState(() => hbgCore.getModule() === "vibra");
+  const [voiceMounted, setVoiceMounted] = useState(false);
 
   const [showOwnerGate, setShowOwnerGate] = useState(false);
   const [showMenu, setShowMenu] = useState(true);
@@ -134,6 +135,12 @@ export function Shell() {
   useEffect(() => {
     if (activeModule === "vibra") setVibraMounted(true);
   }, [activeModule]);
+
+  // Voice controls load after the first paint so they do not compete with the app shell.
+  useEffect(() => {
+    const timer = window.setTimeout(() => setVoiceMounted(true), 1800);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     void ownerSession.checkSession();
@@ -270,9 +277,11 @@ export function Shell() {
         </main>
       </div>
 
-      <Suspense fallback={null}>
-        <LazyVoiceCommandBar accentColor={config.color} />
-      </Suspense>
+      {voiceMounted && (
+        <Suspense fallback={null}>
+          <LazyVoiceCommandBar accentColor={config.color} />
+        </Suspense>
+      )}
 
       {showOwnerGate && (
         <Suspense fallback={<div className="hbg-card">VERIFICANDO ACCESO…</div>}>
