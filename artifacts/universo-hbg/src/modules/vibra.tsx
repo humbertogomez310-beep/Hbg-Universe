@@ -154,6 +154,14 @@ const MOODS: { mode: MoodMode; label: string; color: string; bpm: [number, numbe
 const EQ_BANDS = ["60Hz", "170Hz", "310Hz", "600Hz", "1kHz", "3kHz", "6kHz", "12kHz", "14kHz", "16kHz"];
 const EQ_FREQUENCIES = [60, 170, 310, 600, 1000, 3000, 6000, 12000, 14000, 16000];
 
+function formatDjAnalysis(track: TrackMeta | null): string {
+  if (!track) return "SIN DATOS DE ANÁLISIS";
+  const facts: string[] = [];
+  if (track.bpm && (track.bpmConfidence ?? 0) >= 0.25) facts.push(`${Math.round(track.bpm)} BPM`);
+  if (track.musicalKey && (track.keyConfidence ?? 0) >= 0.25) facts.push(track.musicalKey.toUpperCase());
+  return facts.length ? facts.join(" · ") : "ANÁLISIS NO DISPONIBLE";
+}
+
 function VisualizerBars({ active, color, analyser }: { active: boolean; color: string; analyser: AnalyserNode | null }) {
   const [heights, setHeights] = useState<number[]>(() => Array(24).fill(4));
   useEffect(() => {
@@ -1426,11 +1434,13 @@ export function VibraModule() {
               <span className="vibra-dj-section-label">02 / SONANDO AHORA</span>
               <strong title={currentTrack?.title ?? "Sin canción"}>{currentTrack?.title ?? "Sin canción seleccionada"}</strong>
               <small>{currentTrack?.artist || (currentTrack ? "Artista desconocido" : "Importa música para iniciar")}</small>
+              <small>{formatDjAnalysis(currentTrack)}</small>
             </div>
             <div className="vibra-dj-track vibra-dj-track-next">
               <span className="vibra-dj-section-label">03 / SIGUIENTE CANDIDATA</span>
               <strong title={plannedNextTrack?.title ?? "Sin candidata"}>{plannedNextTrack?.title ?? "Sin coincidencia disponible"}</strong>
               <small>{plannedNextTrack?.artist || (plannedNextTrack ? "Artista desconocido" : "Amplía tu biblioteca o cambia el objetivo")}</small>
+              <small>{formatDjAnalysis(plannedNextTrack)}</small>
             </div>
           </div>
 
