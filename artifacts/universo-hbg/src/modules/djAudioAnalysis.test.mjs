@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   analyzeDecodedAudio,
+  downsampleAudioForAnalysis,
   estimateBpmFromSamples,
   estimateKeyFromSamples,
   scoreHarmonicCompatibility,
@@ -39,6 +40,16 @@ test("tempo analysis returns no fabricated BPM for silence or short clips", () =
 
 test("key analysis returns no fabricated key for silence", () => {
   assert.deepEqual(estimateKeyFromSamples(new Float32Array(44100 * 12), 44100), { musicalKey: null, confidence: 0 });
+});
+
+test("analysis downsamples to a bounded mono buffer without changing the source audio", () => {
+  const source = new Float32Array(44100 * 95);
+  source.fill(0.25);
+  const prepared = downsampleAudioForAnalysis([source], 44100);
+  assert.equal(prepared.sampleRate, 11025);
+  assert.equal(prepared.samples.length, 11025 * 90);
+  assert.ok(prepared.samples.every((sample) => Math.abs(sample - 0.25) < 1e-6));
+  assert.equal(source.length, 44100 * 95);
 });
 
 test("decoded analysis records a timestamp and only emits detected values", () => {

@@ -210,6 +210,42 @@ function estimateEnergyProfile(samples: Float32Array): { energyLevel: number; im
   };
 }
 
+/**
+ * Reduces analysis audio to roughly 12 kHz and at most 90 seconds.
+ * A short box-average before decimation keeps the memory/CPU cost low while
+ * retaining the frequency range needed for BPM and musical-key estimation.
+ * The original IndexedDB audio Blob is never modified or re-encoded.
+ */
+export function downsampleAudioForAnalysis(
+  channels: readonly Float32Array[],
+  sampleRate: number,
+): { samples: Float32Array; sampleRate: number } {
+  if (!channels.length || !channels[0]?.length || sampleRate <= 0) {
+    return { samples: new Float32Array(0), sampleRate: 0 };
+  }
+
+  const sourceLength = Math.floor(Math.min(sampleRate * 90, ...channels.map((channel) => channel.length)));
+  const factor = Math.max(1, Math.round(sampleRate / 12_000));
+  const outputLength = Math.ceil(sourceLength / factor);
+  const samples = new Float32Array(outputLength);
+
+  for (let outputIndex = 0; outputIndex < outputLength; outputIndex += 1) {
+    const start = outputIndex * factor;
+    const end = Math.min(sourceLength, start + factor);
+    let sum = 0;
+    let count = 0;
+    for (const channel of channels) {
+      for (let sourceIndex = start; sourceIndex < end; sourceIndex += 1) {
+        sum += channel[sourceIndex];
+        count += 1;
+      }
+    }
+    samples[outputIndex] = count ? sum / count : 0;
+  }
+
+  return { samples, sampleRate: sampleRate / factor };
+}
+
 export function analyzeDecodedAudio(
   channels: readonly Float32Array[],
   sampleRate: number,
@@ -217,13 +253,11 @@ export function analyzeDecodedAudio(
   if (!channels.length || !channels[0]?.length || sampleRate <= 0) {
     return { beatStrength: 0, energyLevel: 0, impactStrength: 0, analyzedAt: Date.now() };
   }
-  const length = Math.min(...channels.map((channel) => channel.length), sampleRate * 90);
-  const mono = new Float32Array(length);
-  for (const channel of channels) {
-    for (let index = 0; index < length; index += 1) mono[index] += channel[index] / channels.length;
-  }
-  const tempo = estimateBpmFromSamples(mono, sampleRate);
-  const key = estimateKeyFromSamples(mono, sampleRate);
+  const prepared = downsampleAudioForAnalysis(channels, sampleRate);
+  const mono = prepared.samples;
+  const analysisSampleRate = prepared.sampleRate;
+  const tempo = estimateBpmFromSamples(mono, analysisSampleRate);
+  const key = estimateKeyFromSamples(mono, analysisSampleRate);
   return {
     ...(tempo.bpm === null ? {} : { bpm: tempo.bpm, bpmConfidence: tempo.confidence }),
     beatStrength: tempo.beatStrength,
