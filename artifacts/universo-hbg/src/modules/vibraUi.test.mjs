@@ -34,3 +34,14 @@ test("other VIBRA screens retain compact playback controls", () => {
   assert.match(source, /aria-label="Reproductor compacto"/);
   assert.match(source, /onClick=\{togglePlay\}/);
 });
+
+test("Auto DJ seek controls stay beside the upper player panel", () => {
+  const stageIndex = source.indexOf('<div className="vibra-dj-stage">');
+  const stageTopEnd = source.indexOf('</div>', source.indexOf('<div className="vibra-dj-stage-top">', stageIndex)) + '</div>'.length;
+  const seekIndex = source.indexOf('aria-label="Avance y retroceso de Auto DJ"', stageTopEnd);
+  const spectrumIndex = source.indexOf('<div className="vibra-dj-spectrum">', stageTopEnd);
+  assert.ok(stageIndex >= 0, "DJ stage exists");
+  assert.ok(stageTopEnd > stageIndex, "player header exists");
+  assert.ok(seekIndex > stageTopEnd && seekIndex < spectrumIndex, "seek controls are immediately below the player header, before the visualizer");
+  assert.match(source, /Mantén presionado para avanzar o retroceder continuamente/);
+});

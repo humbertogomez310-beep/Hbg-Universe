@@ -2400,6 +2400,20 @@ export function VibraModule() {
               <span>{partyMode ? "FIESTA PRO / HIGH ENERGY" : autoDjEnabled ? "AUTO DJ / SESSION CONTROL" : "MANUAL / SESSION READY"}</span>
               <span>{tracks.length} PISTAS LOCALES</span>
             </div>
+
+            {autoDjEnabled && (
+              <div className="vibra-dj-direction-panel" aria-label="Avance y retroceso de Auto DJ" style={{ margin: "12px 0" }}>
+                <div className="vibra-dj-section-label">NAVEGACIÓN DE PISTA</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>PASO:</span>
+                  <button type="button" className={autoDjSeekStep === 5 ? "hbg-btn hbg-btn-primary" : "hbg-btn hbg-btn-ghost"} aria-pressed={autoDjSeekStep === 5} onClick={() => { stopAutoDjSeekHold(); setAutoDjSeekStep(5); }}>5 SEG</button>
+                  <button type="button" className={autoDjSeekStep === 10 ? "hbg-btn hbg-btn-primary" : "hbg-btn hbg-btn-ghost"} aria-pressed={autoDjSeekStep === 10} onClick={() => { stopAutoDjSeekHold(); setAutoDjSeekStep(10); }}>10 SEG</button>
+                  <button type="button" className="hbg-btn hbg-btn-ghost" aria-label={`Retroceder ${autoDjSeekStep} segundos`} disabled={!currentTrack || loading} onPointerDown={(event) => { event.preventDefault(); startAutoDjSeekHold(-1); }} onPointerUp={stopAutoDjSeekHold} onPointerLeave={stopAutoDjSeekHold} onPointerCancel={stopAutoDjSeekHold}>−{autoDjSeekStep} SEG</button>
+                  <button type="button" className="hbg-btn hbg-btn-ghost" aria-label={`Adelantar ${autoDjSeekStep} segundos`} disabled={!currentTrack || loading} onPointerDown={(event) => { event.preventDefault(); startAutoDjSeekHold(1); }} onPointerUp={stopAutoDjSeekHold} onPointerLeave={stopAutoDjSeekHold} onPointerCancel={stopAutoDjSeekHold}>+{autoDjSeekStep} SEG</button>
+                </div>
+                <small style={{ display: "block", marginTop: 6, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>Mantén presionado para avanzar o retroceder continuamente. Solo afecta la canción actual de Auto DJ.</small>
+              </div>
+            )}
             <div className="vibra-dj-spectrum">
               <VisualizerBars active={isPlaying} color={partyMode ? "var(--neon-pink)" : "var(--neon-cyan)"} analyser={audioAnalyser} />
             </div>
@@ -2488,20 +2502,6 @@ export function VibraModule() {
               <small>{formatDjAnalysis(plannedNextTrack)}</small>
             </div>
           </div>
-
-          {autoDjEnabled && (
-            <div className="vibra-dj-direction-panel" aria-label="Avance y retroceso de Auto DJ">
-              <div className="vibra-dj-section-label">04 / NAVEGACIÓN DE PISTA</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>PASO:</span>
-                <button type="button" className={autoDjSeekStep === 5 ? "hbg-btn hbg-btn-primary" : "hbg-btn hbg-btn-ghost"} aria-pressed={autoDjSeekStep === 5} onClick={() => { stopAutoDjSeekHold(); setAutoDjSeekStep(5); }}>5 SEG</button>
-                <button type="button" className={autoDjSeekStep === 10 ? "hbg-btn hbg-btn-primary" : "hbg-btn hbg-btn-ghost"} aria-pressed={autoDjSeekStep === 10} onClick={() => { stopAutoDjSeekHold(); setAutoDjSeekStep(10); }}>10 SEG</button>
-                <button type="button" className="hbg-btn hbg-btn-ghost" aria-label={`Retroceder ${autoDjSeekStep} segundos`} disabled={!currentTrack || loading} onPointerDown={(event) => { event.preventDefault(); startAutoDjSeekHold(-1); }} onPointerUp={stopAutoDjSeekHold} onPointerLeave={stopAutoDjSeekHold} onPointerCancel={stopAutoDjSeekHold}>−{autoDjSeekStep} SEG</button>
-                <button type="button" className="hbg-btn hbg-btn-ghost" aria-label={`Adelantar ${autoDjSeekStep} segundos`} disabled={!currentTrack || loading} onPointerDown={(event) => { event.preventDefault(); startAutoDjSeekHold(1); }} onPointerUp={stopAutoDjSeekHold} onPointerLeave={stopAutoDjSeekHold} onPointerCancel={stopAutoDjSeekHold}>+{autoDjSeekStep} SEG</button>
-              </div>
-              <small style={{ display: "block", marginTop: 6, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>Mantén presionado para avanzar o retroceder continuamente. Solo afecta la canción actual de Auto DJ.</small>
-            </div>
-          )}
 
           <div className="vibra-dj-controls">
             <button type="button" className="hbg-btn hbg-btn-primary" onClick={togglePlay} disabled={!currentTrack || loading}>
