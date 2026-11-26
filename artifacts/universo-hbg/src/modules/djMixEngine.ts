@@ -51,6 +51,7 @@ export class VibraDjMixEngine {
   private destroyed = false;
   private masterVolume = 1;
   private prepareGeneration = 0;
+  private activeLoadGeneration = 0;
   private readonly context: AudioContext;
 
   constructor(context: AudioContext) {
@@ -165,6 +166,7 @@ export class VibraDjMixEngine {
   async loadActive(blob: Blob, startTime = 0, autoplay = false): Promise<HTMLAudioElement | null> {
     if (this.destroyed) return null;
     this.settleTransitionOnActiveDeck();
+    const generation = ++this.activeLoadGeneration;
     const active = this.decks[this.activeIndex];
     this.releaseDeck(active);
     const objectUrl = URL.createObjectURL(blob);
@@ -188,6 +190,7 @@ export class VibraDjMixEngine {
       active.audio.addEventListener("error", onError, { once: true });
       active.audio.load();
     });
+    if (generation !== this.activeLoadGeneration) return null;
     if (!ready) {
       this.releaseDeck(active);
       return null;
@@ -314,6 +317,8 @@ export class VibraDjMixEngine {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.prepareGeneration += 1;
+    this.activeLoadGeneration += 1;
     if (this.transitionTimer !== null) clearTimeout(this.transitionTimer);
     this.transitionTimer = null;
     for (const deck of this.decks) {
