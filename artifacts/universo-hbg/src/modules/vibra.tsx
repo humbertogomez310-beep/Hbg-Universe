@@ -18,7 +18,6 @@ import {
   interpretMusicDirection,
   normalizeMusicText,
   readMusicDirection,
-  selectNextTrack,
   selectTracksForDirection,
   selectAutoDjCandidates,
   selectNextAutoDjTrack,
