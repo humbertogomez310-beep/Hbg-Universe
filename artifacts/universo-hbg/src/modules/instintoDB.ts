@@ -83,6 +83,21 @@ export function persistInstintoFallbackRecord(
   storage: LegacyStorage | null = getLegacyStorage(),
 ): boolean {
   if (!storage) return false;
+  const fallbackBackupRaw = safeReadLegacyValue(storage, FALLBACK_BACKUP_KEY);
+  if (fallbackBackupRaw !== null) {
+    const fallbackBackup = readInstintoFallbackData(storage);
+    if (!fallbackBackup) return false;
+    try {
+      storage.setItem(FALLBACK_BACKUP_KEY, JSON.stringify({
+        format: "hbg-instinto-fallback-v1",
+        ...fallbackBackup,
+        [key]: value,
+      }));
+      return true;
+    } catch {
+      return false;
+    }
+  }
   try {
     storage.setItem(LEGACY_KEYS[key], JSON.stringify(value));
     const pending = new Set(readPendingFallbackKeys(storage));
