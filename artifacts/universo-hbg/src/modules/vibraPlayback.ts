@@ -79,5 +79,7 @@ export function shouldRestorePlaybackAfterInterruption(
 export function recoverPlaybackPosition(currentTime: number, savedTime: number): number {
   const current = Number.isFinite(currentTime) ? Math.max(0, currentTime) : 0;
   const saved = Number.isFinite(savedTime) ? Math.max(0, savedTime) : 0;
-  return saved > current + 1 ? saved : current;
+  // Ignore normal playback progress while the app was backgrounded; only
+  // correct a meaningful decoder reset, not a few seconds of natural drift.
+  return saved > current + 5 ? saved : current;
 }
