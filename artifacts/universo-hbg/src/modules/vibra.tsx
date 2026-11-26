@@ -993,7 +993,7 @@ export function VibraModule() {
         }
         return result(true, { enabled });
       }),
-      hbgCore.registerAction("music.party", (payload) => {
+      hbgCore.registerAction("music.party", async (payload) => {
         if (typeof payload?.enabled !== "boolean") {
           return result(false, undefined, "Indica si Modo Fiesta PRO debe activarse o desactivarse.");
         }
@@ -1003,6 +1003,10 @@ export function VibraModule() {
           setView("dj");
           setAutoDjEnabled(true);
           setMusicDirection((current) => ({ ...current, energy: "up" }));
+          const autoDjResult = await hbgCore.dispatchAction("music.autoDj", { enabled: true });
+          if (!autoDjResult.success) {
+            return result(false, undefined, autoDjResult.error ?? "No se pudo iniciar Auto DJ para Modo Fiesta PRO.");
+          }
         }
         return result(true, { enabled, autoDj: enabled || autoDjEnabled, view: enabled ? "dj" : undefined });
       }),
@@ -1363,8 +1367,9 @@ export function VibraModule() {
               aria-pressed={autoDjEnabled}
               onClick={() => {
                 const enabled = !autoDjEnabled;
-                setAutoDjEnabled(enabled);
-                if (!enabled) setPartyMode(false);
+                void hbgCore.dispatchAction("music.autoDj", { enabled }).then((actionResult) => {
+                  if (!actionResult.success) setError(actionResult.error ?? "No se pudo cambiar Auto DJ.");
+                });
               }}
             >
               <span className="vibra-dj-mode-icon">◉</span>
@@ -1380,11 +1385,9 @@ export function VibraModule() {
               aria-pressed={partyMode}
               onClick={() => {
                 const enabled = !partyMode;
-                setPartyMode(enabled);
-                if (enabled) {
-                  setAutoDjEnabled(true);
-                  setMusicDirection((current) => ({ ...current, energy: "up" }));
-                }
+                void hbgCore.dispatchAction("music.party", { enabled }).then((actionResult) => {
+                  if (!actionResult.success) setError(actionResult.error ?? "No se pudo activar Modo Fiesta PRO.");
+                });
               }}
             >
               <span className="vibra-dj-mode-icon">✦</span>
