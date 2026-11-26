@@ -14,6 +14,13 @@ export interface TrackMeta {
   size: number; // bytes
   type: string;
   importedAt: number;
+  /** Locally estimated tempo; omitted until analysis is available. */
+  bpm?: number;
+  bpmConfidence?: number;
+  /** Locally estimated musical key, e.g. C major or A minor. */
+  musicalKey?: string;
+  keyConfidence?: number;
+  analyzedAt?: number;
 }
 
 function openDB(): Promise<IDBDatabase> {
