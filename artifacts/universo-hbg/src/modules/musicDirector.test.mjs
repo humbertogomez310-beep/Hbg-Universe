@@ -138,7 +138,12 @@ test("Auto DJ uses beat and energy when track names do not match the spoken acti
     { id: "medium", title: "Unknown D", artist: "", album: "", importedAt: 4, bpm: 104, bpmConfidence: 0.9, beatStrength: 0.6, energyLevel: 0.55, impactStrength: 0.4 },
   ];
   assert.equal(selectNextAutoDjTrack(library, "current", [], { goal: "para brincar", energy: "steady" }, () => 0)?.id, "fast");
-  assert.equal(selectNextAutoDjTrack(library, "current", [], { goal: "para tomar", energy: "steady" }, () => 0)?.id, "slow");
+  const relaxedLibrary = [
+    { id: "current-slow", title: "Unknown", artist: "", album: "", importedAt: 1, bpm: 72, bpmConfidence: 0.9, beatStrength: 0.7, energyLevel: 0.3 },
+    { id: "slow", title: "Unknown", artist: "", album: "", importedAt: 2, bpm: 74, bpmConfidence: 0.9, beatStrength: 0.65, energyLevel: 0.25 },
+    { id: "fast", title: "Unknown", artist: "", album: "", importedAt: 3, bpm: 126, bpmConfidence: 0.9, beatStrength: 0.9, energyLevel: 0.85 },
+  ];
+  assert.equal(selectNextAutoDjTrack(relaxedLibrary, "current-slow", [], { goal: "para tomar", energy: "steady" }, () => 0)?.id, "slow");
 });
 
 test("Auto DJ randomizes among close rhythmic matches and never picks the current track", () => {
