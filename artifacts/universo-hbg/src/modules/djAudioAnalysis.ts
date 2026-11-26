@@ -1,6 +1,9 @@
 export interface TrackAudioAnalysis {
   bpm?: number;
   bpmConfidence?: number;
+  beatStrength?: number;
+  energyLevel?: number;
+  impactStrength?: number;
   musicalKey?: string;
   keyConfidence?: number;
   analyzedAt?: number;
@@ -9,6 +12,7 @@ export interface TrackAudioAnalysis {
 export interface TempoEstimate {
   bpm: number | null;
   confidence: number;
+  beatStrength: number;
 }
 
 export interface KeyEstimate {
@@ -69,11 +73,11 @@ export function estimateBpmFromSamples(
   minBpm = 60,
   maxBpm = 180,
 ): TempoEstimate {
-  if (samples.length < sampleRate * 8 || sampleRate <= 0) return { bpm: null, confidence: 0 };
+  if (samples.length < sampleRate * 8 || sampleRate <= 0) return { bpm: null, confidence: 0, beatStrength: 0 };
   const hopSize = 512;
   const envelope = buildOnsetEnvelope(samples, sampleRate, hopSize);
   if (envelope.length < 100 || envelope.every((value) => value === 0)) {
-    return { bpm: null, confidence: 0 };
+    return { bpm: null, confidence: 0, beatStrength: 0 };
   }
 
   const minLag = Math.max(1, Math.floor((60 * sampleRate) / (maxBpm * hopSize)));
@@ -95,7 +99,7 @@ export function estimateBpmFromSamples(
   }
   peaks.sort((left, right) => right.score - left.score);
   const best = peaks[0];
-  if (!best || best.score < 0.04) return { bpm: null, confidence: 0 };
+  if (!best || best.score < 0.04) return { bpm: null, confidence: 0, beatStrength: 0 };
   const competing = peaks.find((peak) => {
     const ratio = peak.lag / best.lag;
     const isHalfOrDoubleTempoAlias = Math.abs(ratio - 2) < 0.12 || Math.abs(ratio - 0.5) < 0.06;
@@ -104,7 +108,7 @@ export function estimateBpmFromSamples(
   const confidence = clamp((best.score - (competing?.score ?? 0)) / Math.max(best.score, 0.001), 0, 1);
   const rawBpm = (60 * sampleRate) / (best.lag * hopSize);
   const normalizedBpm = rawBpm < 85 ? rawBpm * 2 : rawBpm > 170 ? rawBpm / 2 : rawBpm;
-  return { bpm: Math.round(normalizedBpm * 10) / 10, confidence };
+  return { bpm: Math.round(normalizedBpm * 10) / 10, confidence, beatStrength: clamp(best.score, 0, 1) };
 }
 
 function fft(real: Float64Array, imaginary: Float64Array): void {
@@ -187,11 +191,32 @@ export function estimateKeyFromSamples(samples: Float32Array, sampleRate: number
   };
 }
 
+function estimateEnergyProfile(samples: Float32Array): { energyLevel: number; impactStrength: number } {
+  const frameSize = 2048;
+  const frameRms: number[] = [];
+  for (let start = 0; start < samples.length; start += frameSize) {
+    const end = Math.min(samples.length, start + frameSize);
+    let power = 0;
+    for (let index = start; index < end; index += 1) power += samples[index] * samples[index];
+    frameRms.push(Math.sqrt(power / Math.max(1, end - start)));
+  }
+  const average = mean(frameRms);
+  const peak = frameRms.length ? Math.max(...frameRms) : 0;
+  const sorted = [...frameRms].sort((left, right) => left - right);
+  const median = sorted.length ? sorted[Math.floor(sorted.length * 0.5)] : 0;
+  return {
+    energyLevel: clamp(average * 3.5, 0, 1),
+    impactStrength: clamp((peak - median) / Math.max(peak, 0.001), 0, 1),
+  };
+}
+
 export function analyzeDecodedAudio(
   channels: readonly Float32Array[],
   sampleRate: number,
 ): TrackAudioAnalysis {
-  if (!channels.length || !channels[0]?.length) return { analyzedAt: Date.now() };
+  if (!channels.length || !channels[0]?.length || sampleRate <= 0) {
+    return { beatStrength: 0, energyLevel: 0, impactStrength: 0, analyzedAt: Date.now() };
+  }
   const length = Math.min(...channels.map((channel) => channel.length), sampleRate * 90);
   const mono = new Float32Array(length);
   for (const channel of channels) {
@@ -201,6 +226,8 @@ export function analyzeDecodedAudio(
   const key = estimateKeyFromSamples(mono, sampleRate);
   return {
     ...(tempo.bpm === null ? {} : { bpm: tempo.bpm, bpmConfidence: tempo.confidence }),
+    beatStrength: tempo.beatStrength,
+    ...estimateEnergyProfile(mono),
     ...(key.musicalKey === null ? {} : { musicalKey: key.musicalKey, keyConfidence: key.confidence }),
     analyzedAt: Date.now(),
   };
