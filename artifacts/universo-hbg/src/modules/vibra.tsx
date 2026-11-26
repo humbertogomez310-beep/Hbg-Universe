@@ -27,6 +27,8 @@ import { VibraDjMixEngine } from "./djMixEngine";
 import {
   selectNextPlaybackId,
   selectPreviousPlaybackId,
+  shouldRestorePlaybackAfterInterruption,
+  recoverPlaybackPosition,
   type RepeatMode,
 } from "./vibraPlayback";
 
@@ -53,6 +55,7 @@ const STORAGE_KEYS = {
   equalizer: "hbg_vibra_equalizer_v1",
   shuffle: "hbg_vibra_shuffle",
   repeat: "hbg_vibra_repeat",
+  resumeAfterInterruption: "hbg_vibra_resume_after_interruption",
 };
 
 function browserStorage(): Storage | null {
@@ -260,6 +263,10 @@ export function VibraModule() {
   const volumeRef = useRef(volume);
   const playbackPositionRef = useRef(0);
   const voicePlaybackSnapshotRef = useRef<{ wasPlaying: boolean; currentTime: number; audio: HTMLAudioElement | null } | null>(null);
+  const backgroundPlaybackSnapshotRef = useRef<{ trackId: string | null; wasPlaying: boolean; currentTime: number; audio: HTMLAudioElement | null } | null>(null);
+  const backgroundResumeSuppressedRef = useRef(false);
+  const lastKnownPlayingRef = useRef(false);
+  const lastPlaybackCheckpointAtRef = useRef(0);
   const equalizerFiltersRef = useRef<BiquadFilterNode[]>([]);
   const [audioAnalyser, setAudioAnalyser] = useState<AnalyserNode | null>(null);
   const currentUrlRef = useRef<string | null>(null);
@@ -474,6 +481,8 @@ export function VibraModule() {
   // Load audio from IndexedDB and play
   const loadTrack = useCallback(async (id: string, autoPlay = false, startTime = 0): Promise<boolean> => {
     const requestId = ++loadGenerationRef.current;
+    if (id) writeStoredValue(STORAGE_KEYS.trackId, id);
+    writeStoredValue(STORAGE_KEYS.trackTime, String(Number.isFinite(startTime) ? Math.max(0, startTime) : 0));
     cancelPendingLoadRef.current?.();
     setError(null);
     setLoading(true);
@@ -613,16 +622,27 @@ export function VibraModule() {
         setProgress(target.currentTime / target.duration);
       }
       djTransitionCheckRef.current(target);
+      const now = Date.now();
+      if (!target.paused && now - lastPlaybackCheckpointAtRef.current >= 4000) {
+        lastPlaybackCheckpointAtRef.current = now;
+        const trackId = currentIdRef.current;
+        if (trackId) writeStoredValue(STORAGE_KEYS.trackId, trackId);
+        writeStoredValue(STORAGE_KEYS.trackTime, String(target.currentTime || 0));
+        writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "true");
+      }
     };
     const onDurationChange = (target: HTMLAudioElement) => {
       if (target === audioRef.current && isFinite(target.duration)) setDuration(target.duration);
     };
     const onEnded = (target: HTMLAudioElement) => {
       if (target !== audioRef.current) return;
+      lastKnownPlayingRef.current = false;
       setIsPlaying(false);
       playbackPositionRef.current = 0;
       setProgress(0);
       setCurrentTime(0);
+      writeStoredValue(STORAGE_KEYS.trackTime, "0");
+      writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "false");
       autoAdvanceInProgressRef.current = false;
       const endedTrackId = currentIdRef.current;
       window.setTimeout(() => {
@@ -637,11 +657,14 @@ export function VibraModule() {
       setIsPlaying(false);
     };
     const onPlay = (target: HTMLAudioElement) => {
-      if (target === audioRef.current) setIsPlaying(true);
+      if (target !== audioRef.current) return;
+      lastKnownPlayingRef.current = true;
+      setIsPlaying(true);
     };
     const onPause = (target: HTMLAudioElement) => {
       if (target !== audioRef.current) return;
       playbackPositionRef.current = target.currentTime || playbackPositionRef.current;
+      if (backgroundResumeSuppressedRef.current) lastKnownPlayingRef.current = false;
       setIsPlaying(false);
     };
     const listeners = managedAudios.map((target) => {
@@ -730,20 +753,123 @@ export function VibraModule() {
     },
   }), []);
 
-  // Restore last track on mount (after tracks load)
+  const captureBackgroundPlayback = useCallback(() => {
+    if (backgroundPlaybackSnapshotRef.current) return;
+    const audio = audioRef.current;
+    if (!audio) return;
+    const snapshot = {
+      trackId: currentIdRef.current,
+      wasPlaying: (!audio.paused && !audio.ended) || (lastKnownPlayingRef.current && !audio.ended && !backgroundResumeSuppressedRef.current),
+      currentTime: Number.isFinite(audio.currentTime) ? audio.currentTime : playbackPositionRef.current,
+      audio,
+    };
+    backgroundPlaybackSnapshotRef.current = snapshot;
+    if (snapshot.wasPlaying && !backgroundResumeSuppressedRef.current) {
+      if (snapshot.trackId) writeStoredValue(STORAGE_KEYS.trackId, snapshot.trackId);
+      writeStoredValue(STORAGE_KEYS.trackTime, String(snapshot.currentTime));
+      writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "true");
+    }
+  }, []);
+
+  const restoreBackgroundPlayback = useCallback(() => {
+    const snapshot = backgroundPlaybackSnapshotRef.current;
+    if (!snapshot) return;
+    backgroundPlaybackSnapshotRef.current = null;
+    if (!shouldRestorePlaybackAfterInterruption(
+      snapshot,
+      currentIdRef.current,
+      backgroundResumeSuppressedRef.current,
+    )) {
+      writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "false");
+      return;
+    }
+
+    void (async () => {
+      // Android and iOS can release audio focus a moment after the page becomes visible.
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 250));
+      const engine = djMixEngineRef.current;
+      const activeAudio = engine?.activeAudio ?? audioRef.current;
+      if (!activeAudio || activeAudio.ended) return;
+      if (activeAudio === snapshot.audio) {
+        const recoveredTime = recoverPlaybackPosition(activeAudio.currentTime, snapshot.currentTime);
+        if (recoveredTime > activeAudio.currentTime + 1) {
+          try { activeAudio.currentTime = recoveredTime; } catch { /* Keep the current decoder position. */ }
+        }
+      }
+      await audioContextRef.current?.resume();
+      if (activeAudio.paused) {
+        if (engine) {
+          const resumed = await engine.resumeActive();
+          if (!resumed) throw new Error("No se pudo recuperar el deck activo.");
+        } else await activeAudio.play();
+      }
+      if (!activeAudio.paused) {
+        backgroundResumeSuppressedRef.current = false;
+        lastKnownPlayingRef.current = true;
+        writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "false");
+        setIsPlaying(true);
+      }
+    })().catch(() => {
+      // A browser may require a fresh user gesture after suspending the installed PWA.
+      writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "true");
+      setError("VIBRA conservó tu canción. Toca REPRODUCIR para recuperar el audio desde donde quedó.");
+    });
+  }, []);
+
+  // External apps (WhatsApp voice notes, calls, camera) can hide the installed PWA
+  // and suspend Web Audio without going through HBG's in-app microphone session.
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") captureBackgroundPlayback();
+      else restoreBackgroundPlayback();
+    };
+    const onPageHide = () => captureBackgroundPlayback();
+    const onPageShow = () => {
+      if (document.visibilityState !== "hidden") restoreBackgroundPlayback();
+    };
+    const onFocus = () => restoreBackgroundPlayback();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("pageshow", onPageShow);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [captureBackgroundPlayback, restoreBackgroundPlayback]);
+
+  // Restore the last track and its saved position if Android discarded the PWA process.
   const restoredRef = useRef(false);
   useEffect(() => {
     if (restoredRef.current || tracks.length === 0) return;
     const savedId = readStoredTrackId();
-    if (savedId && tracks.find((t) => t.id === savedId)) {
-      setCurrentId(savedId);
-      loadTrack(savedId, false, 0);
-      restoredRef.current = true;
-    } else if (tracks.length > 0) {
-      setCurrentId(tracks[0].id);
-      loadTrack(tracks[0].id, false, 0);
-      restoredRef.current = true;
-    }
+    const savedTime = Number(readStoredValue(STORAGE_KEYS.trackTime) ?? 0);
+    const restoreTime = Number.isFinite(savedTime) && savedTime > 0 ? savedTime : 0;
+    const trackToRestore = savedId && tracks.some((track) => track.id === savedId) ? savedId : tracks[0].id;
+    const shouldResume = readStoredValue(STORAGE_KEYS.resumeAfterInterruption) === "true" && savedId === trackToRestore;
+    setCurrentId(trackToRestore);
+    restoredRef.current = true;
+    void loadTrack(trackToRestore, false, trackToRestore === savedId ? restoreTime : 0).then(async (loaded) => {
+      if (!loaded || !shouldResume) return;
+      try {
+        await audioContextRef.current?.resume();
+        const engine = djMixEngineRef.current;
+        if (engine) {
+          const resumed = await engine.resumeActive();
+          if (!resumed) throw new Error("El navegador no permitió reanudar el audio.");
+        } else if (audioRef.current) await audioRef.current.play();
+        if (audioRef.current && !audioRef.current.paused) {
+          lastKnownPlayingRef.current = true;
+          writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "false");
+          setIsPlaying(true);
+        }
+      } catch {
+        // Autoplay can be blocked after a process restart; the position remains ready for a tap.
+        setError("Tu sesión anterior se recuperó. Toca REPRODUCIR para continuar desde donde quedó.");
+      }
+    });
   }, [tracks, loadTrack]);
 
   const resumePlayback = async (): Promise<boolean> => {
@@ -757,6 +883,8 @@ export function VibraModule() {
           const resumed = await djMixEngineRef.current.resumeActive();
           if (!resumed) throw new Error("resume failed");
         } else await audio.play();
+        backgroundResumeSuppressedRef.current = false;
+        writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "false");
         setIsPlaying(true);
         return true;
       } catch {
@@ -786,6 +914,9 @@ export function VibraModule() {
     }
     if (audio.src && audio.src !== window.location.href) {
       if (isPlaying) {
+        backgroundResumeSuppressedRef.current = true;
+        lastKnownPlayingRef.current = false;
+        writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "false");
         if (djMixEngineRef.current) {
           djMixEngineRef.current.pauseAll();
           djPreparedTrackIdRef.current = null;
@@ -990,6 +1121,9 @@ export function VibraModule() {
   mediaSessionActionsRef.current = {
     play: () => { void resumePlayback(); },
     pause: () => {
+      backgroundResumeSuppressedRef.current = true;
+      lastKnownPlayingRef.current = false;
+      writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "false");
       preventVoiceSessionPlaybackRestore();
       if (djMixEngineRef.current) {
         djMixEngineRef.current.pauseAll();

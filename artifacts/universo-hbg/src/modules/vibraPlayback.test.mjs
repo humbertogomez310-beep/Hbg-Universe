@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   selectNextPlaybackId,
   selectPreviousPlaybackId,
+  shouldRestorePlaybackAfterInterruption,
+  recoverPlaybackPosition,
 } from "./vibraPlayback.ts";
 
 const ids = ["a", "b", "c"];
@@ -31,4 +33,20 @@ test("VIBRA handles empty queues and single-track repeat modes", () => {
   assert.equal(selectPreviousPlaybackId(["solo"], "solo", true, "off"), null);
   assert.equal(selectPreviousPlaybackId(["solo"], "solo", true, "one"), "solo");
   assert.equal(selectPreviousPlaybackId(["solo"], "solo", true, "all"), "solo");
+});
+
+
+test("VIBRA restores only a track that was playing before an external app interruption", () => {
+  const snapshot = { trackId: "b", wasPlaying: true, currentTime: 42 };
+  assert.equal(shouldRestorePlaybackAfterInterruption(snapshot, "b", false), true);
+  assert.equal(shouldRestorePlaybackAfterInterruption(snapshot, "b", true), false);
+  assert.equal(shouldRestorePlaybackAfterInterruption(snapshot, "c", false), false);
+  assert.equal(shouldRestorePlaybackAfterInterruption({ ...snapshot, wasPlaying: false }, "b", false), false);
+});
+
+test("VIBRA recovers a reset media position but never rewinds a track that advanced", () => {
+  assert.equal(recoverPlaybackPosition(0, 42), 42);
+  assert.equal(recoverPlaybackPosition(39, 42), 39);
+  assert.equal(recoverPlaybackPosition(Number.NaN, 42), 42);
+  assert.equal(recoverPlaybackPosition(42, Number.NaN), 42);
 });
