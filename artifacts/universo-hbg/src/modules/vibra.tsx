@@ -18,8 +18,9 @@ import {
   interpretMusicDirection,
   normalizeMusicText,
   readMusicDirection,
-  selectNextTrack,
   selectTracksForDirection,
+  selectAutoDjCandidates,
+  selectNextAutoDjTrack,
   type MusicDirection,
 } from "./musicDirector";
 import {
@@ -284,7 +285,7 @@ export function VibraModule() {
 
   const mood = MOODS.find((m) => m.mode === activeMode)!;
   const currentTrack = tracks.find((t) => t.id === currentId) ?? null;
-  const plannedNextTrack = selectNextTrack(tracks, currentId, recentTrackIds, musicDirection);
+  const plannedNextTrack = selectNextAutoDjTrack(tracks, currentId, recentTrackIds, musicDirection);
 
   useEffect(() => {
     hbgCore.setContext("music.currentTrack", currentTrack);
@@ -751,17 +752,18 @@ export function VibraModule() {
         while (true) {
           if (selectionGeneration !== manualSelectionGenerationRef.current) return;
           const candidates = availableTracks.filter((track) => !failedIds.has(track.id));
+          const autoDjCandidates = selectAutoDjCandidates(candidates, musicDirection);
           const next = shuffleEnabled
-            ? candidates.find((track) =>
+            ? autoDjCandidates.find((track) =>
                 track.id === selectNextPlaybackId(
-                  candidates.map((candidate) => candidate.id),
+                  autoDjCandidates.map((candidate) => candidate.id),
                   currentTrackId,
                   true,
                   repeatMode === "all" ? "all" : "off",
                   recentTrackIds,
                 ),
               )
-            : selectNextTrack(candidates, currentTrackId, recentTrackIds, musicDirection);
+            : selectNextAutoDjTrack(candidates, currentTrackId, recentTrackIds, musicDirection);
           if (!next) {
             setError(
               musicDirection.goal
@@ -982,7 +984,7 @@ export function VibraModule() {
             await togglePlay();
             if (audioRef.current && !audioRef.current.paused) return result(true, { enabled, isPlaying: true });
           }
-          const next = selectNextTrack(tracks, currentId, recentTrackIds, musicDirection);
+          const next = selectNextAutoDjTrack(tracks, currentId, recentTrackIds, musicDirection);
           if (!next) return result(false, undefined, `No hay canciones disponibles para "${musicDirection.goal}".`);
           const playing = await playTrack(next.id);
           if (!playing) return result(false, undefined, "Auto DJ no pudo cargar la canción seleccionada.");
@@ -1366,7 +1368,7 @@ export function VibraModule() {
             </span>
           </div>
           <div style={{ marginTop: 7, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>
-            Selección local por metadatos de título, artista y álbum, con pistas textuales de energía y prioridad vocal. No se analiza BPM, audio ambiental ni emoción del usuario.
+            Auto DJ prioriza coincidencias locales de estilo, energía y voz; si no hay una intención fijada o faltan etiquetas de energía, continúa con canciones disponibles sin atribuirles género ni BPM. No analiza audio ambiental ni emoción del usuario.
           </div>
         </section>
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { interpretMusicDirection, selectNextTrack, selectTracksForDirection, readMusicDirection } from "./musicDirector.ts";
+import { interpretMusicDirection, selectNextTrack, selectTracksForDirection, selectAutoDjCandidates, selectNextAutoDjTrack, readMusicDirection } from "./musicDirector.ts";
 import { parseIntent } from "../voice/intentParser.ts";
 
 const tracks = [
@@ -50,6 +50,38 @@ test("selects only local metadata matches and avoids recent tracks when alternat
   assert.equal(selectNextTrack(tracks, null, [], direction)?.id, "90s-a");
   assert.equal(selectNextTrack(tracks, "90s-a", ["90s-a"], direction)?.id, "90s-b");
   assert.equal(selectNextTrack(tracks, null, [], { goal: "jazz", energy: "steady" }), null);
+});
+
+test("Auto DJ continues through the local library when no explicit direction is fixed", () => {
+  const plain = [
+    { id: "one", title: "Track One", artist: "Unknown", album: "", importedAt: 1 },
+    { id: "two", title: "Track Two", artist: "Unknown", album: "", importedAt: 2 },
+    { id: "three", title: "Track Three", artist: "Unknown", album: "", importedAt: 3 },
+  ];
+  assert.deepEqual(selectAutoDjCandidates(plain, { goal: "", energy: "steady" }), plain);
+  assert.equal(selectNextAutoDjTrack(plain, "one", ["two"], { goal: "", energy: "steady" })?.id, "three");
+});
+
+test("Modo Fiesta continues with available tracks when metadata has no energy labels", () => {
+  const unlabeled = [{ id: "plain", title: "Track One", artist: "Unknown", album: "", importedAt: 1 }];
+  assert.equal(selectNextAutoDjTrack(unlabeled, null, [], { goal: "", energy: "up" })?.id, "plain");
+});
+
+test("Auto DJ never drops an explicit genre or vocal-first constraint to fill the queue", () => {
+  assert.deepEqual(
+    selectAutoDjCandidates(tracks, { goal: "noventa", energy: "steady" }).map((track) => track.id),
+    ["90s-a", "90s-b"],
+  );
+  assert.equal(selectNextAutoDjTrack(tracks, null, [], { goal: "jazz", energy: "steady" }), null);
+  assert.equal(
+    selectNextAutoDjTrack(
+      [{ id: "plain", title: "Track One", artist: "Unknown", album: "", importedAt: 1 }],
+      null,
+      [],
+      { goal: "", energy: "steady", vocalFocus: true },
+    ),
+    null,
+  );
 });
 
 test("reads persisted direction and maps voice controls to concrete actions", () => {
