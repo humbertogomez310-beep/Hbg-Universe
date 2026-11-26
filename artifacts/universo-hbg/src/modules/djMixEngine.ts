@@ -50,6 +50,7 @@ export class VibraDjMixEngine {
   private transitionTimer: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;
   private masterVolume = 1;
+  private prepareGeneration = 0;
   private readonly context: AudioContext;
 
   constructor(context: AudioContext) {
@@ -147,6 +148,7 @@ export class VibraDjMixEngine {
   }
 
   private settleTransitionOnActiveDeck(): void {
+    this.prepareGeneration += 1;
     if (this.transitionTimer !== null) clearTimeout(this.transitionTimer);
     this.transitionTimer = null;
     const active = this.decks[this.activeIndex];
@@ -208,6 +210,7 @@ export class VibraDjMixEngine {
   /** Cancel a prepared but not-yet-started incoming track. */
   clearPreparedNext(): void {
     if (this.destroyed || this.transitionTimer !== null) return;
+    this.prepareGeneration += 1;
     this.releaseDeck(this.decks[1 - this.activeIndex]);
     const now = this.context.currentTime;
     this.decks[1 - this.activeIndex].gain.gain.cancelScheduledValues(now);
@@ -234,6 +237,7 @@ export class VibraDjMixEngine {
   /** Load the inactive deck while the active deck continues playing. */
   async prepareNext(blob: Blob): Promise<boolean> {
     if (this.destroyed || this.transitionTimer !== null) return false;
+    const generation = ++this.prepareGeneration;
     const deck = this.decks[1 - this.activeIndex];
     this.releaseDeck(deck);
     const objectUrl = URL.createObjectURL(blob);
@@ -257,12 +261,11 @@ export class VibraDjMixEngine {
       deck.audio.addEventListener("error", onError, { once: true });
       deck.audio.load();
     });
-    if (!ready) {
-      deck.audio.removeAttribute("src");
-      deck.audio.load();
-      URL.revokeObjectURL(objectUrl);
-      deck.objectUrl = null;
+    if (generation !== this.prepareGeneration) {
+      if (deck.objectUrl === objectUrl) this.releaseDeck(deck);
+      return false;
     }
+    if (!ready) this.releaseDeck(deck);
     return ready;
   }
 
