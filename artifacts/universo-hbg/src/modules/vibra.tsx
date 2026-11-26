@@ -396,7 +396,10 @@ export function VibraModule() {
         } catch {
           // A failed preload leaves the current deck playing; ended() uses normal auto-advance.
         } finally {
-          if (djPreparingTrackIdRef.current === candidate.id) djPreparingTrackIdRef.current = null;
+          if (djPreparingTrackIdRef.current === candidate.id) {
+            djPreparingTrackIdRef.current = null;
+            if (djPreparedTrackIdRef.current !== candidate.id) setDjMixStatus("standby");
+          }
         }
       })();
     }
