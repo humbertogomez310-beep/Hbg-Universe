@@ -54,6 +54,17 @@ interface LibraryScanCheckpoint {
   updatedAt: number;
 }
 
+interface AutoDjSessionCheckpoint {
+  version: 1;
+  currentTrackId: string;
+  currentTime: number;
+  queueIds: string[];
+  recentTrackIds: string[];
+  direction: MusicDirection;
+  savedAt: number;
+  wasPlaying: boolean;
+}
+
 interface DuplicateGroup {
   id: string;
   trackIds: string[];
@@ -62,6 +73,7 @@ interface DuplicateGroup {
 }
 
 const LIBRARY_SCAN_CHECKPOINT_KEY = "library_scan_checkpoint";
+const AUTO_DJ_SESSION_CHECKPOINT_KEY = "auto_dj_session_checkpoint";
 
 const STORAGE_KEYS = {
   volume: "hbg_vibra_volume",
@@ -260,6 +272,7 @@ export function VibraModule() {
     }
   });
   const [currentId, setCurrentId] = useState<string | null>(readStoredTrackId);
+  const [savedAutoDjSession, setSavedAutoDjSession] = useState<AutoDjSessionCheckpoint | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [djMixStatus, setDjMixStatus] = useState<"standby" | "preloading" | "ready" | "mixing">("standby");
   const [progress, setProgress] = useState(0); // 0–1
@@ -324,6 +337,7 @@ export function VibraModule() {
   const autoDjSeekHoldIntervalRef = useRef<number | null>(null);
   const lastKnownPlayingRef = useRef(false);
   const lastPlaybackCheckpointAtRef = useRef(0);
+  const autoDjSessionSaveInFlightRef = useRef(false);
   const equalizerFiltersRef = useRef<BiquadFilterNode[]>([]);
   const [audioAnalyser, setAudioAnalyser] = useState<AnalyserNode | null>(null);
   const currentUrlRef = useRef<string | null>(null);
@@ -528,6 +542,30 @@ export function VibraModule() {
   }, []);
 
   // El análisis musical se ejecuta únicamente cuando el usuario lo inicia desde Centro de Escaneo.
+
+  // Recover Auto DJ metadata without autoplay. The user must explicitly resume the session.
+  useEffect(() => {
+    let cancelled = false;
+    void getAppState<AutoDjSessionCheckpoint>(AUTO_DJ_SESSION_CHECKPOINT_KEY).then((saved) => {
+      if (cancelled || !saved || saved.version !== 1) return;
+      if (
+        typeof saved.currentTrackId !== "string" ||
+        !Number.isFinite(saved.currentTime) ||
+        !Array.isArray(saved.queueIds) ||
+        !Array.isArray(saved.recentTrackIds) ||
+        !saved.direction ||
+        typeof saved.direction.goal !== "string"
+      ) return;
+      setSavedAutoDjSession({
+        ...saved,
+        currentTime: Math.max(0, saved.currentTime),
+        queueIds: saved.queueIds.filter((id): id is string => typeof id === "string"),
+        recentTrackIds: saved.recentTrackIds.filter((id): id is string).slice(0, 5000),
+        wasPlaying: false,
+      });
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
 
   // Persist config; playback remains usable even when browser storage is unavailable.
   useEffect(() => {
@@ -737,6 +775,23 @@ export function VibraModule() {
         if (trackId) writeStoredValue(STORAGE_KEYS.trackId, trackId);
         writeStoredValue(STORAGE_KEYS.trackTime, String(target.currentTime || 0));
         writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "true");
+        if (djTransitionEnabledRef.current && trackId && !autoDjSessionSaveInFlightRef.current) {
+          autoDjSessionSaveInFlightRef.current = true;
+          const checkpoint: AutoDjSessionCheckpoint = {
+            version: 1,
+            currentTrackId: trackId,
+            currentTime: Math.max(0, target.currentTime || 0),
+            queueIds: tracksRef.current.map((track) => track.id),
+            recentTrackIds: readStoredRecentTracks(),
+            direction: readStoredDirection(),
+            savedAt: now,
+            wasPlaying: true,
+          };
+          void saveAppState(AUTO_DJ_SESSION_CHECKPOINT_KEY, checkpoint)
+            .then(() => setSavedAutoDjSession({ ...checkpoint, wasPlaying: false }))
+            .catch(() => undefined)
+            .finally(() => { autoDjSessionSaveInFlightRef.current = false; });
+        }
       }
     };
     const onDurationChange = (target: HTMLAudioElement) => {
@@ -1075,6 +1130,51 @@ export function VibraModule() {
       }
     });
   }, [tracks, loadTrack]);
+
+  const resumeSavedAutoDjSession = async (): Promise<boolean> => {
+    const checkpoint = savedAutoDjSession;
+    if (!checkpoint) return false;
+    const availableIds = new Set(tracksRef.current.map((track) => track.id));
+    if (!availableIds.has(checkpoint.currentTrackId)) {
+      setError("La canción guardada en la sesión Auto DJ ya no está disponible. Revisa tu biblioteca.");
+      return false;
+    }
+    const sessionTracks = checkpoint.queueIds.filter((id) => availableIds.has(id));
+    if (sessionTracks.length === 0) {
+      setError("La biblioteca ya no contiene canciones de la sesión Auto DJ guardada.");
+      return false;
+    }
+    setMusicDirection(checkpoint.direction);
+    setRecentTrackIds(checkpoint.recentTrackIds.filter((id) => availableIds.has(id)));
+    setAutoDjEnabled(true);
+    setPartyMode(false);
+    activeSequenceRef.current = null;
+    const restored = await loadTrackRef.current(
+      checkpoint.currentTrackId,
+      true,
+      checkpoint.currentTime,
+    );
+    if (!restored) return false;
+    setCurrentId(checkpoint.currentTrackId);
+    setView("dj");
+    hbgCore.setContext("music.currentTrack", tracksRef.current.find((track) => track.id === checkpoint.currentTrackId) ?? null);
+    setSavedAutoDjSession({ ...checkpoint, wasPlaying: false, savedAt: Date.now() });
+    return true;
+  };
+
+  const finishAutoDjSession = async () => {
+    backgroundResumeSuppressedRef.current = true;
+    writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "false");
+    djMixEngineRef.current?.pauseAll();
+    if (!djMixEngineRef.current) audioRef.current?.pause();
+    djMixEngineRef.current?.clearPreparedNext();
+    setIsPlaying(false);
+    setAutoDjEnabled(false);
+    setPartyMode(false);
+    setDjMixStatus("standby");
+    await deleteAppState(AUTO_DJ_SESSION_CHECKPOINT_KEY).catch(() => undefined);
+    setSavedAutoDjSession(null);
+  };
 
   const resumePlayback = async (): Promise<boolean> => {
     const audio = audioRef.current;
@@ -2261,6 +2361,26 @@ export function VibraModule() {
               {isPlaying ? "EN VIVO" : "EN ESPERA"}
             </div>
           </header>
+
+          {savedAutoDjSession && (
+            <div className="hbg-card" style={{ marginTop: 12, border: "1px solid var(--border-dim)" }}>
+              <div style={{ fontFamily: "var(--font-display)", fontSize: 11, fontWeight: 700 }}>SESIÓN AUTO DJ GUARDADA</div>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginTop: 5 }}>
+                {tracks.find((track) => track.id === savedAutoDjSession.currentTrackId)?.title ?? "Pista no disponible"} · posición {formatDuration(savedAutoDjSession.currentTime)} · guardada {new Date(savedAutoDjSession.savedAt).toLocaleString()}
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 9 }}>
+                <button type="button" className="hbg-btn hbg-btn-primary" onClick={() => void resumeSavedAutoDjSession().then((ok) => { if (!ok) setError("No se pudo reanudar la sesión Auto DJ guardada."); })}>
+                  ▶ CONTINUAR SESIÓN
+                </button>
+                <button type="button" className="hbg-btn hbg-btn-ghost" onClick={() => void finishAutoDjSession()}>
+                  FINALIZAR Y BORRAR SESIÓN
+                </button>
+              </div>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginTop: 7 }}>
+                La sesión se guarda sin reproducirse automáticamente al abrir VIBRA. La reanudación requiere que pulses CONTINUAR.
+              </div>
+            </div>
+          )}
 
           <div className="vibra-dj-stage">
             <div className="vibra-dj-stage-top">
