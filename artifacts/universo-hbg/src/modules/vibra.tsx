@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { UniversoScreen } from "../components/UniversoScreen";
 import { hbgCore, type HBGActionResult } from "../core/hbgCore";
 import { calculateEffectiveAudioVolume, getCurrentAudioDuckingFactor, registerAudioOutput, registerAudioSessionLifecycle, preventVoiceSessionPlaybackRestore } from "../core/audioManager";
@@ -128,7 +128,7 @@ function readStoredPlaylists(): Playlist[] {
 function readStoredRecentTracks(): string[] {
   try {
     const parsed: unknown = JSON.parse(readStoredValue(STORAGE_KEYS.recentTrackIds) ?? "[]");
-    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string").slice(0, 50) : [];
+    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string").slice(0, 5000) : [];
   } catch {
     return [];
   }
@@ -249,6 +249,9 @@ export function VibraModule() {
   const [newPlaylistQuery, setNewPlaylistQuery] = useState("");
   const [filterFavs, setFilterFavs] = useState(false);
   const [directionInput, setDirectionInput] = useState(() => musicDirection.goal);
+  const analysisQueueRef = useRef<string[]>([]);
+  const analysisQueuedIdsRef = useRef(new Set<string>());
+  const analysisQueueRunningRef = useRef(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -312,9 +315,13 @@ export function VibraModule() {
 
   const mood = MOODS.find((m) => m.mode === activeMode)!;
   const currentTrack = tracks.find((t) => t.id === currentId) ?? null;
-  const plannedNextTrack = selectNextAutoDjTrack(tracks, currentId, recentTrackIds, musicDirection);
+  const plannedNextTrack = useMemo(
+    () => selectNextAutoDjTrack(tracks, currentId, recentTrackIds, musicDirection),
+    [tracks, currentId, recentTrackIds, musicDirection],
+  );
   plannedNextTrackRef.current = plannedNextTrack;
-  djTransitionEnabledRef.current = (autoDjEnabled || partyMode) && repeatMode !== "one";
+  // Auto DJ manages its own no-repeat rotation; manual repeat-one must not stop DJ transitions.
+  djTransitionEnabledRef.current = autoDjEnabled || partyMode;
 
   djTransitionCheckRef.current = (audio) => {
     const engine = djMixEngineRef.current;
@@ -361,7 +368,7 @@ export function VibraModule() {
         audioRef.current = engine.activeAudio;
         currentIdRef.current = candidate.id;
         setCurrentId(candidate.id);
-        setRecentTrackIds((previous) => [candidate.id, ...previous.filter((id) => id !== candidate.id)].slice(0, 20));
+        setRecentTrackIds((previous) => [candidate.id, ...previous.filter((id) => id !== candidate.id)].slice(0, 5000));
         hbgCore.setContext("music.currentTrack", candidate);
         playbackPositionRef.current = engine.activeAudio.currentTime || 0;
         setCurrentTime(engine.activeAudio.currentTime || 0);
@@ -437,6 +444,42 @@ export function VibraModule() {
       setError(cause instanceof Error ? `No se pudo leer la biblioteca local: ${cause.message}` : "No se pudo leer la biblioteca local.");
     });
   }, []);
+
+  // Backfill rhythm analysis for tracks already present in the player's IndexedDB library.
+  // One file is decoded at a time in the background; playback never waits for this queue.
+  useEffect(() => {
+    for (const track of tracks) {
+      if (track.beatStrength !== undefined && track.energyLevel !== undefined && track.impactStrength !== undefined) continue;
+      if (analysisQueuedIdsRef.current.has(track.id)) continue;
+      analysisQueuedIdsRef.current.add(track.id);
+      analysisQueueRef.current.push(track.id);
+    }
+    if (analysisQueueRunningRef.current || analysisQueueRef.current.length === 0) return;
+    analysisQueueRunningRef.current = true;
+    void (async () => {
+      try {
+        while (analysisQueueRef.current.length > 0) {
+          const id = analysisQueueRef.current.shift();
+          if (!id) continue;
+          try {
+            const meta = tracksRef.current.find((item) => item.id === id);
+            const blob = await getAudioBlob(id);
+            if (!meta || !blob) continue;
+            const profile = await analyzeAudioBlob(blob);
+            const enriched = { ...meta, ...profile };
+            await saveTrackMeta(enriched);
+            setTracks((previous) => previous.map((item) => item.id === id ? enriched : item));
+          } catch {
+            // Unsupported codecs stay playable and cannot block the DJ rotation.
+          } finally {
+            analysisQueuedIdsRef.current.delete(id);
+          }
+        }
+      } finally {
+        analysisQueueRunningRef.current = false;
+      }
+    })();
+  }, [tracks]);
 
   // Persist config; playback remains usable even when browser storage is unavailable.
   useEffect(() => {
@@ -908,7 +951,7 @@ export function VibraModule() {
       const id = tracks[0].id;
       if (await loadTrack(id, true)) {
         setCurrentId(id);
-        setRecentTrackIds((prev) => [id, ...prev.filter((trackId) => trackId !== id)].slice(0, 20));
+        setRecentTrackIds((prev) => [id, ...prev.filter((trackId) => trackId !== id)].slice(0, 5000));
       }
       return;
     }
@@ -942,7 +985,7 @@ export function VibraModule() {
     const playing = await loadTrackRef.current(id, true);
     if (!playing) return false;
     setCurrentId(id);
-    setRecentTrackIds((prev) => [id, ...prev.filter((trackId) => trackId !== id)].slice(0, 20));
+    setRecentTrackIds((prev) => [id, ...prev.filter((trackId) => trackId !== id)].slice(0, 5000));
     hbgCore.setContext("music.currentTrack", tracksRef.current.find((track) => track.id === id) ?? null);
     return true;
   };
@@ -980,7 +1023,7 @@ export function VibraModule() {
     const currentTrackId = currentIdRef.current;
     const activeSequence = activeSequenceRef.current;
 
-    if (repeatMode === "one" && currentTrackId) {
+    if (repeatMode === "one" && currentTrackId && !autoDjEnabled) {
       autoAdvanceInProgressRef.current = true;
       void playTrack(currentTrackId, true, true).finally(() => {
         autoAdvanceInProgressRef.current = false;
@@ -1045,15 +1088,14 @@ export function VibraModule() {
         while (true) {
           if (selectionGeneration !== manualSelectionGenerationRef.current) return;
           const candidates = availableTracks.filter((track) => !failedIds.has(track.id));
-          // Auto DJ is deliberately ranked, never randomized: audio tempo/key
-          // compatibility is used when confidence is sufficient, with stable
-          // library order as the honest fallback for unanalyzed tracks.
+          // Auto DJ ranks rhythm first and randomizes among close matches.
+          // A text mismatch is only a soft preference, never a reason to stop.
           const next = selectNextAutoDjTrack(candidates, currentTrackId, recentTrackIds, musicDirection);
           if (!next) {
             setError(
-              musicDirection.goal
-                ? `Auto DJ no encontró canciones de "${musicDirection.goal}" en los metadatos de la biblioteca.`
-                : "Auto DJ no encontró otra canción disponible en la biblioteca."
+              availableTracks.length <= 1
+                ? "Auto DJ necesita al menos dos canciones en la biblioteca para evitar repetir la misma pista."
+                : "Auto DJ no pudo cargar una pista alternativa reproducible de la biblioteca."
             );
             return;
           }
@@ -1063,7 +1105,7 @@ export function VibraModule() {
             setRecentTrackIds((prev) => [
               next.id,
               ...prev.filter((id) => id !== next.id),
-            ].slice(0, 20));
+            ].slice(0, 5000));
             hbgCore.setContext("music.currentTrack", next);
             return;
           }
@@ -1077,6 +1119,10 @@ export function VibraModule() {
   };
 
   const nextTrack = async (): Promise<boolean> => {
+    if (autoDjEnabled && !activeSequenceRef.current) {
+      const next = selectNextAutoDjTrack(tracksRef.current, currentIdRef.current, recentTrackIds, musicDirection);
+      return next ? playTrack(next.id) : false;
+    }
     const activeSequence = activeSequenceRef.current;
     const queue = activeSequence ?? tracks.map((track) => track.id);
     const nextId = selectNextPlaybackId(
@@ -1281,7 +1327,9 @@ export function VibraModule() {
             if (audioRef.current && !audioRef.current.paused) return result(true, { enabled, isPlaying: true });
           }
           const next = selectNextAutoDjTrack(tracks, currentId, recentTrackIds, musicDirection);
-          if (!next) return result(false, undefined, `No hay canciones disponibles para "${musicDirection.goal}".`);
+          if (!next) return result(false, undefined, tracks.length <= 1
+            ? "Auto DJ necesita al menos dos canciones en la biblioteca para evitar repetir la misma pista."
+            : "No se pudo encontrar una pista alternativa reproducible en la biblioteca.");
           const playing = await playTrack(next.id);
           if (!playing) return result(false, undefined, "Auto DJ no pudo cargar la canción seleccionada.");
         }
@@ -1476,15 +1524,16 @@ export function VibraModule() {
         await saveAudioBlob(id, blob);
         await saveTrackMeta(meta);
         setTracks((prev) => [...prev, meta]);
-        // Analyze locally after import. Playback and the import flow do not wait
-        // for CPU-heavy BPM/key estimation; results are cached in IndexedDB.
+        // Analyze rhythm, pulse, energy and key locally without delaying import/playback.
+        analysisQueuedIdsRef.current.add(id);
         void analyzeAudioBlob(blob).then(async (analysis) => {
-          if (analysis.bpm === undefined && analysis.musicalKey === undefined) return;
           const enriched = { ...meta, ...analysis };
           await saveTrackMeta(enriched);
           setTracks((prev) => prev.map((track) => track.id === id ? enriched : track));
         }).catch(() => {
           // Unsupported codecs/devices keep the imported track playable without fabricated metadata.
+        }).finally(() => {
+          analysisQueuedIdsRef.current.delete(id);
         });
         imported++;
 
@@ -1738,8 +1787,8 @@ export function VibraModule() {
             </div>
             <div className="vibra-dj-track vibra-dj-track-next">
               <span className="vibra-dj-section-label">03 / SIGUIENTE CANDIDATA</span>
-              <strong title={plannedNextTrack?.title ?? "Sin candidata"}>{plannedNextTrack?.title ?? "Sin coincidencia disponible"}</strong>
-              <small>{plannedNextTrack?.artist || (plannedNextTrack ? "Artista desconocido" : "Amplía tu biblioteca o cambia el objetivo")}</small>
+              <strong title={plannedNextTrack?.title ?? "Buscando alternativa"}>{plannedNextTrack?.title ?? (tracks.length <= 1 ? "Agrega otra canción" : "Buscando alternativa rítmica")}</strong>
+              <small>{plannedNextTrack?.artist || (plannedNextTrack ? "Artista desconocido" : tracks.length <= 1 ? "Se necesitan dos pistas para evitar repetir" : "Auto DJ amplía la búsqueda dentro de tu biblioteca")}</small>
               <small>{formatDjAnalysis(plannedNextTrack)}</small>
             </div>
           </div>
@@ -1757,7 +1806,7 @@ export function VibraModule() {
           </div>
 
           <p className="vibra-dj-footnote">
-            El análisis local estima BPM y tonalidad cuando el navegador puede decodificar el archivo. La mezcla entre decks aún no está conectada al reproductor; no hay beatmatching ni análisis ambiental activo.
+            Auto DJ usa la biblioteca del reproductor, estima BPM, fuerza del pulso, energía e impacto y prioriza compatibilidad rítmica. Prepara el siguiente deck y realiza crossfade cuando Web Audio está disponible; el beatmatching con sincronización de tempo y el análisis ambiental aún no están implementados.
           </p>
         </section>
       )}
