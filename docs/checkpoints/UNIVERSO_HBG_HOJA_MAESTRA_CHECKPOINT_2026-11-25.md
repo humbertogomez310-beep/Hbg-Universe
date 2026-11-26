@@ -1,12 +1,12 @@
 # UNIVERSO HBG — HOJA MAESTRA Y CHECKPOINT OFICIAL DE CONTINUIDAD
 
-**Versión:** 2.1 — auditoría base del 25 de noviembre y continuidad actualizada el 26 de noviembre de 2026  
+**Versión:** 2.2 — auditoría base del 25 de noviembre y continuidad actualizada el 26 de noviembre de 2026  
 **Estado del documento:** checkpoint oficial de continuidad; la auditoría integral base se conserva y los addenda registran promociones posteriores verificadas.  
 **Repositorio:** https://github.com/humbertogomez310-beep/Hbg-Universe  
 **Rama de referencia de producción:** deploy/pwa-render  
-**Commit exacto de producción vigente al último addendum:** 0c8ca86177b5a7fcbd2efc6a100b485ed1f05f28  
+**Commit exacto de producción vigente al último addendum:** c563e935171ee66a30f2748fad025e31397d002f  
 **Commit de la auditoría integral base:** ad70d37ae71da09620b5b0cb1d6decef536270bb  
-**Último deploy Render:** dep-dc3o1qo473hc738k3ggg — LIVE  
+**Último deploy Render:** dep-dc3o5ft9el5s73ai72pg — LIVE  
 **Deploy de la auditoría integral base:** dep-dc3hute0tbcc73detto0 — LIVE  
 **URL pública:** https://universo-hbg-pwa-public.onrender.com
 
@@ -687,5 +687,39 @@ No declarar las aplicaciones terminadas como productos independientes hasta cerr
 - Para INSTINTO sigue pendiente la certificación física de persistencia y backup/restore.
 
 **Siguiente paso obligatorio:** pruebas físicas en el dispositivo del OWNER antes de declarar VIBRA e INSTINTO concluidas como productos independientes.
+
+### 15.8 Addendum — restauración atómica de respaldo en INSTINTO
+
+**Fecha:** 26-11-2026  
+**PR:** #35 — https://github.com/humbertogomez310-beep/Hbg-Universe/pull/35  
+**Commit de producción:** `c563e935171ee66a30f2748fad025e31397d002f`  
+**Commit candidato validado por CI:** `bec57085cdd86bb5e9704777640bc7abe9e18836`  
+**CI:** ejecución 45731660506 — SUCCESS (tests API y aplicación, typecheck, build de workspace y build PWA).  
+**Render:** deployment `dep-dc3o5ft9el5s73ai72pg` — LIVE.
+
+#### Cambio verificado
+
+- La restauración alternativa se guarda como un único registro en localStorage, no como cuatro escrituras independientes.
+- Al recuperarse IndexedDB, las cuatro colecciones se importan dentro de una sola transacción.
+- El respaldo alternativo solo se limpia después de confirmar la transacción y reconciliar los marcadores anteriores.
+- Las ediciones realizadas mientras IndexedDB sigue indisponible actualizan el respaldo completo pendiente.
+- Si la app se reinicia mientras IndexedDB continúa indisponible, INSTINTO carga el respaldo alternativo completo en la interfaz.
+- Si el respaldo no cabe en el almacenamiento alternativo o este está bloqueado, la operación falla sin escribir colecciones parciales y muestra un error específico.
+
+#### Límites y alcance
+
+- localStorage sigue sujeto a la cuota disponible del navegador; este cambio evita restauraciones parciales, pero no aumenta esa cuota.
+- La migración y el comportamiento de arranque offline tienen validación automatizada y de compilación, pero todavía requieren prueba física en el dispositivo.
+- Solo se modificaron persistencia, restauración, carga offline y pruebas de INSTINTO.
+- No se modificaron VIBRA, HBG Authority, Terminador, permisos, API, autenticación ni infraestructura.
+
+#### Estado de cierre
+
+- La restauración de respaldo de INSTINTO queda reforzada y publicada.
+- Siguen pendientes las pruebas físicas de guardar, editar, reiniciar, exportar, importar y recuperar respaldos en Android/iOS.
+- Siguen pendientes la distribución independiente de INSTINTO y su matriz FREE/PRO.
+- No declarar INSTINTO ni VIBRA como productos terminados hasta completar las pruebas físicas y los requisitos de producto pendientes.
+
+**Siguiente paso obligatorio:** ejecutar la matriz de pruebas físicas de INSTINTO y VIBRA en el dispositivo del OWNER.
 
 **FIN — UNIVERSO HBG / HOJA MAESTRA Y CHECKPOINT OFICIAL / 26-11-2026**
