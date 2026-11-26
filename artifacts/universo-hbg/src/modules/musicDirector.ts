@@ -1,5 +1,5 @@
 import type { TrackMeta } from "../core/vibraDB";
-import { scoreHarmonicCompatibility, scoreTempoCompatibility } from "./djAudioAnalysis";
+import { scoreHarmonicCompatibility, scoreTempoCompatibility } from "./djAudioAnalysis.ts";
 
 export interface MusicDirection {
   goal: string;
