@@ -139,3 +139,23 @@ test("manual load and pause cancel an incoming deck and preserve one active tran
     globalThis.Audio = previousAudio;
   }
 });
+
+
+test("cancelling a pending preload resolves it and leaves the active deck untouched", async () => {
+  const { VibraDjMixEngine } = await import("./djMixEngine.ts");
+  const previousAudio = globalThis.Audio;
+  globalThis.Audio = FakeAudioElement;
+  const engine = new VibraDjMixEngine(new FakeAudioContext());
+  try {
+    const active = await engine.loadActive(new Blob(["playing"]), 0, true);
+    assert.ok(active);
+    const pending = engine.prepareNext(new Blob(["cancel me"]));
+    engine.clearPreparedNext();
+    assert.equal(await pending, false);
+    assert.equal(engine.activeAudio.paused, false);
+    assert.equal(engine.incomingAudio.src, "");
+  } finally {
+    engine.destroy();
+    globalThis.Audio = previousAudio;
+  }
+});
