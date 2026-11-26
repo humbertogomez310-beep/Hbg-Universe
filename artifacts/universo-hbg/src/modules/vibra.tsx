@@ -219,6 +219,7 @@ export function VibraModule() {
   const [tracks, setTracks] = useState<TrackMeta[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(readStoredTrackId);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [djMixStatus, setDjMixStatus] = useState<"standby" | "preloading" | "ready" | "mixing">("standby");
   const [progress, setProgress] = useState(0); // 0–1
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -335,12 +336,14 @@ export function VibraModule() {
       !djCrossfadeStartedRef.current
     ) {
       djCrossfadeStartedRef.current = true;
+      setDjMixStatus("mixing");
       const outgoingId = currentIdRef.current;
       void engine.crossfadeToNext(fadeSeconds * 1000).then((started) => {
         if (!started) {
           djCrossfadeStartedRef.current = false;
           engine.clearPreparedNext();
           djPreparedTrackIdRef.current = null;
+          setDjMixStatus("standby");
           return;
         }
         audioRef.current = engine.activeAudio;
@@ -354,6 +357,9 @@ export function VibraModule() {
         setProgress(0);
         djPreparedTrackIdRef.current = null;
         if (outgoingId !== currentIdRef.current) setIsPlaying(true);
+        window.setTimeout(() => {
+          if (!engine.isTransitioning && djTransitionEnabledRef.current) setDjMixStatus("standby");
+        }, fadeSeconds * 1000 + 120);
       });
       return;
     }
@@ -364,6 +370,7 @@ export function VibraModule() {
       djPreparingTrackIdRef.current !== candidate.id
     ) {
       djPreparingTrackIdRef.current = candidate.id;
+      setDjMixStatus("preloading");
       void (async () => {
         try {
           const blob = await getAudioBlob(candidate.id);
@@ -376,8 +383,10 @@ export function VibraModule() {
           const ready = await engine.prepareNext(blob);
           if (ready && plannedNextTrackRef.current?.id === candidate.id && djTransitionEnabledRef.current) {
             djPreparedTrackIdRef.current = candidate.id;
+            setDjMixStatus("ready");
           } else if (ready) {
             engine.clearPreparedNext();
+            setDjMixStatus("standby");
           }
         } catch {
           // A failed preload leaves the current deck playing; ended() uses normal auto-advance.
@@ -1507,6 +1516,12 @@ export function VibraModule() {
             <div className="vibra-dj-stage-foot">
               <span>{isPlaying ? "AUDIO ACTIVO" : "REPRODUCCIÓN DETENIDA"}</span>
               <span>{audioAnalyser ? "ESPECTRO REAL" : "ESPECTRO NO DISPONIBLE"}</span>
+              <span>
+                {djMixStatus === "mixing" ? "CROSSFADE EN CURSO" :
+                  djMixStatus === "ready" ? "SIGUIENTE DECK LISTO" :
+                    djMixStatus === "preloading" ? "PREPARANDO SIGUIENTE" :
+                      djMixEngineRef.current ? "MIXER 2 DECKS LISTO" : "MIXER SIMPLE"}
+              </span>
             </div>
           </div>
 
