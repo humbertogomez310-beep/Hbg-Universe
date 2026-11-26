@@ -34,7 +34,7 @@ import {
 } from "./vibraPlayback";
 
 type MoodMode = "party" | "focus" | "creative" | "chill" | "nostalgia" | "sad" | "happy" | "normal";
-type ViewMode = "player" | "dj" | "library" | "playlists" | "modes" | "eq" | "perfil" | "universo";
+type ViewMode = "player" | "dj" | "library" | "playlists" | "modes" | "eq" | "perfil" | "universo" | "scan";
 
 interface Playlist {
   id: string;
@@ -260,10 +260,11 @@ export function VibraModule() {
   const [filterFavs, setFilterFavs] = useState(false);
   const [directionInput, setDirectionInput] = useState(() => musicDirection.goal);
   const [analysisRevision, setAnalysisRevision] = useState(0);
-  const analysisQueueRef = useRef<string[]>([]);
-  const analysisQueuedIdsRef = useRef(new Set<string>());
-  const analysisAttemptedIdsRef = useRef(new Set<string>());
-  const analysisQueueRunningRef = useRef(false);
+  const [libraryScanStatus, setLibraryScanStatus] = useState<"idle" | "running" | "pausing" | "paused" | "completed">("idle");
+  const [libraryScanProgress, setLibraryScanProgress] = useState({ processed: 0, total: 0, failed: 0, currentTitle: "" });
+  const libraryScanQueueRef = useRef<string[]>([]);
+  const libraryScanWorkerRef = useRef(false);
+  const libraryScanPauseRequestedRef = useRef(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -463,45 +464,7 @@ export function VibraModule() {
     });
   }, []);
 
-  // Backfill rhythm analysis for tracks already present in the player's IndexedDB library.
-  // One file is decoded at a time in the background; playback never waits for this queue.
-  useEffect(() => {
-    for (const track of tracks) {
-      if (track.beatStrength !== undefined && track.energyLevel !== undefined && track.impactStrength !== undefined) continue;
-      if (analysisAttemptedIdsRef.current.has(track.id)) continue;
-      analysisAttemptedIdsRef.current.add(track.id);
-      analysisQueuedIdsRef.current.add(track.id);
-      analysisQueueRef.current.push(track.id);
-    }
-    if (analysisQueueRunningRef.current || analysisQueueRef.current.length === 0) return;
-    analysisQueueRunningRef.current = true;
-    void (async () => {
-      let updatedAny = false;
-      try {
-        while (analysisQueueRef.current.length > 0) {
-          const id = analysisQueueRef.current.shift();
-          if (!id) continue;
-          try {
-            const meta = tracksRef.current.find((item) => item.id === id);
-            const blob = await getAudioBlob(id);
-            if (!meta || !blob) continue;
-            const profile = await analyzeAudioBlob(blob);
-            const enriched = { ...meta, ...profile };
-            await saveTrackMeta(enriched);
-            updatedAny = true;
-            setTracks((previous) => previous.map((item) => item.id === id ? enriched : item));
-          } catch {
-            // Unsupported codecs stay playable and cannot block the DJ rotation.
-          } finally {
-            analysisQueuedIdsRef.current.delete(id);
-          }
-        }
-      } finally {
-        analysisQueueRunningRef.current = false;
-        if (updatedAny) setAnalysisRevision((value) => value + 1);
-      }
-    })();
-  }, [tracks]);
+  // El análisis musical se ejecuta únicamente cuando el usuario lo inicia desde Centro de Escaneo.
 
   // Persist config; playback remains usable even when browser storage is unavailable.
   useEffect(() => {
@@ -1576,6 +1539,78 @@ export function VibraModule() {
     setProgress(t / duration);
   };
 
+  const runLibraryScan = async () => {
+    if (libraryScanWorkerRef.current) return;
+    libraryScanWorkerRef.current = true;
+    libraryScanPauseRequestedRef.current = false;
+    setLibraryScanStatus("running");
+
+    try {
+      while (libraryScanQueueRef.current.length > 0 && !libraryScanPauseRequestedRef.current) {
+        const id = libraryScanQueueRef.current.shift();
+        if (!id) continue;
+        const meta = tracksRef.current.find((track) => track.id === id);
+        if (!meta) {
+          setLibraryScanProgress((previous) => ({ ...previous, processed: previous.processed + 1, currentTitle: "" }));
+          continue;
+        }
+
+        setLibraryScanProgress((previous) => ({ ...previous, currentTitle: meta.title }));
+        try {
+          const blob = await getAudioBlob(id);
+          if (!blob) throw new Error("El archivo ya no está disponible en la biblioteca.");
+          const analysis = await analyzeAudioBlob(blob);
+          const enriched = { ...meta, ...analysis };
+          await saveTrackMeta(enriched);
+          setTracks((previous) => previous.map((track) => track.id === id ? enriched : track));
+          setAnalysisRevision((previous) => previous + 1);
+        } catch {
+          setLibraryScanProgress((previous) => ({ ...previous, failed: previous.failed + 1 }));
+        } finally {
+          setLibraryScanProgress((previous) => ({ ...previous, processed: Math.min(previous.total, previous.processed + 1) }));
+        }
+      }
+    } finally {
+      libraryScanWorkerRef.current = false;
+      setLibraryScanProgress((previous) => ({ ...previous, currentTitle: "" }));
+      if (libraryScanPauseRequestedRef.current && libraryScanQueueRef.current.length > 0) {
+        setLibraryScanStatus("paused");
+      } else {
+        setLibraryScanStatus("completed");
+      }
+    }
+  };
+
+  const startLibraryScan = () => {
+    if (libraryScanWorkerRef.current) return;
+    if (libraryScanStatus === "paused" && libraryScanQueueRef.current.length > 0) {
+      void runLibraryScan();
+      return;
+    }
+
+    const pending = tracksRef.current.filter((track) =>
+      track.beatStrength === undefined ||
+      track.energyLevel === undefined ||
+      track.impactStrength === undefined ||
+      track.analyzedAt === undefined
+    );
+    if (pending.length === 0) {
+      setLibraryScanProgress({ processed: tracksRef.current.length, total: tracksRef.current.length, failed: 0, currentTitle: "" });
+      setLibraryScanStatus("completed");
+      return;
+    }
+
+    libraryScanQueueRef.current = pending.map((track) => track.id);
+    setLibraryScanProgress({ processed: 0, total: pending.length, failed: 0, currentTitle: "" });
+    libraryScanPauseRequestedRef.current = false;
+    void runLibraryScan();
+  };
+
+  const pauseLibraryScan = () => {
+    if (!libraryScanWorkerRef.current) return;
+    libraryScanPauseRequestedRef.current = true;
+    setLibraryScanStatus("pausing");
+  };
   const handleImport = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     setImporting(true);
@@ -1593,7 +1628,8 @@ export function VibraModule() {
         }
         const id = `track_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
         const { title, artist } = parseFilename(file.name);
-        const blob = new Blob([await file.arrayBuffer()], { type: file.type || "audio/mpeg" });
+        // File ya es un Blob: guardarlo directamente evita duplicar el archivo completo en RAM.
+        const blob: Blob = file;
         const dur = await getAudioDuration(blob);
 
         const meta: TrackMeta = {
@@ -1605,19 +1641,7 @@ export function VibraModule() {
         await saveAudioBlob(id, blob);
         await saveTrackMeta(meta);
         setTracks((prev) => [...prev, meta]);
-        // Analyze rhythm, pulse, energy and key locally without delaying import/playback.
-        analysisQueuedIdsRef.current.add(id);
-        analysisAttemptedIdsRef.current.add(id);
-        void analyzeAudioBlob(blob).then(async (analysis) => {
-          const enriched = { ...meta, ...analysis };
-          await saveTrackMeta(enriched);
-          setTracks((prev) => prev.map((track) => track.id === id ? enriched : track));
-          setAnalysisRevision((value) => value + 1);
-        }).catch(() => {
-          // Unsupported codecs/devices keep the imported track playable without fabricated metadata.
-        }).finally(() => {
-          analysisQueuedIdsRef.current.delete(id);
-        });
+        // El análisis queda pendiente hasta que el usuario lo solicite en Centro de Escaneo.
         imported++;
 
         // Auto-select first imported track
@@ -1730,6 +1754,7 @@ export function VibraModule() {
     { id: "eq", label: "EQ PRO" },
     { id: "perfil", label: "PERFIL" },
     { id: "universo", label: "UNIVERSO HBG" },
+    { id: "scan", label: "CENTRO DE ESCANEO" },
   ];
 
   return (
@@ -2020,6 +2045,46 @@ export function VibraModule() {
         </div>
       )}
 
+      {/* CENTRO DE ESCANEO */}
+      {view === "scan" && (
+        <section className="hbg-card" aria-label="Centro de Escaneo">
+          <div className="section-title">// CENTRO DE ESCANEO</div>
+          <p style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", lineHeight: 1.6 }}>
+            Los análisis se ejecutan únicamente cuando tú los inicias. VIBRA procesa una canción a la vez y guarda sus resultados para reutilizarlos.
+          </p>
+          <div className="hbg-card" style={{ marginTop: 12, border: "1px solid var(--border-dim)" }}>
+            <div style={{ fontFamily: "var(--font-display)", fontSize: 12, fontWeight: 700, marginBottom: 6 }}>ANALIZAR BIBLIOTECA</div>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginBottom: 12 }}>
+              Calcula BPM, pulso, energía, impacto y tonalidad de las canciones que todavía no tienen un análisis completo.
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="hbg-btn hbg-btn-primary" onClick={startLibraryScan} disabled={libraryScanStatus === "running" || libraryScanStatus === "pausing" || tracks.length === 0}>
+                {libraryScanStatus === "paused" ? "▶ REANUDAR" : libraryScanStatus === "completed" ? "↻ REVISAR PENDIENTES" : "▶ ESCANEAR BIBLIOTECA"}
+              </button>
+              <button className="hbg-btn hbg-btn-ghost" onClick={pauseLibraryScan} disabled={libraryScanStatus !== "running"}>PAUSAR</button>
+            </div>
+            <div style={{ marginTop: 12, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-secondary)" }} aria-live="polite">
+              {libraryScanStatus === "running" && "ANALIZANDO: " + (libraryScanProgress.currentTitle || "preparando...")}
+              {libraryScanStatus === "pausing" && "TERMINANDO LA CANCIÓN ACTUAL PARA PAUSAR..."}
+              {libraryScanStatus === "paused" && "ESCANEO PAUSADO · PUEDES REANUDARLO"}
+              {libraryScanStatus === "completed" && "ESCANEO TERMINADO · " + libraryScanProgress.failed + " ERROR(ES)"}
+              {libraryScanStatus === "idle" && "LISTO · NO SE HA INICIADO NINGÚN ESCANEO"}
+            </div>
+            <div style={{ height: 6, marginTop: 8, borderRadius: 4, background: "var(--bg-deep)", overflow: "hidden" }}>
+              <div style={{ height: "100%", width: (libraryScanProgress.total ? (libraryScanProgress.processed / libraryScanProgress.total) * 100 : 0) + "%", background: mood.color, transition: "width 0.2s ease" }} />
+            </div>
+            <div style={{ marginTop: 6, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>
+              {libraryScanProgress.processed} / {libraryScanProgress.total} canciones · {libraryScanProgress.failed} errores
+            </div>
+          </div>
+          <div className="hbg-card" style={{ marginTop: 10, opacity: 0.75 }}>
+            <div style={{ fontFamily: "var(--font-display)", fontSize: 11, fontWeight: 700 }}>ESCANEAR DISPOSITIVO Y DUPLICADOS</div>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginTop: 5 }}>
+              Estas dos operaciones se incorporarán en sus módulos propios. Todavía no se ejecutan desde esta pantalla.
+            </div>
+          </div>
+        </section>
+      )}
       {/* LIBRARY */}
       {view === "library" && (
         <div>
