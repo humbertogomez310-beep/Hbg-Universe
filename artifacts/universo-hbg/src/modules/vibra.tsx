@@ -265,6 +265,7 @@ export function VibraModule() {
   const voicePlaybackSnapshotRef = useRef<{ wasPlaying: boolean; currentTime: number; audio: HTMLAudioElement | null } | null>(null);
   const backgroundPlaybackSnapshotRef = useRef<{ trackId: string | null; wasPlaying: boolean; currentTime: number; audio: HTMLAudioElement | null } | null>(null);
   const backgroundResumeSuppressedRef = useRef(false);
+  const lastKnownPlayingRef = useRef(false);
   const lastPlaybackCheckpointAtRef = useRef(0);
   const equalizerFiltersRef = useRef<BiquadFilterNode[]>([]);
   const [audioAnalyser, setAudioAnalyser] = useState<AnalyserNode | null>(null);
@@ -453,10 +454,7 @@ export function VibraModule() {
     if (!writeStoredValue(STORAGE_KEYS.playlists, JSON.stringify(playlists))) setError("No se pudieron guardar las playlists.");
   }, [playlists]);
   useEffect(() => {
-    if (currentId) {
-      if (!writeStoredValue(STORAGE_KEYS.trackId, currentId)) setError("No se pudo guardar la canción seleccionada.");
-      writeStoredValue(STORAGE_KEYS.trackTime, "0");
-    }
+    if (currentId && !writeStoredValue(STORAGE_KEYS.trackId, currentId)) setError("No se pudo guardar la canción seleccionada.");
   }, [currentId]);
   useEffect(() => {
     const saved =
@@ -483,6 +481,8 @@ export function VibraModule() {
   // Load audio from IndexedDB and play
   const loadTrack = useCallback(async (id: string, autoPlay = false, startTime = 0): Promise<boolean> => {
     const requestId = ++loadGenerationRef.current;
+    if (id) writeStoredValue(STORAGE_KEYS.trackId, id);
+    writeStoredValue(STORAGE_KEYS.trackTime, String(Number.isFinite(startTime) ? Math.max(0, startTime) : 0));
     cancelPendingLoadRef.current?.();
     setError(null);
     setLoading(true);
@@ -636,6 +636,7 @@ export function VibraModule() {
     };
     const onEnded = (target: HTMLAudioElement) => {
       if (target !== audioRef.current) return;
+      lastKnownPlayingRef.current = false;
       setIsPlaying(false);
       playbackPositionRef.current = 0;
       setProgress(0);
@@ -656,11 +657,14 @@ export function VibraModule() {
       setIsPlaying(false);
     };
     const onPlay = (target: HTMLAudioElement) => {
-      if (target === audioRef.current) setIsPlaying(true);
+      if (target !== audioRef.current) return;
+      lastKnownPlayingRef.current = true;
+      setIsPlaying(true);
     };
     const onPause = (target: HTMLAudioElement) => {
       if (target !== audioRef.current) return;
       playbackPositionRef.current = target.currentTime || playbackPositionRef.current;
+      if (backgroundResumeSuppressedRef.current) lastKnownPlayingRef.current = false;
       setIsPlaying(false);
     };
     const listeners = managedAudios.map((target) => {
@@ -755,7 +759,7 @@ export function VibraModule() {
     if (!audio) return;
     const snapshot = {
       trackId: currentIdRef.current,
-      wasPlaying: !audio.paused && !audio.ended,
+      wasPlaying: (!audio.paused && !audio.ended) || (lastKnownPlayingRef.current && !audio.ended && !backgroundResumeSuppressedRef.current),
       currentTime: Number.isFinite(audio.currentTime) ? audio.currentTime : playbackPositionRef.current,
       audio,
     };
@@ -801,6 +805,7 @@ export function VibraModule() {
       }
       if (!activeAudio.paused) {
         backgroundResumeSuppressedRef.current = false;
+        lastKnownPlayingRef.current = true;
         writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "false");
         setIsPlaying(true);
       }
@@ -856,6 +861,7 @@ export function VibraModule() {
           if (!resumed) throw new Error("El navegador no permitió reanudar el audio.");
         } else if (audioRef.current) await audioRef.current.play();
         if (audioRef.current && !audioRef.current.paused) {
+          lastKnownPlayingRef.current = true;
           writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "false");
           setIsPlaying(true);
         }
@@ -909,6 +915,7 @@ export function VibraModule() {
     if (audio.src && audio.src !== window.location.href) {
       if (isPlaying) {
         backgroundResumeSuppressedRef.current = true;
+        lastKnownPlayingRef.current = false;
         writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "false");
         if (djMixEngineRef.current) {
           djMixEngineRef.current.pauseAll();
@@ -1115,6 +1122,7 @@ export function VibraModule() {
     play: () => { void resumePlayback(); },
     pause: () => {
       backgroundResumeSuppressedRef.current = true;
+      lastKnownPlayingRef.current = false;
       writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "false");
       preventVoiceSessionPlaybackRestore();
       if (djMixEngineRef.current) {
