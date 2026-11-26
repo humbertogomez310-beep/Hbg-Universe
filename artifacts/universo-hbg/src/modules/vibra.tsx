@@ -272,6 +272,7 @@ export function VibraModule() {
   const [newPlaylistQuery, setNewPlaylistQuery] = useState("");
   const [filterFavs, setFilterFavs] = useState(false);
   const [directionInput, setDirectionInput] = useState(() => musicDirection.goal);
+  const [autoDjSeekStep, setAutoDjSeekStep] = useState<5 | 10>(5);
   const [analysisRevision, setAnalysisRevision] = useState(0);
   const [libraryScanStatus, setLibraryScanStatus] = useState<"idle" | "running" | "pausing" | "paused" | "completed">("idle");
   const [libraryScanProgress, setLibraryScanProgress] = useState({ processed: 0, total: 0, failed: 0, currentTitle: "" });
@@ -297,6 +298,8 @@ export function VibraModule() {
   const updatePlaybackSnapshotRef = useRef<{ trackId: string | null; wasPlaying: boolean; currentTime: number; audio: HTMLAudioElement; djTransitionEnabled: boolean } | null>(null);
   const backgroundResumeSuppressedRef = useRef(false);
   const backgroundRestoreInFlightRef = useRef(false);
+  const autoDjSeekHoldDelayRef = useRef<number | null>(null);
+  const autoDjSeekHoldIntervalRef = useRef<number | null>(null);
   const lastKnownPlayingRef = useRef(false);
   const lastPlaybackCheckpointAtRef = useRef(0);
   const equalizerFiltersRef = useRef<BiquadFilterNode[]>([]);
@@ -1632,6 +1635,39 @@ export function VibraModule() {
     setProgress(t / duration);
   };
 
+  const seekAutoDjBy = (direction: -1 | 1) => {
+    if (!autoDjEnabled && !partyMode) return;
+    const audio = djMixEngineRef.current?.activeAudio ?? audioRef.current;
+    const total = audio?.duration || duration;
+    if (!audio || !Number.isFinite(total) || total <= 0) return;
+    const nextTime = Math.max(0, Math.min(Math.max(0, total - 0.25), audio.currentTime + direction * autoDjSeekStep));
+    audio.currentTime = nextTime;
+    playbackPositionRef.current = nextTime;
+    setCurrentTime(nextTime);
+    setProgress(total > 0 ? nextTime / total : 0);
+    writeStoredValue(STORAGE_KEYS.trackTime, String(nextTime));
+  };
+
+  const stopAutoDjSeekHold = () => {
+    if (autoDjSeekHoldDelayRef.current !== null) window.clearTimeout(autoDjSeekHoldDelayRef.current);
+    if (autoDjSeekHoldIntervalRef.current !== null) window.clearInterval(autoDjSeekHoldIntervalRef.current);
+    autoDjSeekHoldDelayRef.current = null;
+    autoDjSeekHoldIntervalRef.current = null;
+  };
+
+  const startAutoDjSeekHold = (direction: -1 | 1) => {
+    stopAutoDjSeekHold();
+    seekAutoDjBy(direction);
+    autoDjSeekHoldDelayRef.current = window.setTimeout(() => {
+      autoDjSeekHoldIntervalRef.current = window.setInterval(() => seekAutoDjBy(direction), 300);
+    }, 450);
+  };
+
+  useEffect(() => () => {
+    if (autoDjSeekHoldDelayRef.current !== null) window.clearTimeout(autoDjSeekHoldDelayRef.current);
+    if (autoDjSeekHoldIntervalRef.current !== null) window.clearInterval(autoDjSeekHoldIntervalRef.current);
+  }, []);
+
   const persistLibraryScanCheckpoint = async (checkpoint: LibraryScanCheckpoint) => {
     libraryScanCheckpointRef.current = checkpoint;
     try {
@@ -2030,6 +2066,20 @@ export function VibraModule() {
               <small>{formatDjAnalysis(plannedNextTrack)}</small>
             </div>
           </div>
+
+          {(autoDjEnabled || partyMode) && (
+            <div className="vibra-dj-direction-panel" aria-label="Avance y retroceso de Auto DJ">
+              <div className="vibra-dj-section-label">04 / NAVEGACIÓN DE PISTA</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>PASO:</span>
+                <button type="button" className={autoDjSeekStep === 5 ? "hbg-btn hbg-btn-primary" : "hbg-btn hbg-btn-ghost"} aria-pressed={autoDjSeekStep === 5} onClick={() => { stopAutoDjSeekHold(); setAutoDjSeekStep(5); }}>5 SEG</button>
+                <button type="button" className={autoDjSeekStep === 10 ? "hbg-btn hbg-btn-primary" : "hbg-btn hbg-btn-ghost"} aria-pressed={autoDjSeekStep === 10} onClick={() => { stopAutoDjSeekHold(); setAutoDjSeekStep(10); }}>10 SEG</button>
+                <button type="button" className="hbg-btn hbg-btn-ghost" aria-label={`Retroceder ${autoDjSeekStep} segundos`} disabled={!currentTrack || loading} onPointerDown={(event) => { event.preventDefault(); startAutoDjSeekHold(-1); }} onPointerUp={stopAutoDjSeekHold} onPointerLeave={stopAutoDjSeekHold} onPointerCancel={stopAutoDjSeekHold}>−{autoDjSeekStep} SEG</button>
+                <button type="button" className="hbg-btn hbg-btn-ghost" aria-label={`Adelantar ${autoDjSeekStep} segundos`} disabled={!currentTrack || loading} onPointerDown={(event) => { event.preventDefault(); startAutoDjSeekHold(1); }} onPointerUp={stopAutoDjSeekHold} onPointerLeave={stopAutoDjSeekHold} onPointerCancel={stopAutoDjSeekHold}>+{autoDjSeekStep} SEG</button>
+              </div>
+              <small style={{ display: "block", marginTop: 6, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>Mantén presionado para avanzar o retroceder continuamente. Solo afecta la canción actual de Auto DJ.</small>
+            </div>
+          )}
 
           <div className="vibra-dj-controls">
             <button type="button" className="hbg-btn hbg-btn-primary" onClick={togglePlay} disabled={!currentTrack || loading}>
