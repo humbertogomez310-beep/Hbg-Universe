@@ -9,7 +9,7 @@ Este documento fija el alcance final. No se agregan módulos nuevos fuera de est
 - Un archivo que no pueda analizarse sigue pudiendo reproducirse.
 - Validar que análisis y permisos no interrumpan VIBRA ni el audio de otras aplicaciones.
 
-Estado: correcciones de estabilidad y límites de análisis están en la base de trabajo; validación CI y física final pendientes.
+Estado: correcciones de estabilidad y límites de análisis están en la base de trabajo; CI de tests, typecheck y builds pasó. Validación física Android pendiente.
 
 ## 2. Permiso y descubrimiento de audio Android
 
@@ -29,7 +29,7 @@ Estado: especificación documentada. Falta la aplicación Android nativa y el pu
 - Reutiliza resultados persistidos y clasifica sin volver a decodificar audio ya analizado.
 - No sube audio ni metadatos a servidores externos.
 
-Estado: cola automática priorizada y pruebas unitarias añadidas; CI pendiente de confirmación.
+Estado: cola automática priorizada y pruebas unitarias añadidas; pruebas automatizadas CI pasaron.
 
 ## 4. Mood Engine funcional
 
@@ -39,7 +39,7 @@ Estado: cola automática priorizada y pruebas unitarias añadidas; CI pendiente 
 - Los escenarios como cumpleaños, niños, tomar y festejar requieren etiquetas o metadatos fiables.
 - Las inferencias de ánimo son heurísticas locales con confianza; BPM y tonalidad por sí solos no demuestran una emoción humana.
 
-Estado: clasificador local explicable, categorías, selección por voz/botones y pruebas añadidas; requiere ajuste con biblioteca real y pruebas físicas.
+Estado: clasificador local explicable, categorías, selección por voz/botones y pruebas automatizadas CI pasaron; requiere ajuste con biblioteca real y pruebas físicas.
 
 ## 5. Auto DJ y Modo Fiesta
 
@@ -67,7 +67,7 @@ Estado: LINGUA y la barra de voz reconocen/enrutan el destino cuando ya existe u
 - Probar formatos, biblioteca grande, permisos concedidos/denegados/revocados, consumo de batería, audio externo, ducking, reproducción con pantalla apagada y reanudación.
 - Validar en Android real; los tests web no sustituyen pruebas del sistema operativo.
 
-Estado: pruebas automatizadas en curso; pruebas físicas pendientes.
+Estado: tests, typecheck, build de producción y build PWA pasaron en CI (run 495); pruebas físicas pendientes.
 
 ## 8. Cierre y distribución
 
@@ -76,4 +76,4 @@ Estado: pruebas automatizadas en curso; pruebas físicas pendientes.
 - Solo cerrar cuando los ocho puntos tengan pruebas satisfactorias y no queden bloqueos nativos.
 - Entregar una versión Android instalable y verificable, con permisos y privacidad claros.
 
-Estado: pendiente. La PR de trabajo sigue en borrador; no hay merge ni despliegue autorizado.
+Estado: pendiente. PR #52 sigue en borrador; no hay merge ni despliegue autorizado.
