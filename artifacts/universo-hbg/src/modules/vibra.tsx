@@ -994,6 +994,13 @@ export function VibraModule() {
       const finalPosition = Number.isFinite(activeAudio.currentTime) ? activeAudio.currentTime : snapshot.currentTime;
       snapshot.currentTime = finalPosition;
       writeStoredValue(STORAGE_KEYS.trackTime, String(finalPosition));
+      if (snapshot.djTransitionEnabled) {
+        // Refresh Auto DJ with the post-fade position, not the earlier pre-fade snapshot.
+        djTransitionEnabledRef.current = true;
+        persistPlaybackCheckpoint(activeAudio, true);
+        djTransitionEnabledRef.current = false;
+        await autoDjSessionWritePromiseRef.current?.catch(() => undefined);
+      }
       if (engine) engine.allAudios.forEach((deckAudio) => deckAudio.pause());
       else activeAudio.pause();
       setIsPlaying(false);
@@ -1191,7 +1198,7 @@ export function VibraModule() {
       setError("La canción guardada en la sesión Auto DJ ya no está disponible. Revisa tu biblioteca.");
       return false;
     }
-    const sessionTracks = checkpoint.queueIds.filter((id) => availableIds.has(id));
+    const sessionTracks = resolveAutoDjSessionQueueIds(checkpoint.queueIds, [...availableIds]);
     if (sessionTracks.length === 0) {
       setError("La biblioteca ya no contiene canciones de la sesión Auto DJ guardada.");
       return false;
@@ -1518,6 +1525,8 @@ export function VibraModule() {
       lastKnownPlayingRef.current = false;
       writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "false");
       preventVoiceSessionPlaybackRestore();
+      const audio = audioRef.current;
+      if (audio) persistPlaybackCheckpoint(audio, false);
       if (djMixEngineRef.current) {
         djMixEngineRef.current.pauseAll();
         djPreparedTrackIdRef.current = null;
@@ -1612,6 +1621,8 @@ export function VibraModule() {
       }),
       hbgCore.registerAction("music.pause", () => {
         preventVoiceSessionPlaybackRestore();
+        const audio = audioRef.current;
+        if (audio) persistPlaybackCheckpoint(audio, false);
         manualSelectionGenerationRef.current += 1;
         loadGenerationRef.current += 1;
         cancelPendingLoadRef.current?.();
