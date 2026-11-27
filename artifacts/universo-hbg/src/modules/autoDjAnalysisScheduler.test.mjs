@@ -9,7 +9,7 @@ const track = (id, overrides = {}) => ({
 
 test("Auto DJ analysis queue includes tracks missing any required analysis field", () => {
   const complete = track("complete", {
-    beatStrength: 0.5, energyLevel: 0.6, impactStrength: 0.4, analyzedAt: 123,
+    beatStrength: 0.5, energyLevel: 0.6, impactStrength: 0.4, analyzedAt: 123, moodScores: { happy: 0.8 },
   });
   assert.equal(isTrackAnalysisPending(complete), false);
   assert.equal(isTrackAnalysisPending(track("pending")), true);
@@ -23,7 +23,7 @@ test("next DJ candidate is prioritized before remaining background analysis", ()
 
 test("priority order is stable and completed tracks never enter the queue", () => {
   const complete = track("done", {
-    beatStrength: 0.5, energyLevel: 0.6, impactStrength: 0.4, analyzedAt: 123,
+    beatStrength: 0.5, energyLevel: 0.6, impactStrength: 0.4, analyzedAt: 123, moodScores: { happy: 0.8 },
   });
   const tracks = [track("a"), complete, track("b"), track("c")];
   assert.deepEqual(buildAutoDjAnalysisQueue(tracks, ["c", "a"]), ["c", "a", "b"]);
