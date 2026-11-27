@@ -64,6 +64,7 @@ test("Auto DJ restores its saved queue order and filters missing or duplicate tr
 test("Auto DJ falls back to library order when no session queue was saved", () => {
   assert.deepEqual(resolveAutoDjSessionQueueIds(null, ["b", "a"]), ["b", "a"]);
   assert.deepEqual(resolveAutoDjSessionQueueIds([], ["b", "a"]), ["b", "a"]);
+  assert.deepEqual(resolveAutoDjSessionQueueIds(["deleted", "also-deleted"], ["b", "a"]), []);
 });
 
 
