@@ -33,6 +33,7 @@ import {
   selectPreviousPlaybackId,
   shouldRestorePlaybackAfterInterruption,
   recoverPlaybackPosition,
+  resolveAutoDjSessionQueueIds,
   type RepeatMode,
 } from "./vibraPlayback";
 
@@ -337,6 +338,7 @@ export function VibraModule() {
   const lastKnownPlayingRef = useRef(false);
   const lastPlaybackCheckpointAtRef = useRef(0);
   const autoDjSessionSaveInFlightRef = useRef(false);
+  const pendingAutoDjSessionCheckpointRef = useRef<AutoDjSessionCheckpoint | null>(null);
   const autoDjQueueIdsRef = useRef<string[] | null>(null);
   const equalizerFiltersRef = useRef<BiquadFilterNode[]>([]);
   const [audioAnalyser, setAudioAnalyser] = useState<AnalyserNode | null>(null);
@@ -362,6 +364,57 @@ export function VibraModule() {
   tracksRef.current = tracks;
   currentIdRef.current = currentId;
   volumeRef.current = volume;
+
+  const queueAutoDjSessionCheckpoint = (checkpoint: AutoDjSessionCheckpoint) => {
+    pendingAutoDjSessionCheckpointRef.current = checkpoint;
+    if (autoDjSessionSaveInFlightRef.current) return;
+    autoDjSessionSaveInFlightRef.current = true;
+    void (async () => {
+      try {
+        while (pendingAutoDjSessionCheckpointRef.current) {
+          const next = pendingAutoDjSessionCheckpointRef.current;
+          pendingAutoDjSessionCheckpointRef.current = null;
+          try {
+            await saveAppState(AUTO_DJ_SESSION_CHECKPOINT_KEY, next);
+            setSavedAutoDjSession({ ...next, wasPlaying: false });
+          } catch {
+            // Keep playback uninterrupted if local session storage is unavailable.
+          }
+        }
+      } finally {
+        autoDjSessionSaveInFlightRef.current = false;
+        if (pendingAutoDjSessionCheckpointRef.current) {
+          queueAutoDjSessionCheckpoint(pendingAutoDjSessionCheckpointRef.current);
+        }
+      }
+    })();
+  };
+
+  const persistPlaybackCheckpoint = (audio: HTMLAudioElement, wasPlaying: boolean) => {
+    const trackId = currentIdRef.current;
+    const currentTime = Number.isFinite(audio.currentTime)
+      ? Math.max(0, audio.currentTime)
+      : Math.max(0, playbackPositionRef.current);
+    playbackPositionRef.current = currentTime;
+    if (trackId) writeStoredValue(STORAGE_KEYS.trackId, trackId);
+    writeStoredValue(STORAGE_KEYS.trackTime, String(currentTime));
+    if (wasPlaying) writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "true");
+
+    if (!djTransitionEnabledRef.current || !trackId) return;
+    const availableIds = tracksRef.current.map((track) => track.id);
+    const queueIds = resolveAutoDjSessionQueueIds(autoDjQueueIdsRef.current, availableIds);
+    const checkpoint: AutoDjSessionCheckpoint = {
+      version: 1,
+      currentTrackId: trackId,
+      currentTime,
+      queueIds,
+      recentTrackIds: readStoredRecentTracks(),
+      direction: readStoredDirection(),
+      savedAt: Date.now(),
+      wasPlaying,
+    };
+    queueAutoDjSessionCheckpoint(checkpoint);
+  };
 
   // Apply user volume and temporary voice ducking at the final Web Audio output.
   // HTMLMediaElement.volume remains the fallback when Web Audio is unavailable.
@@ -779,27 +832,7 @@ export function VibraModule() {
       const now = Date.now();
       if (!target.paused && now - lastPlaybackCheckpointAtRef.current >= 4000) {
         lastPlaybackCheckpointAtRef.current = now;
-        const trackId = currentIdRef.current;
-        if (trackId) writeStoredValue(STORAGE_KEYS.trackId, trackId);
-        writeStoredValue(STORAGE_KEYS.trackTime, String(target.currentTime || 0));
-        writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "true");
-        if (djTransitionEnabledRef.current && trackId && !autoDjSessionSaveInFlightRef.current) {
-          autoDjSessionSaveInFlightRef.current = true;
-          const checkpoint: AutoDjSessionCheckpoint = {
-            version: 1,
-            currentTrackId: trackId,
-            currentTime: Math.max(0, target.currentTime || 0),
-            queueIds: tracksRef.current.map((track) => track.id),
-            recentTrackIds: readStoredRecentTracks(),
-            direction: readStoredDirection(),
-            savedAt: now,
-            wasPlaying: true,
-          };
-          void saveAppState(AUTO_DJ_SESSION_CHECKPOINT_KEY, checkpoint)
-            .then(() => setSavedAutoDjSession({ ...checkpoint, wasPlaying: false }))
-            .catch(() => undefined)
-            .finally(() => { autoDjSessionSaveInFlightRef.current = false; });
-        }
+        persistPlaybackCheckpoint(target, true);
       }
     };
     const onDurationChange = (target: HTMLAudioElement) => {
@@ -835,6 +868,8 @@ export function VibraModule() {
     const onPause = (target: HTMLAudioElement) => {
       if (target !== audioRef.current) return;
       playbackPositionRef.current = target.currentTime || playbackPositionRef.current;
+      // Flush the exact pause position instead of relying on the last 4-second checkpoint.
+      persistPlaybackCheckpoint(target, false);
       if (backgroundResumeSuppressedRef.current) lastKnownPlayingRef.current = false;
       setIsPlaying(false);
     };
@@ -1173,6 +1208,9 @@ export function VibraModule() {
 
   const finishAutoDjSession = async () => {
     backgroundResumeSuppressedRef.current = true;
+    // Prevent the pause event from writing a fresh checkpoint after this session is deleted.
+    djTransitionEnabledRef.current = false;
+    autoDjQueueIdsRef.current = null;
     writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "false");
     djMixEngineRef.current?.pauseAll();
     if (!djMixEngineRef.current) audioRef.current?.pause();
