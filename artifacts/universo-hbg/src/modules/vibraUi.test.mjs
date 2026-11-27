@@ -47,8 +47,8 @@ test("Auto DJ has fixed 10-second back/play/forward controls above the visualize
   assert.match(controls, /aria-label="Retroceder 10 segundos"/);
   assert.match(controls, /aria-label=\{isPlaying \? "Pausar música" : "Reproducir música"\}/);
   assert.match(controls, /aria-label="Adelantar 10 segundos"/);
-  assert.ok(controls.indexOf('aria-label="Retroceder 10 segundos"') < controls.indexOf('aria-label="Pausar música"'));
-  assert.ok(controls.indexOf('aria-label="Pausar música"') < controls.indexOf('aria-label="Adelantar 10 segundos"'));
+  assert.ok(controls.indexOf('aria-label="Retroceder 10 segundos"') < controls.indexOf('aria-label={isPlaying ? "Pausar música" : "Reproducir música"}'));
+  assert.ok(controls.indexOf('aria-label={isPlaying ? "Pausar música" : "Reproducir música"}') < controls.indexOf('aria-label="Adelantar 10 segundos"'));
   assert.match(controls, /startAutoDjSeekHold\(-1\)/);
   assert.match(controls, /startAutoDjSeekHold\(1\)/);
   assert.match(controls, /Un toque salta 10 segundos; mantén presionado para repetir saltos de 10 segundos/);
