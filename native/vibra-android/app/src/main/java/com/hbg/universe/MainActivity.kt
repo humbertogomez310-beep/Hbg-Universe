@@ -171,7 +171,11 @@ class MainActivity : Activity() {
                     dispatchEvent("hbg:voice-status", JSONObject().put("status", "permission-denied"))
                 }
                 .setPositiveButton("Permitir") { _, _ ->
-                    ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), microphonePermissionRequest)
+                    val requested = mutableListOf(Manifest.permission.RECORD_AUDIO)
+                    if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                        requested.add(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                    ActivityCompat.requestPermissions(this, requested.toTypedArray(), microphonePermissionRequest)
                 }
                 .show()
         }
