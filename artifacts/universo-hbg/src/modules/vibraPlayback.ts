@@ -83,3 +83,30 @@ export function recoverPlaybackPosition(currentTime: number, savedTime: number):
   // correct a meaningful decoder reset, not a few seconds of natural drift.
   return saved > current + 5 ? saved : current;
 }
+
+
+/** Keep an Auto DJ session's own queue order while dropping tracks no longer in the library. */
+export function resolveAutoDjSessionQueueIds(
+  sessionQueueIds: readonly string[] | null | undefined,
+  availableTrackIds: readonly string[],
+): string[] {
+  const available = new Set(availableTrackIds);
+  const source = sessionQueueIds && sessionQueueIds.length > 0 ? sessionQueueIds : availableTrackIds;
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const id of source) {
+    if (available.has(id) && !seen.has(id)) {
+      seen.add(id);
+      result.push(id);
+    }
+  }
+  return result;
+}
+
+
+/** Convert VIBRA's 0–100 UI percentage into a safe normalized audio gain. */
+export function normalizeVibraVolumePercent(percent: number): number {
+  return Number.isFinite(percent)
+    ? Math.max(0, Math.min(100, percent)) / 100
+    : 0;
+}

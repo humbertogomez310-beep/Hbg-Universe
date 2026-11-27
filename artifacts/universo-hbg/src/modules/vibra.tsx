@@ -33,6 +33,8 @@ import {
   selectPreviousPlaybackId,
   shouldRestorePlaybackAfterInterruption,
   recoverPlaybackPosition,
+  resolveAutoDjSessionQueueIds,
+  normalizeVibraVolumePercent,
   type RepeatMode,
 } from "./vibraPlayback";
 
@@ -337,6 +339,8 @@ export function VibraModule() {
   const lastKnownPlayingRef = useRef(false);
   const lastPlaybackCheckpointAtRef = useRef(0);
   const autoDjSessionSaveInFlightRef = useRef(false);
+  const pendingAutoDjSessionCheckpointRef = useRef<AutoDjSessionCheckpoint | null>(null);
+  const autoDjSessionWritePromiseRef = useRef<Promise<void> | null>(null);
   const autoDjQueueIdsRef = useRef<string[] | null>(null);
   const equalizerFiltersRef = useRef<BiquadFilterNode[]>([]);
   const [audioAnalyser, setAudioAnalyser] = useState<AnalyserNode | null>(null);
@@ -363,10 +367,63 @@ export function VibraModule() {
   currentIdRef.current = currentId;
   volumeRef.current = volume;
 
+  const queueAutoDjSessionCheckpoint = (checkpoint: AutoDjSessionCheckpoint) => {
+    pendingAutoDjSessionCheckpointRef.current = checkpoint;
+    if (autoDjSessionSaveInFlightRef.current) return;
+    autoDjSessionSaveInFlightRef.current = true;
+    const writePromise = (async () => {
+      try {
+        while (pendingAutoDjSessionCheckpointRef.current) {
+          const next = pendingAutoDjSessionCheckpointRef.current;
+          pendingAutoDjSessionCheckpointRef.current = null;
+          try {
+            await saveAppState(AUTO_DJ_SESSION_CHECKPOINT_KEY, next);
+            setSavedAutoDjSession({ ...next, wasPlaying: false });
+          } catch {
+            // Keep playback uninterrupted if local session storage is unavailable.
+          }
+        }
+      } finally {
+        autoDjSessionSaveInFlightRef.current = false;
+        autoDjSessionWritePromiseRef.current = null;
+        if (pendingAutoDjSessionCheckpointRef.current) {
+          queueAutoDjSessionCheckpoint(pendingAutoDjSessionCheckpointRef.current);
+        }
+      }
+    })();
+    autoDjSessionWritePromiseRef.current = writePromise;
+  };
+
+  const persistPlaybackCheckpoint = (audio: HTMLAudioElement, wasPlaying: boolean) => {
+    const trackId = currentIdRef.current;
+    const currentTime = Number.isFinite(audio.currentTime)
+      ? Math.max(0, audio.currentTime)
+      : Math.max(0, playbackPositionRef.current);
+    playbackPositionRef.current = currentTime;
+    if (trackId) writeStoredValue(STORAGE_KEYS.trackId, trackId);
+    writeStoredValue(STORAGE_KEYS.trackTime, String(currentTime));
+    if (wasPlaying) writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "true");
+
+    if (!djTransitionEnabledRef.current || !trackId) return;
+    const availableIds = tracksRef.current.map((track) => track.id);
+    const queueIds = resolveAutoDjSessionQueueIds(autoDjQueueIdsRef.current, availableIds);
+    const checkpoint: AutoDjSessionCheckpoint = {
+      version: 1,
+      currentTrackId: trackId,
+      currentTime,
+      queueIds,
+      recentTrackIds: readStoredRecentTracks(),
+      direction: readStoredDirection(),
+      savedAt: Date.now(),
+      wasPlaying,
+    };
+    queueAutoDjSessionCheckpoint(checkpoint);
+  };
+
   // Apply user volume and temporary voice ducking at the final Web Audio output.
   // HTMLMediaElement.volume remains the fallback when Web Audio is unavailable.
   const applyVibraVolume = (factor: number) => {
-    const effectiveVolume = calculateEffectiveAudioVolume(volumeRef.current, factor);
+    const effectiveVolume = calculateEffectiveAudioVolume(normalizeVibraVolumePercent(volumeRef.current), factor);
     const gain = playbackGainRef.current;
     const context = audioContextRef.current;
     const engine = djMixEngineRef.current;
@@ -375,7 +432,7 @@ export function VibraModule() {
       // Duck only the music branch; the master fader controls music, DJ voice and FX.
       gain.gain.cancelScheduledValues(now);
       gain.gain.setTargetAtTime(factor, now, 0.04);
-      engine?.setMasterVolume(volumeRef.current / 100);
+      engine?.setMasterVolume(normalizeVibraVolumePercent(volumeRef.current));
       if (audioRef.current) audioRef.current.volume = 1;
       return;
     }
@@ -742,7 +799,7 @@ export function VibraModule() {
       outputGain.gain.value = getCurrentAudioDuckingFactor();
 
       engine = new VibraDjMixEngine(context);
-      engine.setMasterVolume(volumeRef.current / 100);
+      engine.setMasterVolume(normalizeVibraVolumePercent(volumeRef.current));
       engine.connectMusicChain([...filters, analyser, outputGain]);
       djMixEngineRef.current = engine;
       audio = engine.activeAudio;
@@ -761,7 +818,7 @@ export function VibraModule() {
       setAudioAnalyser(null);
       audio = new Audio();
       audio.preload = "auto";
-      audio.volume = calculateEffectiveAudioVolume(volumeRef.current, getCurrentAudioDuckingFactor());
+      audio.volume = calculateEffectiveAudioVolume(normalizeVibraVolumePercent(volumeRef.current), getCurrentAudioDuckingFactor());
       audioContextRef.current = null;
       if (context) void context.close().catch(() => undefined);
     }
@@ -779,27 +836,7 @@ export function VibraModule() {
       const now = Date.now();
       if (!target.paused && now - lastPlaybackCheckpointAtRef.current >= 4000) {
         lastPlaybackCheckpointAtRef.current = now;
-        const trackId = currentIdRef.current;
-        if (trackId) writeStoredValue(STORAGE_KEYS.trackId, trackId);
-        writeStoredValue(STORAGE_KEYS.trackTime, String(target.currentTime || 0));
-        writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "true");
-        if (djTransitionEnabledRef.current && trackId && !autoDjSessionSaveInFlightRef.current) {
-          autoDjSessionSaveInFlightRef.current = true;
-          const checkpoint: AutoDjSessionCheckpoint = {
-            version: 1,
-            currentTrackId: trackId,
-            currentTime: Math.max(0, target.currentTime || 0),
-            queueIds: tracksRef.current.map((track) => track.id),
-            recentTrackIds: readStoredRecentTracks(),
-            direction: readStoredDirection(),
-            savedAt: now,
-            wasPlaying: true,
-          };
-          void saveAppState(AUTO_DJ_SESSION_CHECKPOINT_KEY, checkpoint)
-            .then(() => setSavedAutoDjSession({ ...checkpoint, wasPlaying: false }))
-            .catch(() => undefined)
-            .finally(() => { autoDjSessionSaveInFlightRef.current = false; });
-        }
+        persistPlaybackCheckpoint(target, true);
       }
     };
     const onDurationChange = (target: HTMLAudioElement) => {
@@ -937,6 +974,11 @@ export function VibraModule() {
       if (snapshot.trackId) writeStoredValue(STORAGE_KEYS.trackId, snapshot.trackId);
       writeStoredValue(STORAGE_KEYS.trackTime, String(snapshot.currentTime));
       writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, snapshot.wasPlaying ? "true" : "false");
+      if (snapshot.wasPlaying) {
+        // Flush the exact update-time position and Auto DJ queue before the PWA reloads.
+        persistPlaybackCheckpoint(audio, true);
+        await autoDjSessionWritePromiseRef.current?.catch(() => undefined);
+      }
       if (!snapshot.wasPlaying) return;
 
       djTransitionEnabledRef.current = false;
@@ -952,6 +994,13 @@ export function VibraModule() {
       const finalPosition = Number.isFinite(activeAudio.currentTime) ? activeAudio.currentTime : snapshot.currentTime;
       snapshot.currentTime = finalPosition;
       writeStoredValue(STORAGE_KEYS.trackTime, String(finalPosition));
+      if (snapshot.djTransitionEnabled) {
+        // Refresh Auto DJ with the post-fade position, not the earlier pre-fade snapshot.
+        djTransitionEnabledRef.current = true;
+        persistPlaybackCheckpoint(activeAudio, true);
+        djTransitionEnabledRef.current = false;
+        await autoDjSessionWritePromiseRef.current?.catch(() => undefined);
+      }
       if (engine) engine.allAudios.forEach((deckAudio) => deckAudio.pause());
       else activeAudio.pause();
       setIsPlaying(false);
@@ -965,8 +1014,8 @@ export function VibraModule() {
       djTransitionEnabledRef.current = snapshot.djTransitionEnabled;
       const audio = audioRef.current ?? snapshot.audio;
       const engine = djMixEngineRef.current;
-      if (engine) engine.setMasterVolume(volumeRef.current / 100);
-      else audio.volume = calculateEffectiveAudioVolume(volumeRef.current / 100, getCurrentAudioDuckingFactor());
+      if (engine) engine.setMasterVolume(normalizeVibraVolumePercent(volumeRef.current));
+      else audio.volume = calculateEffectiveAudioVolume(normalizeVibraVolumePercent(volumeRef.current), getCurrentAudioDuckingFactor());
       if (!snapshot.wasPlaying) return;
 
       await audioContextRef.current?.resume();
@@ -995,6 +1044,8 @@ export function VibraModule() {
       if (snapshot.trackId) writeStoredValue(STORAGE_KEYS.trackId, snapshot.trackId);
       writeStoredValue(STORAGE_KEYS.trackTime, String(snapshot.currentTime));
       writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "true");
+      // Also refresh the Auto DJ recovery checkpoint when the browser backgrounds the PWA.
+      persistPlaybackCheckpoint(audio, true);
     }
   }, []);
 
@@ -1147,7 +1198,7 @@ export function VibraModule() {
       setError("La canción guardada en la sesión Auto DJ ya no está disponible. Revisa tu biblioteca.");
       return false;
     }
-    const sessionTracks = checkpoint.queueIds.filter((id) => availableIds.has(id));
+    const sessionTracks = resolveAutoDjSessionQueueIds(checkpoint.queueIds, [...availableIds]);
     if (sessionTracks.length === 0) {
       setError("La biblioteca ya no contiene canciones de la sesión Auto DJ guardada.");
       return false;
@@ -1173,6 +1224,9 @@ export function VibraModule() {
 
   const finishAutoDjSession = async () => {
     backgroundResumeSuppressedRef.current = true;
+    // Prevent the pause event from writing a fresh checkpoint after this session is deleted.
+    djTransitionEnabledRef.current = false;
+    autoDjQueueIdsRef.current = null;
     writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "false");
     djMixEngineRef.current?.pauseAll();
     if (!djMixEngineRef.current) audioRef.current?.pause();
@@ -1182,6 +1236,9 @@ export function VibraModule() {
     setPartyMode(false);
     autoDjQueueIdsRef.current = null;
     setDjMixStatus("standby");
+    // Wait for any in-flight IndexedDB write so it cannot recreate the session after deletion.
+    pendingAutoDjSessionCheckpointRef.current = null;
+    await autoDjSessionWritePromiseRef.current?.catch(() => undefined);
     await deleteAppState(AUTO_DJ_SESSION_CHECKPOINT_KEY).catch(() => undefined);
     setSavedAutoDjSession(null);
   };
@@ -1231,6 +1288,9 @@ export function VibraModule() {
         backgroundResumeSuppressedRef.current = true;
         lastKnownPlayingRef.current = false;
         writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "false");
+        // Persist synchronously for an intentional user pause; generic pause events
+        // also fire during track replacement and must not overwrite the new selection.
+        persistPlaybackCheckpoint(audio, false);
         if (djMixEngineRef.current) {
           djMixEngineRef.current.pauseAll();
           djPreparedTrackIdRef.current = null;
@@ -1465,6 +1525,8 @@ export function VibraModule() {
       lastKnownPlayingRef.current = false;
       writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "false");
       preventVoiceSessionPlaybackRestore();
+      const audio = audioRef.current;
+      if (audio) persistPlaybackCheckpoint(audio, false);
       if (djMixEngineRef.current) {
         djMixEngineRef.current.pauseAll();
         djPreparedTrackIdRef.current = null;
@@ -1558,7 +1620,12 @@ export function VibraModule() {
         return result(started && playing, { isPlaying: playing }, started && playing ? undefined : "No se pudo reanudar la reproducción");
       }),
       hbgCore.registerAction("music.pause", () => {
+        backgroundResumeSuppressedRef.current = true;
+        lastKnownPlayingRef.current = false;
+        writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "false");
         preventVoiceSessionPlaybackRestore();
+        const audio = audioRef.current;
+        if (audio) persistPlaybackCheckpoint(audio, false);
         manualSelectionGenerationRef.current += 1;
         loadGenerationRef.current += 1;
         cancelPendingLoadRef.current?.();

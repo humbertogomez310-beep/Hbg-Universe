@@ -5,6 +5,8 @@ import {
   selectPreviousPlaybackId,
   shouldRestorePlaybackAfterInterruption,
   recoverPlaybackPosition,
+  resolveAutoDjSessionQueueIds,
+  normalizeVibraVolumePercent,
 } from "./vibraPlayback.ts";
 
 const ids = ["a", "b", "c"];
@@ -49,4 +51,28 @@ test("VIBRA recovers a reset media position but never rewinds a track that advan
   assert.equal(recoverPlaybackPosition(39, 42), 39);
   assert.equal(recoverPlaybackPosition(Number.NaN, 42), 42);
   assert.equal(recoverPlaybackPosition(42, Number.NaN), 42);
+});
+
+
+test("Auto DJ restores its saved queue order and filters missing or duplicate tracks", () => {
+  assert.deepEqual(
+    resolveAutoDjSessionQueueIds(["c", "missing", "a", "c", "b"], ["a", "b", "c", "d"]),
+    ["c", "a", "b"],
+  );
+});
+
+test("Auto DJ falls back to library order when no session queue was saved", () => {
+  assert.deepEqual(resolveAutoDjSessionQueueIds(null, ["b", "a"]), ["b", "a"]);
+  assert.deepEqual(resolveAutoDjSessionQueueIds([], ["b", "a"]), ["b", "a"]);
+  assert.deepEqual(resolveAutoDjSessionQueueIds(["deleted", "also-deleted"], ["b", "a"]), []);
+});
+
+
+test("VIBRA normalizes volume percentages safely for Web Audio and HTMLAudio", () => {
+  assert.equal(normalizeVibraVolumePercent(0), 0);
+  assert.equal(normalizeVibraVolumePercent(50), 0.5);
+  assert.equal(normalizeVibraVolumePercent(100), 1);
+  assert.equal(normalizeVibraVolumePercent(150), 1);
+  assert.equal(normalizeVibraVolumePercent(-10), 0);
+  assert.equal(normalizeVibraVolumePercent(Number.NaN), 0);
 });
