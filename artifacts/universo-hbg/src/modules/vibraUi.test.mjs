@@ -55,3 +55,21 @@ test("Auto DJ has fixed 10-second back/play/forward controls above the visualize
   assert.doesNotMatch(controls, /PASO:|5 SEG|autoDjSeekStep/);
   assert.doesNotMatch(source.slice(source.indexOf('<div className="vibra-dj-controls">'), source.indexOf('</div>', source.indexOf('<div className="vibra-dj-controls">'))), /REPRODUCIR|PAUSAR/);
 });
+
+
+test("device scan metadata reads are muted, bounded and release their media resources", () => {
+  const dbSource = readFileSync(new URL("../core/vibraDB.ts", import.meta.url), "utf8");
+  assert.match(dbSource, /AUDIO_METADATA_TIMEOUT_MS = 12_000/);
+  assert.match(dbSource, /audio\.muted = true/);
+  assert.match(dbSource, /audio\.volume = 0/);
+  assert.match(dbSource, /audio\.removeAttribute\("src"\)/);
+  assert.match(dbSource, /URL\.revokeObjectURL\(url\)/);
+  assert.match(dbSource, /reject\(new Error\("Tiempo de espera agotado al leer los metadatos del audio\."/);
+});
+
+test("library analysis uses an offline context and passes known track duration", () => {
+  const analysisSource = readFileSync(new URL("./djAudioAnalysis.ts", import.meta.url), "utf8");
+  assert.match(analysisSource, /new OfflineAudioContext\(1, 1, ANALYSIS_SAMPLE_RATE\)/);
+  assert.match(analysisSource, /MAX_ANALYSIS_DURATION_SECONDS = 15 \* 60/);
+  assert.match(source, /analyzeAudioBlob\(blob, meta\.duration\)/);
+});
