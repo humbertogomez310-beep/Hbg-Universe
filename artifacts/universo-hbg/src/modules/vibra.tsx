@@ -339,6 +339,7 @@ export function VibraModule() {
   const lastPlaybackCheckpointAtRef = useRef(0);
   const autoDjSessionSaveInFlightRef = useRef(false);
   const pendingAutoDjSessionCheckpointRef = useRef<AutoDjSessionCheckpoint | null>(null);
+  const autoDjSessionWritePromiseRef = useRef<Promise<void> | null>(null);
   const autoDjQueueIdsRef = useRef<string[] | null>(null);
   const equalizerFiltersRef = useRef<BiquadFilterNode[]>([]);
   const [audioAnalyser, setAudioAnalyser] = useState<AnalyserNode | null>(null);
@@ -369,7 +370,7 @@ export function VibraModule() {
     pendingAutoDjSessionCheckpointRef.current = checkpoint;
     if (autoDjSessionSaveInFlightRef.current) return;
     autoDjSessionSaveInFlightRef.current = true;
-    void (async () => {
+    const writePromise = (async () => {
       try {
         while (pendingAutoDjSessionCheckpointRef.current) {
           const next = pendingAutoDjSessionCheckpointRef.current;
@@ -383,11 +384,13 @@ export function VibraModule() {
         }
       } finally {
         autoDjSessionSaveInFlightRef.current = false;
+        autoDjSessionWritePromiseRef.current = null;
         if (pendingAutoDjSessionCheckpointRef.current) {
           queueAutoDjSessionCheckpoint(pendingAutoDjSessionCheckpointRef.current);
         }
       }
     })();
+    autoDjSessionWritePromiseRef.current = writePromise;
   };
 
   const persistPlaybackCheckpoint = (audio: HTMLAudioElement, wasPlaying: boolean) => {
@@ -1220,6 +1223,9 @@ export function VibraModule() {
     setPartyMode(false);
     autoDjQueueIdsRef.current = null;
     setDjMixStatus("standby");
+    // Wait for any in-flight IndexedDB write so it cannot recreate the session after deletion.
+    pendingAutoDjSessionCheckpointRef.current = null;
+    await autoDjSessionWritePromiseRef.current?.catch(() => undefined);
     await deleteAppState(AUTO_DJ_SESSION_CHECKPOINT_KEY).catch(() => undefined);
     setSavedAutoDjSession(null);
   };
