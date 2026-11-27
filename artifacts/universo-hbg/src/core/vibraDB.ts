@@ -133,7 +133,7 @@ export async function deleteTrackMeta(id: string): Promise<void> {
 const AUDIO_METADATA_TIMEOUT_MS = 12_000;
 
 // Read metadata silently and with a hard deadline. A detached media element must
-// never acquire audio focus, retain a Blob URL, or leave a scan waiting forever.
+// avoid acquiring audio focus, retain a Blob URL, or leave a scan waiting forever.
 export function getAudioDuration(blob: Blob, timeoutMs = AUDIO_METADATA_TIMEOUT_MS): Promise<number> {
   return new Promise((resolve, reject) => {
     const audio = new Audio();
