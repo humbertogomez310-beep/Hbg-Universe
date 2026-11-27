@@ -34,6 +34,7 @@ import {
   shouldRestorePlaybackAfterInterruption,
   recoverPlaybackPosition,
   resolveAutoDjSessionQueueIds,
+  normalizeVibraVolumePercent,
   type RepeatMode,
 } from "./vibraPlayback";
 
@@ -422,7 +423,7 @@ export function VibraModule() {
   // Apply user volume and temporary voice ducking at the final Web Audio output.
   // HTMLMediaElement.volume remains the fallback when Web Audio is unavailable.
   const applyVibraVolume = (factor: number) => {
-    const effectiveVolume = calculateEffectiveAudioVolume(volumeRef.current / 100, factor);
+    const effectiveVolume = calculateEffectiveAudioVolume(normalizeVibraVolumePercent(volumeRef.current), factor);
     const gain = playbackGainRef.current;
     const context = audioContextRef.current;
     const engine = djMixEngineRef.current;
@@ -431,7 +432,7 @@ export function VibraModule() {
       // Duck only the music branch; the master fader controls music, DJ voice and FX.
       gain.gain.cancelScheduledValues(now);
       gain.gain.setTargetAtTime(factor, now, 0.04);
-      engine?.setMasterVolume(volumeRef.current / 100);
+      engine?.setMasterVolume(normalizeVibraVolumePercent(volumeRef.current));
       if (audioRef.current) audioRef.current.volume = 1;
       return;
     }
@@ -798,7 +799,7 @@ export function VibraModule() {
       outputGain.gain.value = getCurrentAudioDuckingFactor();
 
       engine = new VibraDjMixEngine(context);
-      engine.setMasterVolume(volumeRef.current / 100);
+      engine.setMasterVolume(normalizeVibraVolumePercent(volumeRef.current));
       engine.connectMusicChain([...filters, analyser, outputGain]);
       djMixEngineRef.current = engine;
       audio = engine.activeAudio;
@@ -817,7 +818,7 @@ export function VibraModule() {
       setAudioAnalyser(null);
       audio = new Audio();
       audio.preload = "auto";
-      audio.volume = calculateEffectiveAudioVolume(volumeRef.current / 100, getCurrentAudioDuckingFactor());
+      audio.volume = calculateEffectiveAudioVolume(normalizeVibraVolumePercent(volumeRef.current), getCurrentAudioDuckingFactor());
       audioContextRef.current = null;
       if (context) void context.close().catch(() => undefined);
     }
@@ -1006,8 +1007,8 @@ export function VibraModule() {
       djTransitionEnabledRef.current = snapshot.djTransitionEnabled;
       const audio = audioRef.current ?? snapshot.audio;
       const engine = djMixEngineRef.current;
-      if (engine) engine.setMasterVolume(volumeRef.current / 100);
-      else audio.volume = calculateEffectiveAudioVolume(volumeRef.current / 100, getCurrentAudioDuckingFactor());
+      if (engine) engine.setMasterVolume(normalizeVibraVolumePercent(volumeRef.current));
+      else audio.volume = calculateEffectiveAudioVolume(normalizeVibraVolumePercent(volumeRef.current), getCurrentAudioDuckingFactor());
       if (!snapshot.wasPlaying) return;
 
       await audioContextRef.current?.resume();
