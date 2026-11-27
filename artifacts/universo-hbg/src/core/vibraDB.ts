@@ -130,20 +130,59 @@ export async function deleteTrackMeta(id: string): Promise<void> {
 }
 
 // Utility: read audio duration from a Blob
-export function getAudioDuration(blob: Blob): Promise<number> {
-  return new Promise((resolve) => {
-    const url = URL.createObjectURL(blob);
+const AUDIO_METADATA_TIMEOUT_MS = 12_000;
+
+// Read metadata silently and with a hard deadline. A detached media element must
+// never acquire audio focus, retain a Blob URL, or leave a scan waiting forever.
+export function getAudioDuration(blob: Blob, timeoutMs = AUDIO_METADATA_TIMEOUT_MS): Promise<number> {
+  return new Promise((resolve, reject) => {
     const audio = new Audio();
+    const url = URL.createObjectURL(blob);
     audio.preload = "metadata";
-    audio.src = url;
-    audio.onloadedmetadata = () => {
-      resolve(isFinite(audio.duration) ? audio.duration : 0);
+    audio.muted = true;
+    audio.volume = 0;
+    audio.playsInline = true;
+
+    let settled = false;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const cleanup = () => {
+      if (settled) return;
+      settled = true;
+      if (timeout !== undefined) clearTimeout(timeout);
+      audio.removeEventListener("loadedmetadata", onLoadedMetadata);
+      audio.removeEventListener("error", onError);
+      try {
+        audio.pause();
+        audio.removeAttribute("src");
+        audio.load();
+      } catch {
+        // Cleanup is best-effort on browsers that reject load() after detaching src.
+      }
       URL.revokeObjectURL(url);
     };
-    audio.onerror = () => {
+    const onLoadedMetadata = () => {
+      const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+      cleanup();
+      resolve(duration);
+    };
+    const onError = () => {
+      cleanup();
       resolve(0);
-      URL.revokeObjectURL(url);
     };
+
+    audio.addEventListener("loadedmetadata", onLoadedMetadata);
+    audio.addEventListener("error", onError);
+    timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error("Tiempo de espera agotado al leer los metadatos del audio."));
+    }, Math.max(1, timeoutMs));
+
+    try {
+      audio.src = url;
+    } catch (error) {
+      cleanup();
+      reject(error instanceof Error ? error : new Error("No se pudieron leer los metadatos del audio."));
+    }
   });
 }
 
