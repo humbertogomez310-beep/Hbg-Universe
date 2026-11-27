@@ -14,7 +14,7 @@ export interface InstintoData {
 
 export type InstintoRecordKey = keyof InstintoData;
 
-type LegacyStorage = Pick<Storage, "getItem" | "removeItem">;
+type LegacyStorage = Pick<Storage, "getItem" | "removeItem" | "setItem">;
 
 const DB_NAME = "hbg_instinto_db";
 const DB_VERSION = 1;
