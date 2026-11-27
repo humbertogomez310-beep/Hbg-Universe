@@ -28,8 +28,10 @@ export interface TrackMeta {
   musicalKey?: string;
   keyConfidence?: number;
   analyzedAt?: number;
-  /** SHA-256 of exact file bytes when safely available during a manual device scan. */
+  /** SHA-256 of exact file bytes when safely available during duplicate review. */
   contentHash?: string;
+  /** Local heuristic confidence scores for Mood Engine categories (0–1). */
+  moodScores?: Record<string, number>;
 }
 
 function openDB(): Promise<IDBDatabase> {
