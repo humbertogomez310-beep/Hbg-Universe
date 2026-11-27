@@ -107,6 +107,18 @@ function metadataTerms(track: TrackMeta): Set<string> {
   return new Set(normalizeMusicText(`${track.title} ${track.artist} ${track.album}`).split(" "));
 }
 
+function requestedScenario(goal: string): string | null {
+  const value = normalizeMusicText(goal);
+  if (/\b(cumpleanos|birthday)\b/.test(value)) return "birthday";
+  if (/\b(ninos|ninas|infantil|kids|children)\b/.test(value)) return "kids";
+  if (/\b(tomar|cantina|bar|bebida|bebidas|brindis|drinking)\b/.test(value)) return "drinking";
+  if (/\b(cantar|cantable|karaoke|vocal)\b/.test(value)) return "sing";
+  if (/\b(ambiental|ambient|instrumental)\b/.test(value)) return "ambient";
+  if (/\b(bailar|bailable|dance)\b/.test(value)) return "dance";
+  if (/\b(fiesta|festejar|festejo|celebrar|celebracion)\b/.test(value)) return "celebration";
+  return null;
+}
+
 function scoreTrack(
   track: TrackMeta,
   terms: string[],
@@ -114,9 +126,11 @@ function scoreTrack(
 ): number | null {
   const metadata = metadataTerms(track);
   const matchedTerms = terms.filter((term) => metadata.has(term)).length;
-  if (terms.length > 0 && matchedTerms === 0) return null;
+  const scenario = requestedScenario(direction.goal);
+  const scenarioScore = scenario ? track.moodScores?.[scenario] ?? 0 : 0;
+  if (terms.length > 0 && matchedTerms === 0 && scenarioScore < 0.3) return null;
 
-  let score = matchedTerms * 10;
+  let score = matchedTerms * 10 + scenarioScore * 40;
   if (direction.energy === "up") {
     if ([...HIGH_ENERGY_HINTS].some((hint) => metadata.has(hint))) score += 4;
     if ([...LOW_ENERGY_HINTS].some((hint) => metadata.has(hint))) score -= 2;
@@ -197,6 +211,8 @@ function scoreAutoDjTrack(track: TrackMeta, currentTrack: TrackMeta | null, dire
   if (direction.mood && direction.mood !== "normal") {
     score += Math.max(0, Math.min(1, track.moodScores?.[direction.mood] ?? 0)) * 36;
   }
+  const scenario = requestedScenario(direction.goal);
+  if (scenario) score += Math.max(0, Math.min(1, track.moodScores?.[scenario] ?? 0)) * 40;
 
   // Rhythm and beat compatibility are the main selection criteria.
   const hasReliableTempo = Boolean(track.bpm && (track.bpmConfidence ?? 0) >= 0.25);
