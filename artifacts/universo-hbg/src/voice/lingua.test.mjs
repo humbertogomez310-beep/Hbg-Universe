@@ -130,3 +130,12 @@ test("HBG LINGUA recognizes questions about why Auto DJ selected a track", () =>
     assert.deepEqual(interpretUtterance(phrase).action, { type: "WHY_TRACK" });
   }
 });
+
+test("HBG LINGUA routes direct mood requests to real Mood Engine categories", () => {
+  assert.deepEqual(interpretUtterance("Pon música alegre").action, { type: "SET_MOOD", mood: "happy" });
+  assert.deepEqual(interpretUtterance("Pon música triste").action, { type: "SET_MOOD", mood: "sad" });
+  assert.deepEqual(interpretUtterance("Pon música romántica").action, { type: "SET_MOOD", mood: "romantic" });
+  assert.deepEqual(interpretUtterance("Pon música bailable").action, { type: "SET_MOOD", mood: "dance" });
+  assert.deepEqual(interpretUtterance("Pon música para cantar").action, { type: "SET_MOOD", mood: "sing" });
+  assert.deepEqual(interpretUtterance("Pon música ambiental").action, { type: "SET_MOOD", mood: "ambient" });
+});
