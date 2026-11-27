@@ -755,7 +755,7 @@ export function InstintoModule() {
                 </div>
 
                 <div style={{ display: "flex", gap: 5, marginBottom: 10, flexWrap: "wrap" }}>
-                  {(["intro", "verso", "coro", "puente", "outro"] as LyricSection["type"][]).map((t) => (
+                  {(["verso", "coro", "puente", "outro"] as LyricSection["type"][]).map((t) => (
                     <button key={t} className="hbg-badge" style={{ cursor: "pointer", background: `${SEC_COLORS[t]}12`, borderColor: `${SEC_COLORS[t]}40`, color: SEC_COLORS[t] }} onClick={() => addSection(t)}>+ {t.toUpperCase()}</button>
                   ))}
                 </div>
