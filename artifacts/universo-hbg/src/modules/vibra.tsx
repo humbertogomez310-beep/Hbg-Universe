@@ -40,7 +40,7 @@ import {
   type RepeatMode,
 } from "./vibraPlayback";
 
-type MoodMode = "party" | "focus" | "creative" | "chill" | "nostalgia" | "sad" | "happy" | "normal";
+type MoodMode = "party" | "focus" | "creative" | "chill" | "nostalgia" | "sad" | "happy" | "romantic" | "dance" | "sing" | "ambient" | "normal";
 type ViewMode = "player" | "dj" | "library" | "playlists" | "modes" | "eq" | "perfil" | "universo" | "scan";
 
 interface Playlist {
@@ -190,6 +190,10 @@ const MOODS: { mode: MoodMode; label: string; color: string; bpm: [number, numbe
   { mode: "nostalgia", label: "NOSTALGIA", color: "#b388ff", bpm: [70, 100], icon: "◇" },
   { mode: "sad", label: "SAD", color: "#42a5f5", bpm: [45, 70], icon: "◑" },
   { mode: "happy", label: "HAPPY", color: "#ffd740", bpm: [100, 140], icon: "◐" },
+  { mode: "romantic", label: "ROMANTIC", color: "#f06292", bpm: [65, 110], icon: "♡" },
+  { mode: "dance", label: "DANCE", color: "#ff4081", bpm: [110, 165], icon: "♫" },
+  { mode: "sing", label: "SING", color: "#ffc107", bpm: [70, 140], icon: "♪" },
+  { mode: "ambient", label: "AMBIENT", color: "#80cbc4", bpm: [40, 100], icon: "◌" },
   { mode: "normal", label: "NORMAL", color: "var(--neon-purple)", bpm: [90, 120], icon: "◆" },
 ];
 
