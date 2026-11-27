@@ -15,6 +15,9 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
+import java.util.Locale
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -28,6 +31,8 @@ import org.json.JSONObject
 
 class MainActivity : Activity() {
     private lateinit var webView: WebView
+    private var textToSpeech: TextToSpeech? = null
+    @Volatile private var localTtsReady = false
     private val audioPermissionRequest = 4101
     private val microphonePermissionRequest = 4102
 
@@ -60,6 +65,7 @@ class MainActivity : Activity() {
             addJavascriptInterface(NativeBridge(), "HBGAndroidBridge")
         }
         setContentView(webView)
+        initializeLocalTextToSpeech()
 
         val filter = IntentFilter().apply {
             addAction(VoiceWakeService.ACTION_COMMAND)
@@ -78,12 +84,49 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         try { unregisterReceiver(voiceReceiver) } catch (_: IllegalArgumentException) { }
         if (::webView.isInitialized) webView.destroy()
+        textToSpeech?.stop()
+        textToSpeech?.shutdown()
+        textToSpeech = null
         super.onDestroy()
     }
 
     override fun onBackPressed() {
         if (::webView.isInitialized && webView.canGoBack()) webView.goBack()
         else super.onBackPressed()
+    }
+
+    private fun initializeLocalTextToSpeech() {
+        textToSpeech = TextToSpeech(this) { status ->
+            if (status != TextToSpeech.SUCCESS) {
+                localTtsReady = false
+                return@TextToSpeech
+            }
+            val engine = textToSpeech ?: return@TextToSpeech
+            val offlineSpanishVoice = engine.voices
+                ?.filter { it.locale.language == "es" && !it.isNetworkConnectionRequired }
+                ?.maxByOrNull { it.quality }
+            if (offlineSpanishVoice == null) {
+                localTtsReady = false
+                dispatchEvent("hbg:tts-status", JSONObject().put("available", false))
+                return@TextToSpeech
+            }
+            engine.voice = offlineSpanishVoice
+            localTtsReady = true
+            engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) = Unit
+                override fun onDone(utteranceId: String?) {
+                    dispatchEvent("hbg:tts-complete", JSONObject())
+                }
+                @Deprecated("Deprecated in API 21")
+                override fun onError(utteranceId: String?) {
+                    dispatchEvent("hbg:tts-complete", JSONObject())
+                }
+                override fun onError(utteranceId: String?, errorCode: Int) {
+                    dispatchEvent("hbg:tts-complete", JSONObject())
+                }
+            })
+            dispatchEvent("hbg:tts-status", JSONObject().put("available", true))
+        }
     }
 
     private fun audioPermission(): String =
@@ -235,6 +278,15 @@ class MainActivity : Activity() {
         }
         @JavascriptInterface fun stopVoiceWake() {
             stopService(Intent(this@MainActivity, VoiceWakeService::class.java))
+        }
+        @JavascriptInterface fun speak(text: String): Boolean {
+            val engine = textToSpeech ?: return false
+            if (!localTtsReady || text.isBlank()) return false
+            val id = "hbg-${System.nanoTime()}"
+            return engine.speak(text.take(500), TextToSpeech.QUEUE_FLUSH, null, id) == TextToSpeech.SUCCESS
+        }
+        @JavascriptInterface fun stopSpeaking() {
+            textToSpeech?.stop()
         }
     }
 
