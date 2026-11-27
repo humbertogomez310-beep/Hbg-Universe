@@ -85,7 +85,7 @@ test("reads persisted direction and maps voice controls to concrete actions", ()
   assert.deepEqual(readMusicDirection(storage), { goal: "romántica", energy: "up", vocalFocus: true });
   assert.deepEqual(parseIntent("¿Qué canción está sonando?"), { type: "NOW_PLAYING" });
   assert.deepEqual(parseIntent("Activa Auto DJ"), { type: "SET_AUTO_DJ", enabled: true });
-  assert.deepEqual(parseIntent("Pon música para cantar"), { type: "SET_DIRECTION", text: "Pon música para cantar" });
+  assert.deepEqual(parseIntent("Pon música para cantar"), { type: "SET_MOOD", mood: "sing" });
   assert.deepEqual(parseIntent("Crea una playlist de rock"), {
     type: "PLAYLIST_CREATE",
     name: "rock",
@@ -179,4 +179,22 @@ test("Auto DJ explains the actual rhythmic compatibility and does not invent una
   const unknown = explainAutoDjSelection(null, { id: "plain", title: "Plain", artist: "", album: "", importedAt: 3 }, { goal: "", energy: "steady" });
   assert.match(unknown, /al azar/);
   assert.doesNotMatch(unknown, /BPM|tonalidad|drop/i);
+});
+
+test("Mood Engine ranks tracks by their locally stored mood confidence", () => {
+  const library = [
+    { id: "current", title: "Current", artist: "", album: "", importedAt: 1, moodScores: { happy: 0.1, sad: 0.1 } },
+    { id: "sad", title: "Sad", artist: "", album: "", importedAt: 2, moodScores: { happy: 0.05, sad: 0.95 } },
+    { id: "happy", title: "Happy", artist: "", album: "", importedAt: 3, moodScores: { happy: 0.98, sad: 0.05 } },
+  ];
+  assert.equal(selectNextAutoDjTrack(library, "current", [], { goal: "", energy: "steady", mood: "happy" }, () => 0)?.id, "happy");
+  assert.equal(selectNextAutoDjTrack(library, "current", [], { goal: "", energy: "steady", mood: "sad" }, () => 0)?.id, "sad");
+});
+
+test("scenario playlist selection uses local category scores when filenames do not match", () => {
+  const library = [
+    { id: "unrelated", title: "Song A", artist: "", album: "", importedAt: 1, moodScores: { birthday: 0.95 } },
+    { id: "not-birthday", title: "Song B", artist: "", album: "", importedAt: 2, moodScores: { birthday: 0.05 } },
+  ];
+  assert.deepEqual(selectTracksForDirection(library, { goal: "cumpleanos", energy: "steady" }).map((track) => track.id), ["unrelated"]);
 });

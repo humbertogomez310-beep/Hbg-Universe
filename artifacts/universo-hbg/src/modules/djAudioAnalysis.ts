@@ -268,18 +268,33 @@ export function analyzeDecodedAudio(
 }
 
 /** Decodes a local library file and estimates tempo/key without uploading audio. */
-export async function analyzeAudioBlob(blob: Blob): Promise<TrackAudioAnalysis> {
-  if (typeof AudioContext === "undefined") {
-    throw new Error("El análisis musical requiere Web Audio en este navegador.");
+const ANALYSIS_SAMPLE_RATE = 12_000;
+const MAX_ANALYSIS_DURATION_SECONDS = 15 * 60;
+
+/**
+ * Decode in an offline context at the analysis sample rate. This avoids creating
+ * a real-time audio session while scanning and keeps decoded PCM memory lower.
+ * Very long recordings are skipped before decoding when their known duration is
+ * supplied by the library metadata.
+ */
+export async function analyzeAudioBlob(
+  blob: Blob,
+  durationHintSeconds?: number,
+): Promise<TrackAudioAnalysis> {
+  if (typeof OfflineAudioContext === "undefined") {
+    throw new Error("El análisis musical requiere OfflineAudioContext en este navegador.");
   }
-  const context = new AudioContext();
-  try {
-    const decoded = await context.decodeAudioData(await blob.arrayBuffer());
-    const channels = Array.from({ length: decoded.numberOfChannels }, (_, index) => decoded.getChannelData(index));
-    return analyzeDecodedAudio(channels, decoded.sampleRate);
-  } finally {
-    await context.close().catch(() => undefined);
+  if (Number.isFinite(durationHintSeconds) && (durationHintSeconds ?? 0) > MAX_ANALYSIS_DURATION_SECONDS) {
+    throw new Error("Se omitió el análisis: el archivo supera 15 minutos para proteger la memoria del dispositivo.");
   }
+
+  const context = new OfflineAudioContext(1, 1, ANALYSIS_SAMPLE_RATE);
+  const decoded = await context.decodeAudioData(await blob.arrayBuffer());
+  if (decoded.duration > MAX_ANALYSIS_DURATION_SECONDS) {
+    throw new Error("Se omitió el análisis: el archivo supera 15 minutos para proteger la memoria del dispositivo.");
+  }
+  const channels = Array.from({ length: decoded.numberOfChannels }, (_, index) => decoded.getChannelData(index));
+  return analyzeDecodedAudio(channels, decoded.sampleRate);
 }
 
 const CAMELOT: Record<string, string> = {

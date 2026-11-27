@@ -9,9 +9,10 @@ export interface NormalizedUtterance {
   raw: string;
   text: string;
   wakePhrasePresent: boolean;
+  wakeTarget: "hbg" | "vibra" | "instinto" | null;
 }
 
-const WAKE_PREFIX = /^(?:oye|hey|hola) hbg\b\s*/;
+const WAKE_PREFIX = /^(?:oye|hey|hola) (?:hbg|vibra|instinto)\b\s*/;
 
 function normalizeBase(input: string): string {
   return input
@@ -29,10 +30,12 @@ export function normalizeUtterance(input: string): string {
 
 export function inspectUtterance(input: string): NormalizedUtterance {
   const normalized = normalizeBase(input);
+  const wakeMatch = /^(?:oye|hey|hola) (hbg|vibra|instinto)\b/.exec(normalized);
   return {
     raw: input,
     text: normalized.replace(WAKE_PREFIX, "").trim(),
-    wakePhrasePresent: /^(?:oye|hey|hola) hbg\b/.test(normalized),
+    wakePhrasePresent: wakeMatch !== null,
+    wakeTarget: (wakeMatch?.[1] as "hbg" | "vibra" | "instinto" | undefined) ?? null,
   };
 }
 
@@ -92,6 +95,13 @@ const MOOD_WORDS: Record<string, string> = {
   feliz: "happy",
   alegre: "happy",
   normal: "normal",
+  romantico: "romantic",
+  romantica: "romantic",
+  bailable: "dance",
+  bailar: "dance",
+  cantar: "sing",
+  ambiental: "ambient",
+  ambiente: "ambient",
 };
 
 function classifyPlaybackControl(n: string): VoiceAction | null {
@@ -250,6 +260,17 @@ export function parseIntent(text: string): VoiceAction {
   if (/^(activa|activar) (la )?(repetir|repeticion)$/.test(n)) return { type: "SET_REPEAT", value: true };
   if (/^(desactiva|desactivar) (la )?(repetir|repeticion)$/.test(n)) return { type: "SET_REPEAT", value: false };
 
+  const directMoodMatch = n.match(/^(?:pon|ponme|reproduce|quiero escuchar|quiero) (?:la )?musica (alegre|feliz|triste|romantica|romantico|relajada|relajado|bailable|para cantar|ambiental|de fiesta)$/);
+  if (directMoodMatch) {
+    const requested = directMoodMatch[1];
+    const directMood = requested === "alegre" ? "happy"
+      : requested === "relajada" || requested === "relajado" ? "chill"
+      : requested === "de fiesta" ? "party"
+      : requested === "para cantar" ? "sing"
+      : MOOD_WORDS[requested];
+    if (directMood) return { type: "SET_MOOD", mood: directMood };
+  }
+
   const moodMatch = n.match(/^(?:activa|pon|cambia a) (?:el )?modo (\w+)$/);
   if (moodMatch && MOOD_WORDS[moodMatch[1]]) {
     return { type: "SET_MOOD", mood: MOOD_WORDS[moodMatch[1]] };
@@ -277,6 +298,7 @@ export interface LinguaInterpretation {
   rawText: string;
   normalizedText: string;
   wakePhrasePresent: boolean;
+  wakeTarget: "hbg" | "vibra" | "instinto" | null;
   action: VoiceAction;
   effect: "persistent" | "command" | "unknown";
   requiresClarification: boolean;
@@ -293,6 +315,7 @@ export function interpretUtterance(input: string): LinguaInterpretation {
     rawText: input,
     normalizedText: inspected.text,
     wakePhrasePresent: inspected.wakePhrasePresent,
+    wakeTarget: inspected.wakeTarget,
     action,
     effect: isUnknown ? "unknown" : isPersistent ? "persistent" : "command",
     requiresClarification: isUnknown,

@@ -6,13 +6,16 @@ test("HBG LINGUA normalizes accents, punctuation and repeated spaces", () => {
   assert.equal(normalizeUtterance("  BÁJALE,   UN POQUITO!!! "), "bajale un poquito");
 });
 
-test("HBG LINGUA strips an invocation prefix from a transcript without claiming wake detection", () => {
+test("HBG LINGUA recognizes HBG, VIBRA and INSTINTO invocation prefixes", () => {
   assert.equal(normalizeUtterance("Oye HBG, sube el volumen"), "sube el volumen");
   assert.deepEqual(inspectUtterance("Oye HBG, abre INSTINTO"), {
     raw: "Oye HBG, abre INSTINTO",
     text: "abre instinto",
     wakePhrasePresent: true,
+    wakeTarget: "hbg",
   });
+  assert.deepEqual(inspectUtterance("Oye VIBRA, pon música alegre").wakeTarget, "vibra");
+  assert.deepEqual(inspectUtterance("Oye INSTINTO, crea una canción").wakeTarget, "instinto");
 });
 
 test("HBG LINGUA does not mistake an invocation phrase inside a sentence for activation", () => {
@@ -129,4 +132,13 @@ test("HBG LINGUA recognizes questions about why Auto DJ selected a track", () =>
   for (const phrase of ["¿Por qué esta canción?", "¿Por qué pone esa canción?", "¿Por qué puso esa canción?", "¿Por qué eligió esta pista?"]) {
     assert.deepEqual(interpretUtterance(phrase).action, { type: "WHY_TRACK" });
   }
+});
+
+test("HBG LINGUA routes direct mood requests to real Mood Engine categories", () => {
+  assert.deepEqual(interpretUtterance("Pon música alegre").action, { type: "SET_MOOD", mood: "happy" });
+  assert.deepEqual(interpretUtterance("Pon música triste").action, { type: "SET_MOOD", mood: "sad" });
+  assert.deepEqual(interpretUtterance("Pon música romántica").action, { type: "SET_MOOD", mood: "romantic" });
+  assert.deepEqual(interpretUtterance("Pon música bailable").action, { type: "SET_MOOD", mood: "dance" });
+  assert.deepEqual(interpretUtterance("Pon música para cantar").action, { type: "SET_MOOD", mood: "sing" });
+  assert.deepEqual(interpretUtterance("Pon música ambiental").action, { type: "SET_MOOD", mood: "ambient" });
 });

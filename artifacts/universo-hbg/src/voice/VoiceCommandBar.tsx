@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { useVoiceCapture } from "./useVoiceCapture";
 import { interpretUtterance } from "./lingua";
 import { executeVoiceAction } from "./actionExecutor";
 import { beginVoiceAudioSession } from "../core/audioManager";
+import { hbgCore } from "../core/hbgCore";
+import { getAndroidBridge } from "../modules/androidMediaStoreBridge";
 import { VOICE_COMMAND_CATALOG } from "./voiceCommandCatalog";
 import {
   clampVoiceWidgetPosition,
@@ -54,28 +55,28 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
     }
   });
   const [commandsOpen, setCommandsOpen] = useState(false);
+  const [handsFreeEnabled, setHandsFreeEnabled] = useState(false);
+  const [wakePending, setWakePending] = useState(false);
   const voiceSessionReleaseRef = useRef<(() => void) | null>(null);
 
   const speak = useCallback(
     (text: string): Promise<void> => {
-      if (!speechEnabled) return Promise.resolve();
-      if (typeof window === "undefined" || !("speechSynthesis" in window)) return Promise.resolve();
+      if (!speechEnabled || typeof window === "undefined") return Promise.resolve();
+      const bridge = getAndroidBridge();
+      if (!bridge) return Promise.resolve();
       return new Promise((resolve) => {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = "es-ES";
         let settled = false;
-        let watchdog: number | null = null;
         const finish = () => {
           if (settled) return;
           settled = true;
-          if (watchdog !== null) window.clearTimeout(watchdog);
+          window.clearTimeout(watchdog);
+          window.removeEventListener("hbg:tts-complete", finish);
           resolve();
         };
-        utterance.onend = finish;
-        utterance.onerror = finish;
-        watchdog = window.setTimeout(finish, SPEECH_WATCHDOG_MS);
+        const watchdog = window.setTimeout(finish, SPEECH_WATCHDOG_MS);
+        window.addEventListener("hbg:tts-complete", finish, { once: true });
         try {
-          window.speechSynthesis.speak(utterance);
+          if (!bridge.speak(text)) finish();
         } catch {
           finish();
         }
@@ -98,7 +99,15 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
       setProcessing(true);
       try {
         const interpretation = interpretUtterance(text);
-        const response = await executeVoiceAction(interpretation.action);
+        if (interpretation.wakeTarget === "vibra") hbgCore.setModule("vibra");
+        if (interpretation.wakeTarget === "instinto") hbgCore.setModule("instinto");
+        const response = interpretation.wakePhrasePresent && !interpretation.normalizedText
+          ? interpretation.wakeTarget === "vibra"
+            ? "VIBRA está lista. ¿Qué música quieres escuchar?"
+            : interpretation.wakeTarget === "instinto"
+              ? "INSTINTO está listo. ¿Qué quieres crear?"
+              : "HBG está listo. ¿En qué te ayudo?"
+          : await executeVoiceAction(interpretation.action);
         if (isPersistentVoiceError(response)) {
           setPersistentError(response);
         } else {
@@ -116,7 +125,42 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
     [speak]
   );
 
-  const { supported, listening, error, start, cancel } = useVoiceCapture(handleResult);
+  const androidBridge = getAndroidBridge();
+  const supported = androidBridge?.isVoiceWakeAvailable() ?? false;
+  const listening = handsFreeEnabled || wakePending;
+  const error: string | null = null;
+
+  useEffect(() => {
+    const onNativeCommand = (event: Event) => {
+      const text = (event as CustomEvent<{ text?: string }>).detail?.text;
+      if (text) {
+        setWakePending(false);
+        void handleResult(text);
+      }
+    };
+    const onNativeStatus = (event: Event) => {
+      const status = (event as CustomEvent<{ status?: string }>).detail?.status ?? "";
+      if (status === "listening-wake-word" || status === "listening-command") setHandsFreeEnabled(true);
+      if (status === "stopped" || status === "offline-recognition-unavailable" || status === "microphone-permission-denied" || status === "permission-denied") {
+        setHandsFreeEnabled(false);
+        setWakePending(false);
+      }
+      if (status.startsWith("wake-") && status !== "wake-timeout") setWakePending(true);
+      if (status === "wake-timeout" || status === "command-received") setWakePending(false);
+      if (status === "offline-recognition-unavailable") {
+        setPersistentError("Este dispositivo no tiene reconocimiento de voz sin conexión disponible. VIBRA no enviará tu audio a servicios externos.");
+      }
+      if (status === "microphone-permission-denied" || status === "permission-denied") {
+        setPersistentError("Permiso de micrófono denegado. Manos Libres permanece apagado.");
+      }
+    };
+    window.addEventListener("hbg:voice-command", onNativeCommand);
+    window.addEventListener("hbg:voice-status", onNativeStatus);
+    return () => {
+      window.removeEventListener("hbg:voice-command", onNativeCommand);
+      window.removeEventListener("hbg:voice-status", onNativeStatus);
+    };
+  }, [handleResult]);
 
   // Acquire audio ducking synchronously in the microphone click handler, before
   // SpeechRecognition starts and the browser can take microphone/audio focus.
@@ -132,7 +176,7 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
   }, []);
 
   // Keep the same session alive across capture, command execution and spoken response.
-  const voiceSessionActive = listening || processing;
+  const voiceSessionActive = wakePending || processing;
   useEffect(() => {
     if (voiceSessionActive) ensureVoiceAudioSession();
     else releaseVoiceAudioSession();
@@ -180,13 +224,17 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
   }, [widgetPosition]);
 
   const handleMicClick = () => {
-    if (!supported || processingRef.current) return;
+    if (!supported || processingRef.current || !androidBridge) return;
     setPersistentError(null);
     setDismissedError(false);
-    if (listening) cancel();
-    else {
-      ensureVoiceAudioSession();
-      start();
+    if (handsFreeEnabled) {
+      androidBridge.stopVoiceWake();
+      setHandsFreeEnabled(false);
+      setWakePending(false);
+    } else {
+      const started = androidBridge.startVoiceWake();
+      if (!started) setLastResponseText("Solicité el permiso de micrófono. Cuando lo concedas, Manos Libres se activará.");
+      else setHandsFreeEnabled(true);
     }
   };
 
@@ -308,7 +356,7 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
             </button>
           </div>
           <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 12 }}>
-            Di cualquiera de estas frases después de activar el micrófono.
+            Activa Manos Libres y di «Oye VIBRA», «Oye INSTINTO» u «Oye HBG».
           </div>
           {VOICE_COMMAND_CATALOG.map((group) => (
             <section key={group.id} style={{ marginBottom: 14 }}>
@@ -339,7 +387,7 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
       )}
       {!supported && (
         <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", maxWidth: 150, textAlign: "right" }}>
-          Voz no disponible en este navegador.
+          Manos Libres local requiere la aplicación Android de Universo HBG.
         </div>
       )}
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -407,9 +455,9 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
             opacity: supported ? 1 : 0.4,
             fontSize: 20,
           }}
-          aria-label={listening ? "Detener escucha" : "Activar comando de voz"}
+          aria-label={handsFreeEnabled ? "Desactivar Manos Libres" : "Activar Manos Libres local"}
         >
-          🎙
+          {handsFreeEnabled ? "●" : "🎙"}
         </button>
       </div>
     </div>

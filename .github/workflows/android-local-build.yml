@@ -1,0 +1,60 @@
+name: Android local app build
+
+on:
+  pull_request:
+    paths:
+      - "native/vibra-android/**"
+      - "artifacts/universo-hbg/**"
+      - ".github/workflows/android-local-build.yml"
+  push:
+    branches:
+      - "close/vibra-pro-finalization-ci-2026-11-27"
+    paths:
+      - "native/vibra-android/**"
+      - "artifacts/universo-hbg/**"
+      - ".github/workflows/android-local-build.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  android-debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build local web application
+        run: pnpm --dir artifacts/universo-hbg run build
+        env:
+          VITE_HBG_API_ENABLED: "false"
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android platform
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Build Android APK
+        run: gradle -p native/vibra-android assembleDebug
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: universo-hbg-android-debug
+          path: native/vibra-android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
