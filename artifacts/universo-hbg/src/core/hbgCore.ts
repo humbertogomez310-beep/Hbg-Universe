@@ -257,10 +257,12 @@ export class HBGCore implements HBGActionRouter {
       );
     }
 
+    const current = this.playerState;
     if (
-      this.playerState?.trackId === state.trackId &&
-      this.playerState.isPlaying === state.isPlaying &&
-      this.playerState.volume === state.volume
+      current &&
+      current.trackId === state.trackId &&
+      current.isPlaying === state.isPlaying &&
+      current.volume === state.volume
     ) return;
 
     this.playerState = {
@@ -268,8 +270,13 @@ export class HBGCore implements HBGActionRouter {
       isPlaying: state.isPlaying,
       volume: state.volume,
     };
-    const snapshot = this.getPlayerState();
-    this.playerStateSubscribers.forEach((subscriber) => subscriber(snapshot));
+    for (const subscriber of [...this.playerStateSubscribers]) {
+      try {
+        subscriber(this.getPlayerState());
+      } catch (error) {
+        console.error("[HBGCore] Player state subscriber failed:", error);
+      }
+    }
   }
 
   getPlayerState(): HBGPlayerState | null {
