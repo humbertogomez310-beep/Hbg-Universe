@@ -134,6 +134,25 @@ class MainActivity : Activity() {
         }
     }
 
+    @Deprecated("Deprecated in Android API 33; retained for runtime permission compatibility")
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        when (requestCode) {
+            audioPermissionRequest -> {
+                val granted = hasAudioPermission()
+                dispatchEvent("hbg:audio-permission", JSONObject().put("granted", granted))
+            }
+            microphonePermissionRequest -> {
+                if (hasMicrophonePermission()) startVoiceWakeService()
+                else dispatchEvent("hbg:voice-status", JSONObject().put("status", "microphone-permission-denied"))
+            }
+        }
+    }
+
     private fun startVoiceWakeService() {
         if (Build.VERSION.SDK_INT < 31 || !VoiceWakeService.isOnDeviceRecognitionAvailable(this)) {
             dispatchEvent("hbg:voice-status", JSONObject().put("status", "offline-recognition-unavailable"))
