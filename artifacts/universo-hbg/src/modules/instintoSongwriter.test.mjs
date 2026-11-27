@@ -15,6 +15,7 @@ test("songwriter prompt validates bounded user input and starts directly with na
   });
   assert.match(prompt, /NO escribas una introducción separada/);
   assert.match(prompt, /No imites la voz/);
+  assert.match(prompt, /H\.\.\. B\.\.\. G\.\.\./);
   assert.match(prompt, /pop rock/);
 });
 
@@ -43,4 +44,5 @@ test("offline songwriter scaffold starts with a verse and never creates a separa
   assert.equal(sections.some((section) => (section.type as string) === "intro"), false);
   assert.ok(sections.some((section) => section.type === "coro"));
   assert.ok(sections.some((section) => section.type === "puente"));
+  assert.ok(sections.some((section) => section.content.includes("H... B... G...")));
 });
