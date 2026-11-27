@@ -174,16 +174,21 @@ export async function executeVoiceAction(action: VoiceAction): Promise<string> {
         const coreMood = CORE_MOOD_KEYS[action.mood];
         if (coreMood) hbgCore.remember("core.mood", coreMood);
         const label = MOOD_LABELS[action.mood] ?? action.mood;
-        return `Modo ${label} activado.`;
+        const count = (res.data as { trackCount?: number } | undefined)?.trackCount ?? 0;
+        return count > 0
+          ? `Modo ${label} activado. Reproduciendo una selección de ${count} canciones de tu biblioteca local.`
+          : `Modo ${label} activado.`;
       }
       return res.error ?? "No se pudo cambiar el modo de ánimo.";
     }
 
     case "SET_DIRECTION": {
       const res = await hbgCore.dispatchAction("music.direct", { text: action.text });
-      return res.success
-        ? `Objetivo musical actualizado: ${(res.data as { goal?: string } | undefined)?.goal ?? action.text}.`
-        : res.error ?? "No se pudo actualizar el objetivo musical.";
+      if (!res.success) return res.error ?? "No se pudo actualizar el objetivo musical.";
+      const data = res.data as { goal?: string; trackCount?: number } | undefined;
+      return data?.trackCount
+        ? `Preparé y estoy reproduciendo una selección local de ${data.trackCount} canciones para ${data.goal ?? action.text}.`
+        : `Objetivo musical actualizado: ${data?.goal ?? action.text}.`;
     }
 
     case "SET_AUTO_DJ": {
