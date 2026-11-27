@@ -28,3 +28,12 @@ android {
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
 }
+
+val copyWebAssets by tasks.registering(Copy::class) {
+    from(rootProject.file("../../artifacts/universo-hbg/dist/public"))
+    into(layout.projectDirectory.dir("src/main/assets/web"))
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(copyWebAssets)
+}
