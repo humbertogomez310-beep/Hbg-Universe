@@ -10,7 +10,8 @@ export function isTrackAnalysisPending(track: TrackMeta): boolean {
     track.beatStrength === undefined ||
     track.energyLevel === undefined ||
     track.impactStrength === undefined ||
-    track.analyzedAt === undefined
+    track.analyzedAt === undefined ||
+    track.moodScores === undefined
   );
 }
 
