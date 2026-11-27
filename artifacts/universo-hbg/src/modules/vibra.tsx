@@ -870,9 +870,13 @@ export function VibraModule() {
     };
     const onPause = (target: HTMLAudioElement) => {
       if (target !== audioRef.current) return;
-      playbackPositionRef.current = target.currentTime || playbackPositionRef.current;
-      // Flush the exact pause position instead of relying on the last 4-second checkpoint.
-      persistPlaybackCheckpoint(target, false);
+      // Loading a replacement track also pauses the old element; never let that
+      // stale event overwrite the new track's just-written recovery checkpoint.
+      if (currentIdRef.current && readStoredTrackId() === currentIdRef.current) {
+        playbackPositionRef.current = target.currentTime || playbackPositionRef.current;
+        // Flush the exact pause position instead of relying on the last 4-second checkpoint.
+        persistPlaybackCheckpoint(target, false);
+      }
       if (backgroundResumeSuppressedRef.current) lastKnownPlayingRef.current = false;
       setIsPlaying(false);
     };
