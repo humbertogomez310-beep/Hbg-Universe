@@ -27,7 +27,7 @@ import {
   type MusicDirection,
 } from "./musicDirector";
 import { analyzeAudioBlob } from "./djAudioAnalysis";
-import { hasAudioDirectoryPicker, pickAudioDirectory } from "./deviceAudioScanner";
+import { buildAutoDjAnalysisQueue } from "./autoDjAnalysisScheduler";
 import { VibraDjMixEngine } from "./djMixEngine";
 import {
   selectNextPlaybackId,
@@ -306,9 +306,6 @@ export function VibraModule() {
   const [directionInput, setDirectionInput] = useState(() => musicDirection.goal);
   const [analysisRevision, setAnalysisRevision] = useState(0);
   const [libraryScanStatus, setLibraryScanStatus] = useState<"idle" | "running" | "pausing" | "paused" | "completed">("idle");
-  const [deviceScanStatus, setDeviceScanStatus] = useState<string | null>(null);
-  const [includeShortDeviceAudio, setIncludeShortDeviceAudio] = useState(false);
-  const [includeVoiceNotes, setIncludeVoiceNotes] = useState(false);
   const [duplicateScanStatus, setDuplicateScanStatus] = useState<"idle" | "running" | "completed">("idle");
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
   const [duplicateKeepIds, setDuplicateKeepIds] = useState<Record<string, string>>({});
@@ -347,7 +344,6 @@ export function VibraModule() {
   const [audioAnalyser, setAudioAnalyser] = useState<AnalyserNode | null>(null);
   const currentUrlRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const deviceScanDirectoryInputRef = useRef<HTMLInputElement>(null);
   const progressRafRef = useRef<number | null>(null);
   const loadGenerationRef = useRef(0);
   const manualSelectionGenerationRef = useRef(0);
@@ -606,7 +602,7 @@ export function VibraModule() {
     return () => { cancelled = true; };
   }, []);
 
-  // El análisis musical se ejecuta únicamente cuando el usuario lo inicia desde Centro de Escaneo.
+  // Auto DJ inicia el análisis local progresivo cuando se activa; nunca bloquea la reproducción.
 
   // Recover Auto DJ metadata without autoplay. The user must explicitly resume the session.
   useEffect(() => {
@@ -1971,12 +1967,12 @@ export function VibraModule() {
       return;
     }
 
-    const pending = tracksRef.current.filter((track) =>
-      track.beatStrength === undefined ||
-      track.energyLevel === undefined ||
-      track.impactStrength === undefined ||
-      track.analyzedAt === undefined
+    const pendingIds = buildAutoDjAnalysisQueue(
+      tracksRef.current,
+      plannedNextTrackRef.current ? [plannedNextTrackRef.current.id] : [],
     );
+    const pendingIdSet = new Set(pendingIds);
+    const pending = tracksRef.current.filter((track) => pendingIdSet.has(track.id));
     if (pending.length === 0) {
       setLibraryScanProgress({ processed: tracksRef.current.length, total: tracksRef.current.length, failed: 0, currentTitle: "" });
       setLibraryScanStatus("completed");
@@ -1996,6 +1992,32 @@ export function VibraModule() {
     libraryScanPauseRequestedRef.current = false;
     void persistLibraryScanCheckpoint(checkpoint).then(() => runLibraryScan());
   };
+
+  useEffect(() => {
+    if ((!autoDjEnabled && !partyMode) || tracks.length === 0) return;
+    if (libraryScanWorkerRef.current) return;
+
+    let cancelled = false;
+    const startWhenIdle = () => {
+      if (!cancelled) startLibraryScan();
+    };
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+    if (typeof idleWindow.requestIdleCallback === "function") {
+      const handle = idleWindow.requestIdleCallback(startWhenIdle, { timeout: 2500 });
+      return () => {
+        cancelled = true;
+        idleWindow.cancelIdleCallback?.(handle);
+      };
+    }
+    const handle = window.setTimeout(startWhenIdle, 1200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [autoDjEnabled, partyMode, tracks.length, libraryScanStatus]);
 
   const pauseLibraryScan = () => {
     if (!libraryScanWorkerRef.current) return;
@@ -2073,143 +2095,6 @@ export function VibraModule() {
     }
   };
 
-  const handleDeviceScan = async (files: FileList | File[] | null) => {
-    if (!files || files.length === 0 || deviceScanStatus === "ESCANEANDO") return;
-    setDeviceScanStatus("ESCANEANDO");
-    let imported = 0;
-    let duplicates = 0;
-    let shortFiles = 0;
-    let voiceNotes = 0;
-    let failed = 0;
-    let unsupported = 0;
-    const knownTracks = [...tracksRef.current];
-    const maxHashBytes = 32 * 1024 * 1024;
-
-    const hashBlob = async (blob: Blob): Promise<string | null> => {
-      if (!globalThis.crypto?.subtle || blob.size > maxHashBytes) return null;
-      const bytes = await blob.arrayBuffer();
-      const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
-      return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
-    };
-
-    try {
-      for (const file of Array.from(files)) {
-        try {
-          if (!/\.(mp3|wav|ogg|flac|aac|m4a)$/i.test(file.name)) {
-            unsupported++;
-            continue;
-          }
-
-          const voiceNoteName = /(?:whatsapp[ _-]*audio|voice[ _-]*note|nota[ _-]*de[ _-]*voz|grabaci[oó]n|recording|voice[ _-]*memo|audio[ _-]*message|^ptt[ _-])/i.test(file.name);
-          if (voiceNoteName && !includeVoiceNotes) {
-            voiceNotes++;
-            continue;
-          }
-          const duration = await getAudioDuration(file);
-          if (!Number.isFinite(duration) || (duration < 60 && !includeShortDeviceAudio)) {
-            shortFiles++;
-            continue;
-          }
-
-          const parsed = parseFilename(file.name);
-          const normalizedTitle = normalizeMusicText(parsed.title);
-          const normalizedArtist = normalizeMusicText(parsed.artist);
-          const candidates = knownTracks.filter((track) =>
-            track.size === file.size &&
-            Math.abs(track.duration - duration) <= 1.25 &&
-            normalizeMusicText(track.title) === normalizedTitle &&
-            normalizeMusicText(track.artist) === normalizedArtist
-          );
-
-          let contentHash: string | null = null;
-          if (candidates.length > 0) {
-            contentHash = await hashBlob(file);
-            if (contentHash) {
-              let exactDuplicate = false;
-              for (const candidate of candidates) {
-                let existingHash = candidate.contentHash ?? null;
-                if (!existingHash) {
-                  const existingBlob = await getAudioBlob(candidate.id);
-                  if (existingBlob) existingHash = await hashBlob(existingBlob);
-                  if (existingHash) {
-                    const enriched = { ...candidate, contentHash: existingHash };
-                    await saveTrackMeta(enriched);
-                    const knownIndex = knownTracks.findIndex((track) => track.id === candidate.id);
-                    if (knownIndex >= 0) knownTracks[knownIndex] = enriched;
-                    setTracks((previous) => previous.map((track) => track.id === candidate.id ? enriched : track));
-                  }
-                }
-                if (existingHash && existingHash === contentHash) {
-                  exactDuplicate = true;
-                  break;
-                }
-              }
-              if (exactDuplicate) {
-                duplicates++;
-                continue;
-              }
-            }
-          } else {
-            contentHash = await hashBlob(file);
-          }
-
-          const id = "track_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
-          const meta: TrackMeta = {
-            id,
-            title: parsed.title,
-            artist: parsed.artist,
-            album: "",
-            duration,
-            size: file.size,
-            type: file.type || "audio/mpeg",
-            importedAt: Date.now(),
-            ...(contentHash ? { contentHash } : {}),
-          };
-          await saveAudioBlob(id, file);
-          await saveTrackMeta(meta);
-          knownTracks.push(meta);
-          setTracks((previous) => [...previous, meta]);
-          imported++;
-          if (!currentIdRef.current) {
-            setCurrentId(id);
-            void loadTrackRef.current(id, false);
-          }
-        } catch {
-          failed++;
-        }
-      }
-    } finally {
-      setDeviceScanStatus(
-        "ESCANEO TERMINADO · " + imported + " NUEVAS · " + duplicates + " DUPLICADAS · " +
-        shortFiles + " CORTAS · " + voiceNotes + " NOTAS DE VOZ · " + unsupported + " NO COMPATIBLES · " + failed + " ERRORES"
-      );
-    }
-  };
-
-  const startDeviceDirectoryScan = async () => {
-    if (deviceScanStatus === "ESCANEANDO") return;
-
-    if (!hasAudioDirectoryPicker()) {
-      // Folder input is a bulk-selection fallback for browsers without the
-      // File System Access directory picker. It never opens the image gallery.
-      deviceScanDirectoryInputRef.current?.click();
-      return;
-    }
-
-    try {
-      const files = await pickAudioDirectory();
-      if (files === null) return; // User cancelled the system folder picker.
-      if (files.length === 0) {
-        setDeviceScanStatus("NO SE ENCONTRARON ARCHIVOS DE AUDIO COMPATIBLES EN ESA CARPETA.");
-        return;
-      }
-      await handleDeviceScan(files);
-    } catch (cause) {
-      setDeviceScanStatus("NO SE PUDO ACCEDER A LA CARPETA. REVISA EL PERMISO Y VUELVE A INTENTAR.");
-      setError(cause instanceof Error ? cause.message : "No se pudo leer la carpeta seleccionada.");
-    }
-  };
-
   const handleImport = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     setImporting(true);
@@ -2240,7 +2125,7 @@ export function VibraModule() {
         await saveAudioBlob(id, blob);
         await saveTrackMeta(meta);
         setTracks((prev) => [...prev, meta]);
-        // El análisis queda pendiente hasta que el usuario lo solicite en Centro de Escaneo.
+        // Auto DJ recogerá esta pista en su cola local de análisis progresivo.
         imported++;
 
         // Auto-select first imported track
@@ -2419,7 +2304,7 @@ export function VibraModule() {
     { id: "eq", label: "EQ PRO" },
     { id: "perfil", label: "PERFIL" },
     { id: "universo", label: "UNIVERSO HBG" },
-    { id: "scan", label: "CENTRO DE ESCANEO" },
+    { id: "scan", label: "DUPLICADOS" },
   ];
 
   return (
@@ -2644,17 +2529,6 @@ export function VibraModule() {
         </section>
       )}
 
-      {/* Bulk folder selection. This is not full-device Android MediaStore access. */}
-      <input
-        ref={deviceScanDirectoryInputRef}
-        type="file"
-        accept=".mp3,.wav,.ogg,.flac,.aac,.m4a,audio/*"
-        multiple
-        style={{ display: "none" }}
-        {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
-        onChange={(event) => { void handleDeviceScan(event.target.files); }}
-        onClick={(event) => { (event.target as HTMLInputElement).value = ""; }}
-      />
       {/* Hidden file input */}
       <input
         ref={fileInputRef}
@@ -2802,101 +2676,47 @@ export function VibraModule() {
         </div>
       )}
 
-      {/* CENTRO DE ESCANEO */}
+      {/* DUPLICADOS — herramienta independiente; no forma parte del análisis musical de Auto DJ. */}
       {view === "scan" && (
-        <section className="hbg-card" aria-label="Centro de Escaneo">
-          <div className="section-title">// CENTRO DE ESCANEO</div>
+        <section className="hbg-card" aria-label="Revisión independiente de duplicados">
+          <div className="section-title">// REVISIÓN DE DUPLICADOS</div>
           <p style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", lineHeight: 1.6 }}>
-            Los análisis se ejecutan únicamente cuando tú los inicias. VIBRA procesa una canción a la vez y guarda sus resultados para reutilizarlos.
+            Esta revisión es independiente de Auto DJ. Compara canciones de la biblioteca local y nunca elimina archivos sin tu confirmación.
           </p>
-          <div className="hbg-card" style={{ marginTop: 12, border: "1px solid var(--border-dim)" }}>
-            <div style={{ fontFamily: "var(--font-display)", fontSize: 12, fontWeight: 700, marginBottom: 6 }}>ANALIZAR BIBLIOTECA</div>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginBottom: 12 }}>
-              Calcula BPM, pulso, energía, impacto y tonalidad de las canciones que todavía no tienen un análisis completo.
+          <button type="button" className="hbg-btn hbg-btn-primary" style={{ marginTop: 10 }} onClick={() => void scanLibraryDuplicates()} disabled={duplicateScanStatus === "running" || tracks.length < 2}>
+            {duplicateScanStatus === "running" ? "◎ REVISANDO BIBLIOTECA..." : "⌕ REVISAR DUPLICADOS"}
+          </button>
+          {duplicateScanStatus === "completed" && (
+            <div style={{ marginTop: 8, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-secondary)" }}>
+              {duplicateGroups.length === 0 ? "NO SE ENCONTRARON GRUPOS DUPLICADOS" : duplicateGroups.length + " GRUPO(S) PARA REVISAR"}
             </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button className="hbg-btn hbg-btn-primary" onClick={startLibraryScan} disabled={libraryScanStatus === "running" || libraryScanStatus === "pausing" || tracks.length === 0}>
-                {libraryScanStatus === "paused" ? "▶ REANUDAR" : libraryScanStatus === "completed" ? "↻ REVISAR PENDIENTES" : "▶ ESCANEAR BIBLIOTECA"}
-              </button>
-              <button className="hbg-btn hbg-btn-ghost" onClick={pauseLibraryScan} disabled={libraryScanStatus !== "running"}>PAUSAR</button>
-            </div>
-            <div style={{ marginTop: 12, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-secondary)" }} aria-live="polite">
-              {libraryScanStatus === "running" && "ANALIZANDO: " + (libraryScanProgress.currentTitle || "preparando...")}
-              {libraryScanStatus === "pausing" && "TERMINANDO LA CANCIÓN ACTUAL PARA PAUSAR..."}
-              {libraryScanStatus === "paused" && "ESCANEO PAUSADO · PUEDES REANUDARLO"}
-              {libraryScanStatus === "completed" && "ESCANEO TERMINADO · " + libraryScanProgress.failed + " ERROR(ES)"}
-              {libraryScanStatus === "idle" && "LISTO · NO SE HA INICIADO NINGÚN ESCANEO"}
-            </div>
-            <div style={{ height: 6, marginTop: 8, borderRadius: 4, background: "var(--bg-deep)", overflow: "hidden" }}>
-              <div style={{ height: "100%", width: (libraryScanProgress.total ? (libraryScanProgress.processed / libraryScanProgress.total) * 100 : 0) + "%", background: mood.color, transition: "width 0.2s ease" }} />
-            </div>
-            <div style={{ marginTop: 6, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>
-              {libraryScanProgress.processed} / {libraryScanProgress.total} canciones · {libraryScanProgress.failed} errores
-            </div>
-          </div>
-          <div className="hbg-card" style={{ marginTop: 10, border: "1px solid var(--border-dim)" }}>
-            <div style={{ fontFamily: "var(--font-display)", fontSize: 12, fontWeight: 700 }}>ESCANEAR DISPOSITIVO</div>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.6 }}>
-              Elige una carpeta de música y VIBRA recorrerá automáticamente sus subcarpetas para encontrar audio compatible; no tienes que marcar canciones una por una ni abrir Imágenes. La PWA solo puede leer la carpeta que autorizas. El acceso automático a toda la biblioteca Android requiere la versión nativa con permiso del sistema.
-            </div>
-            <button type="button" className="hbg-btn hbg-btn-primary" style={{ marginTop: 10 }} onClick={() => { void startDeviceDirectoryScan(); }} disabled={deviceScanStatus === "ESCANEANDO"}>
-              {deviceScanStatus === "ESCANEANDO" ? "◎ ESCANEANDO..." : "⌕ AUTORIZAR CARPETA Y ESCANEAR"}
-            </button>
-            <div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 10, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-secondary)" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                <input type="checkbox" checked={includeShortDeviceAudio} onChange={(event) => setIncludeShortDeviceAudio(event.target.checked)} />
-                Permitir canciones de menos de 60 segundos
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                <input type="checkbox" checked={includeVoiceNotes} onChange={(event) => setIncludeVoiceNotes(event.target.checked)} />
-                Incluir archivos que parecen notas de voz por su nombre
-              </label>
-            </div>
-            {deviceScanStatus && <div aria-live="polite" style={{ marginTop: 9, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-secondary)" }}>{deviceScanStatus}</div>}
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginTop: 7 }}>
-              La verificación SHA-256 se realiza secuencialmente para archivos de hasta 32 MB. Archivos mayores se importan sin hash para evitar picos grandes de memoria; podrán revisarse en el escaneo de duplicados.
-            </div>
-          </div>
-          <div className="hbg-card" style={{ marginTop: 10, border: "1px solid var(--border-dim)" }}>
-            <div style={{ fontFamily: "var(--font-display)", fontSize: 12, fontWeight: 700 }}>ESCANEAR DUPLICADOS</div>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.6 }}>
-              Compara archivos por SHA-256 y agrupa posibles coincidencias por título, artista y duración. No elimina nada automáticamente.
-            </div>
-            <button type="button" className="hbg-btn hbg-btn-primary" style={{ marginTop: 10 }} onClick={() => void scanLibraryDuplicates()} disabled={duplicateScanStatus === "running" || tracks.length < 2}>
-              {duplicateScanStatus === "running" ? "◎ REVISANDO BIBLIOTECA..." : "⌕ ESCANEAR DUPLICADOS"}
-            </button>
-            {duplicateScanStatus === "completed" && (
-              <div style={{ marginTop: 8, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-secondary)" }}>
-                {duplicateGroups.length === 0 ? "NO SE ENCONTRARON GRUPOS DUPLICADOS" : duplicateGroups.length + " GRUPO(S) PARA REVISAR"}
+          )}
+          {duplicateGroups.map((group) => (
+            <div key={group.id} style={{ marginTop: 12, padding: 9, border: "1px solid var(--border-dim)", borderRadius: 3 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                <strong style={{ fontFamily: "var(--font-display)", fontSize: 10 }}>{group.kind === "exact" ? "DUPLICADO EXACTO" : "POSIBLE DUPLICADO"}</strong>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>{group.trackIds.length} ARCHIVOS</span>
               </div>
-            )}
-            {duplicateGroups.map((group) => (
-              <div key={group.id} style={{ marginTop: 12, padding: 9, border: "1px solid var(--border-dim)", borderRadius: 3 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                  <strong style={{ fontFamily: "var(--font-display)", fontSize: 10 }}>{group.kind === "exact" ? "DUPLICADO EXACTO" : "POSIBLE DUPLICADO"}</strong>
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>{group.trackIds.length} ARCHIVOS</span>
-                </div>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginTop: 4 }}>{group.reason}</div>
-                {group.trackIds.map((id) => {
-                  const track = tracks.find((item) => item.id === id);
-                  if (!track) return null;
-                  const keep = duplicateKeepIds[group.id] === id;
-                  return (
-                    <div key={id} style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 7, padding: 6, background: keep ? "rgba(0, 220, 255, 0.08)" : "transparent", border: "1px solid var(--border-dim)", borderRadius: 3 }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track.title}</div>
-                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>{track.artist} · {formatDuration(track.duration)} · {(track.size / (1024 * 1024)).toFixed(1)} MB</div>
-                      </div>
-                      <button type="button" className={keep ? "hbg-btn hbg-btn-primary" : "hbg-btn hbg-btn-ghost"} style={{ padding: "4px 7px", fontSize: 9 }} aria-pressed={keep} onClick={() => setDuplicateKeepIds((previous) => ({ ...previous, [group.id]: id }))}>{keep ? "CONSERVAR" : "ELEGIR"}</button>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginTop: 4 }}>{group.reason}</div>
+              {group.trackIds.map((id) => {
+                const track = tracks.find((item) => item.id === id);
+                if (!track) return null;
+                const keep = duplicateKeepIds[group.id] === id;
+                return (
+                  <div key={id} style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 7, padding: 6, background: keep ? "rgba(0, 220, 255, 0.08)" : "transparent", border: "1px solid var(--border-dim)", borderRadius: 3 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track.title}</div>
+                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>{track.artist} · {formatDuration(track.duration)} · {(track.size / (1024 * 1024)).toFixed(1)} MB</div>
                     </div>
-                  );
-                })}
-                <button type="button" className="hbg-btn hbg-btn-ghost" style={{ marginTop: 8, width: "100%", justifyContent: "center" }} onClick={() => void removeDuplicateCopies(group)}>ELIMINAR COPIAS NO CONSERVADAS</button>
-              </div>
-            ))}
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginTop: 9 }}>
-              La huella acústica para detectar la misma grabación con otra codificación aún no está integrada. Las coincidencias probables requieren tu revisión; eliminar siempre pide confirmación y redirige las referencias de playlists y colas.
+                    <button type="button" className={keep ? "hbg-btn hbg-btn-primary" : "hbg-btn hbg-btn-ghost"} style={{ padding: "4px 7px", fontSize: 9 }} aria-pressed={keep} onClick={() => setDuplicateKeepIds((previous) => ({ ...previous, [group.id]: id }))}>{keep ? "CONSERVAR" : "ELEGIR"}</button>
+                  </div>
+                );
+              })}
+              <button type="button" className="hbg-btn hbg-btn-ghost" style={{ marginTop: 8, width: "100%", justifyContent: "center" }} onClick={() => void removeDuplicateCopies(group)}>ELIMINAR COPIAS NO CONSERVADAS</button>
             </div>
+          ))}
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", marginTop: 9 }}>
+            Las coincidencias probables requieren revisión humana. Eliminar siempre pide confirmación y redirige las referencias de playlists y colas.
           </div>
         </section>
       )}
