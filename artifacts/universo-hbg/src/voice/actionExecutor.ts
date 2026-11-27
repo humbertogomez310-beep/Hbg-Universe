@@ -10,6 +10,10 @@ const MOOD_LABELS: Record<string, string> = {
   nostalgia: "nostalgia",
   sad: "triste",
   happy: "feliz",
+  romantic: "romántico",
+  dance: "bailable",
+  sing: "para cantar",
+  ambient: "ambiental",
   normal: "normal",
 };
 
@@ -21,6 +25,10 @@ const CORE_MOOD_KEYS: Record<string, string> = {
   nostalgia: "nostalgico",
   sad: "triste",
   happy: "feliz",
+  romantic: "romantico",
+  dance: "energia",
+  sing: "cantable",
+  ambient: "relajado",
   normal: "neutral",
 };
 
