@@ -366,7 +366,7 @@ export function VibraModule() {
   // Apply user volume and temporary voice ducking at the final Web Audio output.
   // HTMLMediaElement.volume remains the fallback when Web Audio is unavailable.
   const applyVibraVolume = (factor: number) => {
-    const effectiveVolume = calculateEffectiveAudioVolume(volumeRef.current, factor);
+    const effectiveVolume = calculateEffectiveAudioVolume(volumeRef.current / 100, factor);
     const gain = playbackGainRef.current;
     const context = audioContextRef.current;
     const engine = djMixEngineRef.current;
@@ -761,7 +761,7 @@ export function VibraModule() {
       setAudioAnalyser(null);
       audio = new Audio();
       audio.preload = "auto";
-      audio.volume = calculateEffectiveAudioVolume(volumeRef.current, getCurrentAudioDuckingFactor());
+      audio.volume = calculateEffectiveAudioVolume(volumeRef.current / 100, getCurrentAudioDuckingFactor());
       audioContextRef.current = null;
       if (context) void context.close().catch(() => undefined);
     }
