@@ -1791,7 +1791,7 @@ export function VibraModule() {
     const audio = djMixEngineRef.current?.activeAudio ?? audioRef.current;
     const total = audio?.duration || duration;
     if (!audio || !Number.isFinite(total) || total <= 0) return;
-    const nextTime = Math.max(0, Math.min(Math.max(0, total - 0.25), audio.currentTime + direction * autoDjSeekStep));
+    const nextTime = Math.max(0, Math.min(Math.max(0, total - 0.25), audio.currentTime + direction * 10));
     audio.currentTime = nextTime;
     playbackPositionRef.current = nextTime;
     setCurrentTime(nextTime);
