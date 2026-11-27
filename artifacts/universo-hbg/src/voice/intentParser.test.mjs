@@ -83,10 +83,7 @@ test("VIBRA keeps named music requests and musical direction distinct from gener
     type: "PLAY_TRACK",
     query: "bohemian rhapsody",
   });
-  assert.deepEqual(parseIntent("pon música romántica"), {
-    type: "SET_DIRECTION",
-    text: "pon música romántica",
-  });
+  assert.deepEqual(parseIntent("pon música romántica"), { type: "SET_MOOD", mood: "romantic" });
 });
 
 test("VIBRA recognizes conversational pause and resume variations", () => {
