@@ -9,9 +9,10 @@ export interface NormalizedUtterance {
   raw: string;
   text: string;
   wakePhrasePresent: boolean;
+  wakeTarget: "hbg" | "vibra" | "instinto" | null;
 }
 
-const WAKE_PREFIX = /^(?:oye|hey|hola) hbg\b\s*/;
+const WAKE_PREFIX = /^(?:oye|hey|hola) (?:hbg|vibra|instinto)\b\s*/;
 
 function normalizeBase(input: string): string {
   return input
@@ -29,10 +30,12 @@ export function normalizeUtterance(input: string): string {
 
 export function inspectUtterance(input: string): NormalizedUtterance {
   const normalized = normalizeBase(input);
+  const wakeMatch = /^(?:oye|hey|hola) (hbg|vibra|instinto)\b/.exec(normalized);
   return {
     raw: input,
     text: normalized.replace(WAKE_PREFIX, "").trim(),
-    wakePhrasePresent: /^(?:oye|hey|hola) hbg\b/.test(normalized),
+    wakePhrasePresent: wakeMatch !== null,
+    wakeTarget: (wakeMatch?.[1] as "hbg" | "vibra" | "instinto" | undefined) ?? null,
   };
 }
 
@@ -295,6 +298,7 @@ export interface LinguaInterpretation {
   rawText: string;
   normalizedText: string;
   wakePhrasePresent: boolean;
+  wakeTarget: "hbg" | "vibra" | "instinto" | null;
   action: VoiceAction;
   effect: "persistent" | "command" | "unknown";
   requiresClarification: boolean;
@@ -311,6 +315,7 @@ export function interpretUtterance(input: string): LinguaInterpretation {
     rawText: input,
     normalizedText: inspected.text,
     wakePhrasePresent: inspected.wakePhrasePresent,
+    wakeTarget: inspected.wakeTarget,
     action,
     effect: isUnknown ? "unknown" : isPersistent ? "persistent" : "command",
     requiresClarification: isUnknown,
