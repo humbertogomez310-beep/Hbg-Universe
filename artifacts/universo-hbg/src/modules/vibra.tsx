@@ -28,6 +28,7 @@ import {
 } from "./musicDirector";
 import { analyzeAudioBlob } from "./djAudioAnalysis";
 import { buildAutoDjAnalysisQueue } from "./autoDjAnalysisScheduler";
+import { classifyTrackMoods } from "./moodEngine";
 import { VibraDjMixEngine } from "./djMixEngine";
 import {
   selectNextPlaybackId,
@@ -441,8 +442,8 @@ export function VibraModule() {
   const plannedNextTrack = useMemo(() => {
     const sessionIds = autoDjEnabled ? autoDjQueueIdsRef.current : null;
     const candidatePool = sessionIds ? tracks.filter((track) => sessionIds.includes(track.id)) : tracks;
-    return selectNextAutoDjTrack(candidatePool, currentId, recentTrackIds, musicDirection);
-  }, [tracks, currentId, recentTrackIds, musicDirection, analysisRevision, autoDjEnabled]);
+    return selectNextAutoDjTrack(candidatePool, currentId, recentTrackIds, { ...musicDirection, mood: activeMode });
+  }, [tracks, currentId, recentTrackIds, musicDirection, analysisRevision, autoDjEnabled, activeMode]);
   plannedNextTrackRef.current = plannedNextTrack;
   // Auto DJ manages its own no-repeat rotation; manual repeat-one must not stop DJ transitions.
   djTransitionEnabledRef.current = autoDjEnabled || partyMode;
@@ -1599,6 +1600,29 @@ export function VibraModule() {
       : { success: false, error: "La playlist fue encontrada, pero no se pudo iniciar el audio." };
   };
 
+  const activateMood = async (mode: MoodMode) => {
+    setActiveMode(mode);
+    setMusicDirection((previous) => ({ ...previous, mood: mode }));
+    if (mode === "normal") return { success: true, data: { mode, trackCount: tracksRef.current.length } };
+
+    // Mood Engine is a real local selection, not just a visual focus change.
+    const matches = tracksRef.current
+      .filter((track) => (track.moodScores?.[mode] ?? 0) >= 0.3)
+      .sort((left, right) => (right.moodScores?.[mode] ?? 0) - (left.moodScores?.[mode] ?? 0));
+    if (matches.length === 0) {
+      startLibraryScan();
+      return {
+        success: false,
+        error: "Todavía no hay canciones clasificadas para este ambiente. Auto DJ está preparando el análisis local de tu biblioteca; vuelve a pedirlo en un momento.",
+      };
+    }
+    const selected = matches.slice(0, 50).map((track) => track.id);
+    const playback = await playTrackSequence(selected);
+    return playback.success
+      ? { success: true, data: { mode, trackCount: selected.length, playlist: playback.data } }
+      : { success: false, error: playback.error ?? "No se pudo iniciar la selección de este Mood Engine." };
+  };
+
   // VIBRA exposes its real capabilities through HBG CORE. The handler is
   // registered only while this independent app is mounted; queued commands
   // are flushed by CORE when the user opens VIBRA.
@@ -1658,11 +1682,11 @@ export function VibraModule() {
         setRepeatMode(mode);
         return result(true, { mode });
       }),
-      hbgCore.registerAction("music.mood", (payload) => {
+      hbgCore.registerAction("music.mood", async (payload) => {
         const mood = MOODS.find(({ mode }) => mode === payload?.mode);
         if (!mood) return result(false, undefined, "El modo de ánimo no es válido");
-        setActiveMode(mood.mode);
-        return result(true, { mode: mood.mode });
+        const activated = await activateMood(mood.mode);
+        return result(activated.success, activated.data, activated.error);
       }),
       hbgCore.registerAction("music.direct", (payload) => {
         const text = String(payload?.text ?? payload?.goal ?? "").trim();
@@ -1685,7 +1709,7 @@ export function VibraModule() {
             await togglePlay();
             if (audioRef.current && !audioRef.current.paused) return result(true, { enabled, isPlaying: true });
           }
-          const next = selectNextAutoDjTrack(tracks, currentId, recentTrackIds, musicDirection);
+          const next = selectNextAutoDjTrack(tracks, currentId, recentTrackIds, { ...musicDirection, mood: activeMode });
           if (!next) return result(false, undefined, tracks.length <= 1
             ? "Auto DJ necesita al menos dos canciones en la biblioteca para evitar repetir la misma pista."
             : "No se pudo encontrar una pista alternativa reproducible en la biblioteca.");
@@ -1917,8 +1941,10 @@ export function VibraModule() {
           try {
             const blob = await getAudioBlob(id);
             if (!blob) throw new Error("El archivo ya no está disponible en la biblioteca.");
-            const analysis = await analyzeAudioBlob(blob, meta.duration);
-            const enriched = { ...meta, ...analysis };
+            const needsAudioAnalysis = meta.beatStrength === undefined || meta.energyLevel === undefined || meta.impactStrength === undefined || meta.analyzedAt === undefined;
+            const analysis = needsAudioAnalysis ? await analyzeAudioBlob(blob, meta.duration) : {};
+            const analyzedTrack = { ...meta, ...analysis };
+            const enriched = { ...analyzedTrack, moodScores: classifyTrackMoods(analyzedTrack) };
             await saveTrackMeta(enriched);
             setTracks((previous) => previous.map((track) => track.id === id ? enriched : track));
             setAnalysisRevision((previous) => previous + 1);
@@ -2893,7 +2919,7 @@ export function VibraModule() {
             {MOODS.map((m) => (
               <button key={m.mode} className="hbg-card"
                 style={{ cursor: "pointer", textAlign: "left", padding: "12px 14px", border: `1px solid ${activeMode === m.mode ? m.color : "var(--border-dim)"}`, background: activeMode === m.mode ? `${m.color}10` : "var(--bg-card)", boxShadow: activeMode === m.mode ? `0 0 16px ${m.color}25` : "none" }}
-                onClick={() => setActiveMode(m.mode)}>
+                onClick={() => { void activateMood(m.mode).then((result) => { if (!result.success && result.error) setError(result.error); }); }}>
                 <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
                   <span style={{ fontSize: 16, color: m.color, filter: activeMode === m.mode ? `drop-shadow(0 0 6px ${m.color})` : "none" }}>{m.icon}</span>
                   <span style={{ fontFamily: "var(--font-display)", fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", color: activeMode === m.mode ? m.color : "var(--text-primary)" }}>{m.label}</span>
