@@ -1620,6 +1620,9 @@ export function VibraModule() {
         return result(started && playing, { isPlaying: playing }, started && playing ? undefined : "No se pudo reanudar la reproducción");
       }),
       hbgCore.registerAction("music.pause", () => {
+        backgroundResumeSuppressedRef.current = true;
+        lastKnownPlayingRef.current = false;
+        writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "false");
         preventVoiceSessionPlaybackRestore();
         const audio = audioRef.current;
         if (audio) persistPlaybackCheckpoint(audio, false);
