@@ -25,6 +25,8 @@ export interface HBGAndroidBridge {
   isVoiceWakeAvailable(): boolean;
   startVoiceWake(): boolean;
   stopVoiceWake(): void;
+  speak(text: string): boolean;
+  stopSpeaking(): void;
 }
 
 declare global {
