@@ -78,6 +78,18 @@ function parseDraft(raw: string | null): InstintoDraft {
   }
 }
 
+export function parseInstintoFallbackJournal(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (!Array.isArray(value)) return [];
+    const allowed = new Set(Object.values(LEGACY_KEYS));
+    return [...new Set(value.filter((key): key is string => typeof key === "string" && allowed.has(key)))];
+  } catch {
+    return [];
+  }
+}
+
 export function readLegacyInstintoData(storage: LegacyStorage | null): InstintoData {
   return {
     notes: parseArray<InstintoNote>(storage?.getItem(LEGACY_KEYS.notes) ?? null),
@@ -94,6 +106,7 @@ function openDatabase(): Promise<IDBDatabase> {
 
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
+    let blocked = false;
     request.onupgradeneeded = () => {
       const database = request.result;
       if (!database.objectStoreNames.contains(STORE_NAME)) {
@@ -102,11 +115,18 @@ function openDatabase(): Promise<IDBDatabase> {
     };
     request.onsuccess = () => {
       const database = request.result;
+      if (blocked) {
+        database.close();
+        return;
+      }
       database.onversionchange = () => database.close();
       resolve(database);
     };
     request.onerror = () => reject(request.error ?? new Error("No se pudo abrir IndexedDB."));
-    request.onblocked = () => reject(new Error("La apertura de IndexedDB está bloqueada por otra pestaña."));
+    request.onblocked = () => {
+      blocked = true;
+      reject(new Error("La apertura de IndexedDB está bloqueada por otra pestaña."));
+    };
   });
 }
 
@@ -127,11 +147,7 @@ export async function initializeInstintoStorage(): Promise<void> {
           // A failed IndexedDB write may have been saved to LocalStorage after
           // the first migration. Replay only journaled keys so newer fallback
           // values are not silently hidden by the completed migration marker.
-          let pending: string[] = [];
-          try {
-            const parsed: unknown = JSON.parse(storage?.getItem(FALLBACK_JOURNAL_KEY) ?? "[]");
-            if (Array.isArray(parsed)) pending = parsed.filter((key): key is string => typeof key === "string");
-          } catch { pending = []; }
+          const pending = parseInstintoFallbackJournal(storage?.getItem(FALLBACK_JOURNAL_KEY) ?? null);
 
           for (const legacyKey of pending) {
             const recordKey = (Object.keys(LEGACY_KEYS) as InstintoRecordKey[])
