@@ -20,6 +20,7 @@ const DB_NAME = "hbg_instinto_db";
 const DB_VERSION = 1;
 const STORE_NAME = "records";
 const MIGRATION_KEY = "__local_storage_migrated_v1__";
+const FALLBACK_JOURNAL_KEY = "__instinto_fallback_pending_v1__";
 const LEGACY_KEYS: Record<InstintoRecordKey, string> = {
   notes: "hbg_instinto_notes_v2",
   lyrics: "hbg_instinto_lyrics_v2",
@@ -114,13 +115,46 @@ export async function initializeInstintoStorage(): Promise<void> {
   const storage = getLegacyStorage();
   await new Promise<void>((resolve, reject) => {
     let migrated = false;
+    let recoveredFallbackKeys: string[] = [];
+    let remainingFallbackKeys: string[] = [];
     let transaction: IDBTransaction;
     try {
       transaction = database.transaction(STORE_NAME, "readwrite");
       const store = transaction.objectStore(STORE_NAME);
       const markerRequest = store.get(MIGRATION_KEY);
       markerRequest.onsuccess = () => {
-        if (markerRequest.result === true) return;
+        if (markerRequest.result === true) {
+          // A failed IndexedDB write may have been saved to LocalStorage after
+          // the first migration. Replay only journaled keys so newer fallback
+          // values are not silently hidden by the completed migration marker.
+          let pending: string[] = [];
+          try {
+            const parsed: unknown = JSON.parse(storage?.getItem(FALLBACK_JOURNAL_KEY) ?? "[]");
+            if (Array.isArray(parsed)) pending = parsed.filter((key): key is string => typeof key === "string");
+          } catch { pending = []; }
+
+          for (const legacyKey of pending) {
+            const recordKey = (Object.keys(LEGACY_KEYS) as InstintoRecordKey[])
+              .find((key) => LEGACY_KEYS[key] === legacyKey);
+            const raw = storage?.getItem(legacyKey) ?? null;
+            if (!recordKey || raw === null) continue;
+            try {
+              const parsed: unknown = JSON.parse(raw);
+              if (recordKey === "draft") {
+                if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+                  store.put(parseDraft(raw), recordKey);
+                  recoveredFallbackKeys.push(legacyKey);
+                }
+              } else if (Array.isArray(parsed)) {
+                store.put(parsed, recordKey);
+                recoveredFallbackKeys.push(legacyKey);
+              }
+            } catch { /* Leave malformed fallback data available for recovery. */ }
+          }
+          remainingFallbackKeys = pending.filter((key) => !recoveredFallbackKeys.includes(key));
+          return;
+        }
+
         const legacy = readLegacyInstintoData(storage);
         for (const key of Object.keys(LEGACY_KEYS) as InstintoRecordKey[]) {
           store.put(legacy[key], key);
@@ -131,10 +165,22 @@ export async function initializeInstintoStorage(): Promise<void> {
       markerRequest.onerror = () => transaction.abort();
       transaction.oncomplete = () => {
         database.close();
-        if (migrated && storage) {
+        if (storage && migrated) {
           for (const key of Object.values(LEGACY_KEYS)) {
             try { storage.removeItem(key); } catch { /* Keep the committed IndexedDB copy. */ }
           }
+          try { storage.removeItem(FALLBACK_JOURNAL_KEY); } catch { /* IndexedDB is authoritative. */ }
+        } else if (storage && recoveredFallbackKeys.length > 0) {
+          for (const key of recoveredFallbackKeys) {
+            try { storage.removeItem(key); } catch { /* Keep the committed IndexedDB copy. */ }
+          }
+          try {
+            if (remainingFallbackKeys.length > 0) {
+              storage.setItem(FALLBACK_JOURNAL_KEY, JSON.stringify(remainingFallbackKeys));
+            } else {
+              storage.removeItem(FALLBACK_JOURNAL_KEY);
+            }
+          } catch { /* The next load can retry recovery from the existing journal. */ }
         }
         resolve();
       };
