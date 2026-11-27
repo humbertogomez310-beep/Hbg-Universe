@@ -141,7 +141,6 @@ export function getAudioDuration(blob: Blob, timeoutMs = AUDIO_METADATA_TIMEOUT_
     audio.preload = "metadata";
     audio.muted = true;
     audio.volume = 0;
-    audio.playsInline = true;
 
     let settled = false;
     let timeout: ReturnType<typeof setTimeout> | undefined;
