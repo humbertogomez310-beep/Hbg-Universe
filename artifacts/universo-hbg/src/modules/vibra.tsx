@@ -1700,6 +1700,7 @@ export function VibraModule() {
         setMusicDirection(nextDirection);
         const scenarioRequest = /\b(cumpleanos|birthday|ninos|ninas|infantil|kids|children|tomar|cantina|bebidas|brindis|festejar|festejo|celebrar|celebracion)\b/i.test(nextDirection.goal);
         if (scenarioRequest) {
+          startLibraryScan();
           const matches = selectTracksForDirection(tracks, nextDirection, 50);
           if (matches.length > 0) {
             const playback = await playTrackSequence(matches.map((track) => track.id));
