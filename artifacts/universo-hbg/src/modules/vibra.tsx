@@ -347,7 +347,6 @@ export function VibraModule() {
   const [audioAnalyser, setAudioAnalyser] = useState<AnalyserNode | null>(null);
   const currentUrlRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const deviceScanFileInputRef = useRef<HTMLInputElement>(null);
   const deviceScanDirectoryInputRef = useRef<HTMLInputElement>(null);
   const progressRafRef = useRef<number | null>(null);
   const loadGenerationRef = useRef(0);
