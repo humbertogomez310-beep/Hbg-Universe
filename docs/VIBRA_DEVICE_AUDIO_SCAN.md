@@ -40,9 +40,9 @@ El repositorio aún no contiene un proyecto Android empaquetado ni un puente nat
 
 «Oye, VIBRA» debe activar el asistente de VIBRA sin pulsar la pantalla. La escucha en segundo plano requiere una implementación Android nativa explícita, permiso de micrófono, controles visibles de privacidad y pruebas de pantalla apagada/batería. No se debe fingir escucha permanente desde una PWA ni grabar audio continuamente sin autorización.
 
-La PWA actual utiliza `SpeechRecognition` / `webkitSpeechRecognition` para la captura manual. Ese API no garantiza procesamiento local y puede depender del proveedor del navegador; por tanto, no cumple por sí solo el requisito final de voz sin servidores externos. La versión final debe usar reconocimiento y detección de palabra de activación en el dispositivo, sin fallback a servicios cloud. Si Android no dispone de reconocimiento offline, debe informar que la capacidad local no está disponible en vez de enviar audio a un tercero.
+Se retiró `SpeechRecognition` / `webkitSpeechRecognition` del flujo activo porque no garantiza procesamiento local. La captura y la activación finales usan el servicio Android de reconocimiento en el dispositivo, sin fallback a servicios cloud. Si Android no dispone de un modelo offline, Manos Libres informa que no está disponible en vez de enviar audio a un tercero. La respuesta hablada también utiliza una voz española instalada localmente; no usa voces de red.
 
-La activación común de «Oye, VIBRA», «Oye, INSTINTO» y «Oye, HBG» debe compartir una arquitectura de voz del Universo HBG, con enrutamiento al módulo correcto y sin mezclar permisos de uso con autoridad de desarrollo. El enrutamiento por frase ya puede reconocer los tres nombres durante una captura activa; eso no equivale todavía a escucha permanente ni a despertar con pantalla apagada.
+La activación común de «Oye, VIBRA», «Oye, INSTINTO» y «Oye, HBG» comparte el servicio nativo de Universo HBG y enruta al módulo correcto. El servicio solo se inicia tras permiso explícito del micrófono, se muestra mediante una notificación persistente y puede detenerse desde esa notificación o desde la aplicación.
 
 ## Criterios de aceptación
 
