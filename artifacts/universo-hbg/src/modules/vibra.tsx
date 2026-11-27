@@ -973,6 +973,11 @@ export function VibraModule() {
       if (snapshot.trackId) writeStoredValue(STORAGE_KEYS.trackId, snapshot.trackId);
       writeStoredValue(STORAGE_KEYS.trackTime, String(snapshot.currentTime));
       writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, snapshot.wasPlaying ? "true" : "false");
+      if (snapshot.wasPlaying) {
+        // Flush the exact update-time position and Auto DJ queue before the PWA reloads.
+        persistPlaybackCheckpoint(audio, true);
+        await autoDjSessionWritePromiseRef.current?.catch(() => undefined);
+      }
       if (!snapshot.wasPlaying) return;
 
       djTransitionEnabledRef.current = false;
@@ -1031,6 +1036,8 @@ export function VibraModule() {
       if (snapshot.trackId) writeStoredValue(STORAGE_KEYS.trackId, snapshot.trackId);
       writeStoredValue(STORAGE_KEYS.trackTime, String(snapshot.currentTime));
       writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "true");
+      // Also refresh the Auto DJ recovery checkpoint when the browser backgrounds the PWA.
+      persistPlaybackCheckpoint(audio, true);
     }
   }, []);
 
