@@ -85,7 +85,7 @@ test("reads persisted direction and maps voice controls to concrete actions", ()
   assert.deepEqual(readMusicDirection(storage), { goal: "romántica", energy: "up", vocalFocus: true });
   assert.deepEqual(parseIntent("¿Qué canción está sonando?"), { type: "NOW_PLAYING" });
   assert.deepEqual(parseIntent("Activa Auto DJ"), { type: "SET_AUTO_DJ", enabled: true });
-  assert.deepEqual(parseIntent("Pon música para cantar"), { type: "SET_DIRECTION", text: "Pon música para cantar" });
+  assert.deepEqual(parseIntent("Pon música para cantar"), { type: "SET_MOOD", mood: "sing" });
   assert.deepEqual(parseIntent("Crea una playlist de rock"), {
     type: "PLAYLIST_CREATE",
     name: "rock",
