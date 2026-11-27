@@ -42,8 +42,11 @@ function persistLegacyValue(key: string, value: unknown): boolean {
   try {
     storage.setItem(key, JSON.stringify(value));
     const journalKey = "__instinto_fallback_pending_v1__";
-    const parsed: unknown = JSON.parse(storage.getItem(journalKey) ?? "[]");
-    const pending = Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+    let pending: string[] = [];
+    try {
+      const parsed: unknown = JSON.parse(storage.getItem(journalKey) ?? "[]");
+      if (Array.isArray(parsed)) pending = parsed.filter((item): item is string => typeof item === "string");
+    } catch { pending = []; }
     storage.setItem(journalKey, JSON.stringify([...new Set([...pending, key])]));
     return true;
   } catch { return false; }
@@ -304,7 +307,7 @@ export function InstintoModule() {
     }
 
     const now = new Date().toISOString();
-    const title = request.title || concept.split(/[.!?\\n]/)[0].slice(0, 60) || "Canción nueva";
+    const title = request.title || concept.split(/[.!?\\r\\n]/)[0].slice(0, 60) || "Canción nueva";
     const lyric: Lyric = {
       id: `song-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       title,
