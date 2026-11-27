@@ -52,6 +52,10 @@ async function collectDirectoryFiles(
  * - File[] when a directory was selected (possibly empty).
  * - null when the browser has no directory-picker API or the user cancelled.
  */
+export function hasAudioDirectoryPicker(): boolean {
+  return typeof window !== "undefined" && typeof (window as DirectoryPickerWindow).showDirectoryPicker === "function";
+}
+
 export async function pickAudioDirectory(): Promise<File[] | null> {
   if (typeof window === "undefined") return null;
 
