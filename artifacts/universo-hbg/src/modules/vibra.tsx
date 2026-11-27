@@ -1920,7 +1920,7 @@ export function VibraModule() {
           try {
             const blob = await getAudioBlob(id);
             if (!blob) throw new Error("El archivo ya no está disponible en la biblioteca.");
-            const analysis = await analyzeAudioBlob(blob);
+            const analysis = await analyzeAudioBlob(blob, meta.duration);
             const enriched = { ...meta, ...analysis };
             await saveTrackMeta(enriched);
             setTracks((previous) => previous.map((track) => track.id === id ? enriched : track));

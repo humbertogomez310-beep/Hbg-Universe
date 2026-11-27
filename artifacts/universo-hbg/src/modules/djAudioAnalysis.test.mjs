@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  analyzeAudioBlob,
   analyzeDecodedAudio,
   downsampleAudioForAnalysis,
   estimateBpmFromSamples,
@@ -82,4 +83,53 @@ test("tempo analysis estimates a regular 120 BPM pulse train", () => {
   assert.ok(Math.abs(result.bpm - 120) <= 2, `expected around 120 BPM, received ${result.bpm}`);
   assert.ok(result.confidence > 0.25);
   assert.ok(result.beatStrength > 0.04);
+});
+
+
+test("blob analysis uses an offline 12 kHz context without opening a real-time audio context", async () => {
+  const previous = globalThis.OfflineAudioContext;
+  let constructorArgs;
+  let receivedBuffer;
+  class MockOfflineAudioContext {
+    constructor(...args) { constructorArgs = args; }
+    async decodeAudioData(buffer) {
+      receivedBuffer = buffer;
+      const samples = tone(440, 12000, 12);
+      return {
+        numberOfChannels: 1,
+        sampleRate: 12000,
+        duration: 12,
+        getChannelData: () => samples,
+      };
+    }
+  }
+  globalThis.OfflineAudioContext = MockOfflineAudioContext;
+  try {
+    const result = await analyzeAudioBlob(new Blob(["audio"]), 12);
+    assert.deepEqual(constructorArgs, [1, 1, 12000]);
+    assert.ok(receivedBuffer instanceof ArrayBuffer);
+    assert.ok(typeof result.analyzedAt === "number");
+  } finally {
+    if (previous === undefined) delete globalThis.OfflineAudioContext;
+    else globalThis.OfflineAudioContext = previous;
+  }
+});
+
+test("blob analysis skips recordings longer than 15 minutes before decoding", async () => {
+  const previous = globalThis.OfflineAudioContext;
+  let constructed = false;
+  class MockOfflineAudioContext {
+    constructor() { constructed = true; }
+  }
+  globalThis.OfflineAudioContext = MockOfflineAudioContext;
+  try {
+    await assert.rejects(
+      analyzeAudioBlob(new Blob(["audio"]), 15 * 60 + 1),
+      /supera 15 minutos/,
+    );
+    assert.equal(constructed, false);
+  } finally {
+    if (previous === undefined) delete globalThis.OfflineAudioContext;
+    else globalThis.OfflineAudioContext = previous;
+  }
 });
