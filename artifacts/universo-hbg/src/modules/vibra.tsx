@@ -446,7 +446,7 @@ export function VibraModule() {
   const plannedNextTrack = useMemo(() => {
     const sessionIds = autoDjEnabled ? autoDjQueueIdsRef.current : null;
     const candidatePool = sessionIds ? tracks.filter((track) => sessionIds.includes(track.id)) : tracks;
-    return selectNextAutoDjTrack(candidatePool, currentId, recentTrackIds, { ...musicDirection, mood: activeMode });
+    return selectNextAutoDjTrack(candidatePool, currentId, recentTrackIds, { ...musicDirection, mood: partyMode ? undefined : activeMode });
   }, [tracks, currentId, recentTrackIds, musicDirection, analysisRevision, autoDjEnabled, activeMode]);
   plannedNextTrackRef.current = plannedNextTrack;
   // Auto DJ manages its own no-repeat rotation; manual repeat-one must not stop DJ transitions.
@@ -1608,6 +1608,7 @@ export function VibraModule() {
     setActiveMode(mode);
     setMusicDirection((previous) => ({ ...previous, mood: mode }));
     if (mode === "normal") return { success: true, data: { mode, trackCount: tracksRef.current.length } };
+    startLibraryScan();
 
     // Mood Engine is a real local selection, not just a visual focus change.
     const matches = tracksRef.current
@@ -1692,11 +1693,21 @@ export function VibraModule() {
         const activated = await activateMood(mood.mode);
         return result(activated.success, activated.data, activated.error);
       }),
-      hbgCore.registerAction("music.direct", (payload) => {
+      hbgCore.registerAction("music.direct", async (payload) => {
         const text = String(payload?.text ?? payload?.goal ?? "").trim();
         const nextDirection = interpretMusicDirection(text, musicDirection);
         if (!nextDirection) return result(false, undefined, "No entendí el objetivo musical solicitado.");
         setMusicDirection(nextDirection);
+        const scenarioRequest = /\b(cumpleanos|birthday|ninos|ninas|infantil|kids|children|tomar|cantina|bebidas|brindis|festejar|festejo|celebrar|celebracion)\b/i.test(nextDirection.goal);
+        if (scenarioRequest) {
+          const matches = selectTracksForDirection(tracks, nextDirection, 50);
+          if (matches.length > 0) {
+            const playback = await playTrackSequence(matches.map((track) => track.id));
+            return result(playback.success, { ...nextDirection, trackCount: matches.length }, playback.error);
+          }
+          startLibraryScan();
+          return result(false, undefined, "Todavía estoy clasificando tu biblioteca local. No encontré canciones verificadas para ese escenario; vuelve a pedirlo cuando termine el análisis.");
+        }
         return result(true, { ...nextDirection });
       }),
       hbgCore.registerAction("music.autoDj", async (payload) => {
@@ -1713,7 +1724,7 @@ export function VibraModule() {
             await togglePlay();
             if (audioRef.current && !audioRef.current.paused) return result(true, { enabled, isPlaying: true });
           }
-          const next = selectNextAutoDjTrack(tracks, currentId, recentTrackIds, { ...musicDirection, mood: activeMode });
+          const next = selectNextAutoDjTrack(tracks, currentId, recentTrackIds, { ...musicDirection, mood: partyMode ? undefined : activeMode });
           if (!next) return result(false, undefined, tracks.length <= 1
             ? "Auto DJ necesita al menos dos canciones en la biblioteca para evitar repetir la misma pista."
             : "No se pudo encontrar una pista alternativa reproducible en la biblioteca.");
