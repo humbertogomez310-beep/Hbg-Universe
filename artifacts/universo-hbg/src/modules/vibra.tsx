@@ -29,6 +29,7 @@ import {
 import { analyzeAudioBlob } from "./djAudioAnalysis";
 import { buildAutoDjAnalysisQueue } from "./autoDjAnalysisScheduler";
 import { classifyTrackMoods } from "./moodEngine";
+import { getAndroidBridge, importAndroidAudioLibrary } from "./androidMediaStoreBridge";
 import { VibraDjMixEngine } from "./djMixEngine";
 import {
   selectNextPlaybackId,
@@ -583,6 +584,46 @@ export function VibraModule() {
       setTracks([]);
       setError(cause instanceof Error ? `No se pudo leer la biblioteca local: ${cause.message}` : "No se pudo leer la biblioteca local.");
     });
+  }, []);
+
+  // On Android, ask permission once when VIBRA opens and import authorized audio locally.
+  // This is discovery, not a manual scan action; the normal library and original files stay intact.
+  useEffect(() => {
+    const bridge = getAndroidBridge();
+    if (!bridge) return;
+    let cancelled = false;
+
+    const syncAuthorizedAudio = async () => {
+      if (!bridge.hasAudioPermission()) {
+        bridge.requestAudioPermission();
+        return;
+      }
+      try {
+        const imported = await importAndroidAudioLibrary();
+        if (cancelled || imported.length === 0) return;
+        setTracks((previous) => {
+          const known = new Set(previous.map((track) => track.id));
+          return [...previous, ...imported.filter((track) => !known.has(track.id))]
+            .sort((left, right) => left.importedAt - right.importedAt);
+        });
+        setImportMsg(`${imported.length} canciones autorizadas se añadieron a la biblioteca local de VIBRA.`);
+      } catch (cause) {
+        if (!cancelled) {
+          setError(cause instanceof Error ? cause.message : "No se pudo importar el audio autorizado del dispositivo.");
+        }
+      }
+    };
+
+    const onPermission = (event: Event) => {
+      const detail = (event as CustomEvent<{ granted?: boolean }>).detail;
+      if (detail?.granted) void syncAuthorizedAudio();
+    };
+    window.addEventListener("hbg:audio-permission", onPermission);
+    void syncAuthorizedAudio();
+    return () => {
+      cancelled = true;
+      window.removeEventListener("hbg:audio-permission", onPermission);
+    };
   }, []);
 
   // Restore an interrupted scan as PAUSED. Never resume analysis automatically on app launch.
