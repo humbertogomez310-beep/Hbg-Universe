@@ -48,6 +48,7 @@ export function buildInstintoSongPrompt(request: InstintoSongRequest): string {
     "- Escribe versos completos, un coro memorable, un segundo verso y, si encaja, un puente y coro final.",
     "- Cuida ritmo, musicalidad, rimas naturales y evita repetir frases solo para rellenar.",
     "- No imites la voz, letra ni estilo exacto de artistas existentes.",
+    "- Integra la firma H... B... G... de forma orgánica y conserva exactamente los puntos y espacios.",
     "- No expliques el proceso ni agregues comentarios fuera de la canción.",
     "Devuelve únicamente el texto con estos encabezados cuando correspondan: [VERSO 1], [CORO], [VERSO 2], [PUENTE], [CORO FINAL], [OUTRO].",
   ].join("\n");
@@ -153,6 +154,7 @@ export function generateInstintoLocalSongScaffold(
       content: [
         "Y si la noche vuelve a preguntar,",
         "que responda lo que fuimos capaces de crear.",
+        "H... B... G... la historia sigue en pie.",
       ].join("\n"),
     },
     {
