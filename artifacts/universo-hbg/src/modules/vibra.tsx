@@ -1621,7 +1621,24 @@ export function VibraModule() {
         error: "Todavía no hay canciones clasificadas para este ambiente. Auto DJ está preparando el análisis local de tu biblioteca; vuelve a pedirlo en un momento.",
       };
     }
-    const selected = matches.slice(0, 50).map((track) => track.id);
+    const selectedTracks = matches.slice(0, 50);
+    const selected = selectedTracks.map((track) => track.id);
+    if (autoDjEnabled || partyMode) {
+      autoDjQueueIdsRef.current = selected;
+      const nextTrack = selectNextAutoDjTrack(
+        selectedTracks,
+        currentIdRef.current,
+        recentTrackIds,
+        { ...musicDirection, mood: mode },
+      );
+      if (!nextTrack) {
+        return { success: false, error: "No hay otra canción disponible en este Mood Engine sin repetir la actual." };
+      }
+      const started = await playTrack(nextTrack.id);
+      return started
+        ? { success: true, data: { mode, trackCount: selected.length, track: nextTrack } }
+        : { success: false, error: "Auto DJ no pudo iniciar la canción seleccionada." };
+    }
     const playback = await playTrackSequence(selected);
     return playback.success
       ? { success: true, data: { mode, trackCount: selected.length, playlist: playback.data } }
