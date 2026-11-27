@@ -35,13 +35,23 @@ test("other VIBRA screens retain compact playback controls", () => {
   assert.match(source, /onClick=\{togglePlay\}/);
 });
 
-test("Auto DJ seek controls stay beside the upper player panel", () => {
+test("Auto DJ has fixed 10-second back/play/forward controls above the visualizer", () => {
   const stageIndex = source.indexOf('<div className="vibra-dj-stage">');
   const stageTopEnd = source.indexOf('</div>', source.indexOf('<div className="vibra-dj-stage-top">', stageIndex)) + '</div>'.length;
-  const seekIndex = source.indexOf('aria-label="Avance y retroceso de Auto DJ"', stageTopEnd);
+  const controlsIndex = source.indexOf('aria-label="Controles de reproducción y navegación de Auto DJ"', stageTopEnd);
   const spectrumIndex = source.indexOf('<div className="vibra-dj-spectrum">', stageTopEnd);
+  const controls = source.slice(controlsIndex, spectrumIndex);
   assert.ok(stageIndex >= 0, "DJ stage exists");
   assert.ok(stageTopEnd > stageIndex, "player header exists");
-  assert.ok(seekIndex > stageTopEnd && seekIndex < spectrumIndex, "seek controls are immediately below the player header, before the visualizer");
-  assert.match(source, /Mantén presionado para avanzar o retroceder continuamente/);
+  assert.ok(controlsIndex > stageTopEnd && controlsIndex < spectrumIndex, "transport controls stay directly below the player header and before the visualizer");
+  assert.match(controls, /aria-label="Retroceder 10 segundos"/);
+  assert.match(controls, /aria-label=\{isPlaying \? "Pausar música" : "Reproducir música"\}/);
+  assert.match(controls, /aria-label="Adelantar 10 segundos"/);
+  assert.ok(controls.indexOf('aria-label="Retroceder 10 segundos"') < controls.indexOf('aria-label={isPlaying ? "Pausar música" : "Reproducir música"}'));
+  assert.ok(controls.indexOf('aria-label={isPlaying ? "Pausar música" : "Reproducir música"}') < controls.indexOf('aria-label="Adelantar 10 segundos"'));
+  assert.match(controls, /startAutoDjSeekHold\(-1\)/);
+  assert.match(controls, /startAutoDjSeekHold\(1\)/);
+  assert.match(controls, /Un toque salta 10 segundos; mantén presionado para repetir saltos de 10 segundos/);
+  assert.doesNotMatch(controls, /PASO:|5 SEG|autoDjSeekStep/);
+  assert.doesNotMatch(source.slice(source.indexOf('<div className="vibra-dj-controls">'), source.indexOf('</div>', source.indexOf('<div className="vibra-dj-controls">'))), /REPRODUCIR|PAUSAR/);
 });
