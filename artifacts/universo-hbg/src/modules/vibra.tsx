@@ -870,13 +870,7 @@ export function VibraModule() {
     };
     const onPause = (target: HTMLAudioElement) => {
       if (target !== audioRef.current) return;
-      // Loading a replacement track also pauses the old element; never let that
-      // stale event overwrite the new track's just-written recovery checkpoint.
-      if (currentIdRef.current && readStoredTrackId() === currentIdRef.current) {
-        playbackPositionRef.current = target.currentTime || playbackPositionRef.current;
-        // Flush the exact pause position instead of relying on the last 4-second checkpoint.
-        persistPlaybackCheckpoint(target, false);
-      }
+      playbackPositionRef.current = target.currentTime || playbackPositionRef.current;
       if (backgroundResumeSuppressedRef.current) lastKnownPlayingRef.current = false;
       setIsPlaying(false);
     };
@@ -1279,6 +1273,9 @@ export function VibraModule() {
         backgroundResumeSuppressedRef.current = true;
         lastKnownPlayingRef.current = false;
         writeStoredValue(STORAGE_KEYS.resumeAfterInterruption, "false");
+        // Persist synchronously for an intentional user pause; generic pause events
+        // also fire during track replacement and must not overwrite the new selection.
+        persistPlaybackCheckpoint(audio, false);
         if (djMixEngineRef.current) {
           djMixEngineRef.current.pauseAll();
           djPreparedTrackIdRef.current = null;
