@@ -4,7 +4,8 @@ export type HBGErrorCode =
   | "ACTION_HANDLER_FAILED"
   | "ACTION_TIMEOUT"
   | "ACTION_CANCELLED"
-  | "MEMORY_SERIALIZATION_FAILED";
+  | "MEMORY_SERIALIZATION_FAILED"
+  | "INVALID_PLAYER_STATE";
 
 export class HBGError extends Error {
   readonly code: HBGErrorCode;

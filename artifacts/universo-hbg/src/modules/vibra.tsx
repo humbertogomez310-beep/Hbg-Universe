@@ -502,9 +502,15 @@ export function VibraModule() {
   }, [autoDjEnabled, partyMode]);
 
   useEffect(() => {
+    // Publish one validated player snapshot; VIBRA still owns playback and audio state.
+    hbgCore.setPlayerState({
+      trackId: currentId,
+      isPlaying,
+      volume,
+    });
     hbgCore.setContext("music.currentTrack", currentTrack);
     hbgCore.setContext("music.isPlaying", isPlaying);
-  }, [currentTrack, isPlaying]);
+  }, [currentId, currentTrack, isPlaying, volume]);
   useEffect(() => setDirectionInput(musicDirection.goal), [musicDirection.goal]);
 
   // Load all tracks from IndexedDB on mount

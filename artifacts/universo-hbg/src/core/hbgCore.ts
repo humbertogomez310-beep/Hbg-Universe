@@ -12,6 +12,8 @@ import type {
   HBGContextSubscriber,
   HBGDispatchOptions,
   HBGMemorySubscriber,
+  HBGPlayerState,
+  HBGPlayerStateSubscriber,
   HBGPendingRequest,
   HBGCoreIdentity,
   ModuleConfig,
@@ -24,6 +26,7 @@ export type {
   HBGActionResult,
   HBGActionRouter,
   HBGDispatchOptions,
+  HBGPlayerState,
   HBGPendingRequest,
   HBGCoreIdentity,
   ModuleConfig,
@@ -116,6 +119,19 @@ function storeModule(module: ModuleId): void {
   }
 }
 
+function isValidPlayerState(state: HBGPlayerState): boolean {
+  return (
+    state !== null &&
+    typeof state === "object" &&
+    (state.trackId === null ||
+      (typeof state.trackId === "string" && state.trackId.trim().length > 0)) &&
+    typeof state.isPlaying === "boolean" &&
+    Number.isFinite(state.volume) &&
+    state.volume >= 0 &&
+    state.volume <= 100
+  );
+}
+
 export class HBGCore implements HBGActionRouter {
   private activeModule: ModuleId = "universo";
   private initialized = false;
@@ -124,6 +140,8 @@ export class HBGCore implements HBGActionRouter {
   private readonly memory = new HBGMemoryStore();
   private readonly requestProcessor = new HBGRequestProcessor();
   private readonly events = new HBGEventBus();
+  private playerState: HBGPlayerState | null = null;
+  private readonly playerStateSubscribers = new Set<HBGPlayerStateSubscriber>();
 
   init(): void {
     if (this.initialized) return;
@@ -225,6 +243,49 @@ export class HBGCore implements HBGActionRouter {
   getActionRouter(): HBGActionRouter {
     // Preserve lifecycle notifications for consumers using the shared router API.
     return this;
+  }
+
+  /**
+   * Transitional typed snapshot of the active player.
+   * VIBRA remains the playback authority until the player-state migration is complete.
+   */
+  setPlayerState(state: HBGPlayerState): void {
+    if (!isValidPlayerState(state)) {
+      throw new HBGError(
+        "INVALID_PLAYER_STATE",
+        "El estado del reproductor debe incluir una pista válida, reproducción booleana y volumen entre 0 y 100.",
+      );
+    }
+
+    const current = this.playerState;
+    if (
+      current &&
+      current.trackId === state.trackId &&
+      current.isPlaying === state.isPlaying &&
+      current.volume === state.volume
+    ) return;
+
+    this.playerState = {
+      trackId: state.trackId,
+      isPlaying: state.isPlaying,
+      volume: state.volume,
+    };
+    for (const subscriber of [...this.playerStateSubscribers]) {
+      try {
+        subscriber(this.getPlayerState());
+      } catch (error) {
+        console.error("[HBGCore] Player state subscriber failed:", error);
+      }
+    }
+  }
+
+  getPlayerState(): HBGPlayerState | null {
+    return this.playerState ? { ...this.playerState } : null;
+  }
+
+  subscribePlayerState(subscriber: HBGPlayerStateSubscriber): () => void {
+    this.playerStateSubscribers.add(subscriber);
+    return () => this.playerStateSubscribers.delete(subscriber);
   }
 
   setContext(key: string, value: unknown): void {
