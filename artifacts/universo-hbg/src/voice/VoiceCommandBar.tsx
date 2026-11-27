@@ -98,7 +98,15 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
       setProcessing(true);
       try {
         const interpretation = interpretUtterance(text);
-        const response = await executeVoiceAction(interpretation.action);
+        if (interpretation.wakeTarget === "vibra") hbgCore.setModule("vibra");
+        if (interpretation.wakeTarget === "instinto") hbgCore.setModule("instinto");
+        const response = interpretation.wakePhrasePresent && !interpretation.normalizedText
+          ? interpretation.wakeTarget === "vibra"
+            ? "VIBRA está lista. ¿Qué música quieres escuchar?"
+            : interpretation.wakeTarget === "instinto"
+              ? "INSTINTO está listo. ¿Qué quieres crear?"
+              : "HBG está listo. ¿En qué te ayudo?"
+          : await executeVoiceAction(interpretation.action);
         if (isPersistentVoiceError(response)) {
           setPersistentError(response);
         } else {
