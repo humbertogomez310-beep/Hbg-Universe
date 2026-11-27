@@ -6,6 +6,8 @@ export interface MusicDirection {
   energy: "steady" | "up";
   /** Optional user intent; older saved directions remain compatible. */
   vocalFocus?: boolean;
+  /** Active Mood Engine category used to rank locally classified tracks. */
+  mood?: string;
 }
 
 const STOP_WORDS = new Set([
@@ -192,6 +194,9 @@ function scoreAutoDjTrack(track: TrackMeta, currentTrack: TrackMeta | null, dire
   const vocalHintCount = [...VOCAL_HINTS].filter((hint) => metadata.has(hint)).length;
   const targetEnergy = requestedEnergy(direction);
   let score = textAffinity * 8;
+  if (direction.mood && direction.mood !== "normal") {
+    score += Math.max(0, Math.min(1, track.moodScores?.[direction.mood] ?? 0)) * 36;
+  }
 
   // Rhythm and beat compatibility are the main selection criteria.
   const hasReliableTempo = Boolean(track.bpm && (track.bpmConfidence ?? 0) >= 0.25);
@@ -230,6 +235,9 @@ export function explainAutoDjSelection(
   direction: MusicDirection,
 ): string {
   const reasons: string[] = [];
+  if (direction.mood && direction.mood !== "normal" && (selectedTrack.moodScores?.[direction.mood] ?? 0) >= 0.3) {
+    reasons.push("está clasificada localmente en el ambiente " + direction.mood);
+  }
   if (
     currentTrack?.bpm && selectedTrack.bpm &&
     (currentTrack.bpmConfidence ?? 0) >= 0.25 &&
@@ -296,6 +304,7 @@ export function readMusicDirection(storage: Storage): MusicDirection {
         goal: value.goal,
         energy: value.energy,
         ...("vocalFocus" in value && value.vocalFocus === true ? { vocalFocus: true } : {}),
+        ...("mood" in value && typeof value.mood === "string" && /^[a-z_]{2,24}$/.test(value.mood) ? { mood: value.mood } : {}),
       };
     }
   } catch {
