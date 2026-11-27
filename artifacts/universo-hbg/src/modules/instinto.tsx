@@ -307,7 +307,7 @@ export function InstintoModule() {
     }
 
     const now = new Date().toISOString();
-    const title = request.title || concept.split(/[.!?\\r\\n]/)[0].slice(0, 60) || "Canción nueva";
+    const title = request.title || concept.split(/[.!?\r\n]/)[0].slice(0, 60) || "Canción nueva";
     const lyric: Lyric = {
       id: `song-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       title,
