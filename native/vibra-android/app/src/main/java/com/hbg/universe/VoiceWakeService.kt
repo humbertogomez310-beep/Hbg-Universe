@@ -95,15 +95,7 @@ class VoiceWakeService : Service() {
                     if (transcript.isNotBlank()) processTranscript(transcript)
                     scheduleRestart()
                 }
-                override fun onPartialResults(partialResults: Bundle?) {
-                    val transcript = partialResults
-                        ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                        ?.firstOrNull()
-                        .orEmpty()
-                    if (target == null && transcript.isNotBlank()) {
-                        detectWakePhrase(transcript, dispatchCommand = false)
-                    }
-                }
+                override fun onPartialResults(partialResults: Bundle?) = Unit
                 override fun onEvent(eventType: Int, params: Bundle?) = Unit
             })
             startListening()
