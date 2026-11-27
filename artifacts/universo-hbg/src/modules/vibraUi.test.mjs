@@ -45,7 +45,7 @@ test("Auto DJ has fixed 10-second back/play/forward controls above the visualize
   assert.ok(stageTopEnd > stageIndex, "player header exists");
   assert.ok(controlsIndex > stageTopEnd && controlsIndex < spectrumIndex, "transport controls stay directly below the player header and before the visualizer");
   assert.match(controls, /aria-label="Retroceder 10 segundos"/);
-  assert.match(controls, /aria-label="Pausar música"/);
+  assert.match(controls, /aria-label=\{isPlaying \? "Pausar música" : "Reproducir música"\}/);
   assert.match(controls, /aria-label="Adelantar 10 segundos"/);
   assert.ok(controls.indexOf('aria-label="Retroceder 10 segundos"') < controls.indexOf('aria-label="Pausar música"'));
   assert.ok(controls.indexOf('aria-label="Pausar música"') < controls.indexOf('aria-label="Adelantar 10 segundos"'));
