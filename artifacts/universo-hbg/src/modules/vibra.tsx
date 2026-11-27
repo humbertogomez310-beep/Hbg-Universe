@@ -27,6 +27,7 @@ import {
   type MusicDirection,
 } from "./musicDirector";
 import { analyzeAudioBlob } from "./djAudioAnalysis";
+import { hasAudioDirectoryPicker, pickAudioDirectory } from "./deviceAudioScanner";
 import { VibraDjMixEngine } from "./djMixEngine";
 import {
   selectNextPlaybackId,
@@ -347,6 +348,7 @@ export function VibraModule() {
   const currentUrlRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const deviceScanFileInputRef = useRef<HTMLInputElement>(null);
+  const deviceScanDirectoryInputRef = useRef<HTMLInputElement>(null);
   const progressRafRef = useRef<number | null>(null);
   const loadGenerationRef = useRef(0);
   const manualSelectionGenerationRef = useRef(0);
@@ -2072,7 +2074,7 @@ export function VibraModule() {
     }
   };
 
-  const handleDeviceScan = async (files: FileList | null) => {
+  const handleDeviceScan = async (files: FileList | File[] | null) => {
     if (!files || files.length === 0 || deviceScanStatus === "ESCANEANDO") return;
     setDeviceScanStatus("ESCANEANDO");
     let imported = 0;
@@ -2182,6 +2184,30 @@ export function VibraModule() {
         "ESCANEO TERMINADO · " + imported + " NUEVAS · " + duplicates + " DUPLICADAS · " +
         shortFiles + " CORTAS · " + voiceNotes + " NOTAS DE VOZ · " + unsupported + " NO COMPATIBLES · " + failed + " ERRORES"
       );
+    }
+  };
+
+  const startDeviceDirectoryScan = async () => {
+    if (deviceScanStatus === "ESCANEANDO") return;
+
+    if (!hasAudioDirectoryPicker()) {
+      // Folder input is a bulk-selection fallback for browsers without the
+      // File System Access directory picker. It never opens the image gallery.
+      deviceScanDirectoryInputRef.current?.click();
+      return;
+    }
+
+    try {
+      const files = await pickAudioDirectory();
+      if (files === null) return; // User cancelled the system folder picker.
+      if (files.length === 0) {
+        setDeviceScanStatus("NO SE ENCONTRARON ARCHIVOS DE AUDIO COMPATIBLES EN ESA CARPETA.");
+        return;
+      }
+      await handleDeviceScan(files);
+    } catch (cause) {
+      setDeviceScanStatus("NO SE PUDO ACCEDER A LA CARPETA. REVISA EL PERMISO Y VUELVE A INTENTAR.");
+      setError(cause instanceof Error ? cause.message : "No se pudo leer la carpeta seleccionada.");
     }
   };
 
@@ -2619,13 +2645,14 @@ export function VibraModule() {
         </section>
       )}
 
-      {/* Manual file selection only: the PWA cannot silently traverse Android MediaStore. */}
+      {/* Bulk folder selection. This is not full-device Android MediaStore access. */}
       <input
-        ref={deviceScanFileInputRef}
+        ref={deviceScanDirectoryInputRef}
         type="file"
         accept=".mp3,.wav,.ogg,.flac,.aac,.m4a,audio/*"
         multiple
         style={{ display: "none" }}
+        {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
         onChange={(event) => { void handleDeviceScan(event.target.files); }}
         onClick={(event) => { (event.target as HTMLInputElement).value = ""; }}
       />
@@ -2811,10 +2838,10 @@ export function VibraModule() {
           <div className="hbg-card" style={{ marginTop: 10, border: "1px solid var(--border-dim)" }}>
             <div style={{ fontFamily: "var(--font-display)", fontSize: 12, fontWeight: 700 }}>ESCANEAR DISPOSITIVO</div>
             <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.6 }}>
-              Selecciona manualmente los archivos de audio. VIBRA filtra canciones cortas y nombres típicos de notas de voz (con opción de incluirlos), compara coincidencias exactas disponibles y solo incorpora canciones nuevas. No accede silenciosamente a toda la memoria del teléfono.
+              Elige una carpeta de música y VIBRA recorrerá automáticamente sus subcarpetas para encontrar audio compatible; no tienes que marcar canciones una por una ni abrir Imágenes. La PWA solo puede leer la carpeta que autorizas. El acceso automático a toda la biblioteca Android requiere la versión nativa con permiso del sistema.
             </div>
-            <button type="button" className="hbg-btn hbg-btn-primary" style={{ marginTop: 10 }} onClick={() => deviceScanFileInputRef.current?.click()} disabled={deviceScanStatus === "ESCANEANDO"}>
-              {deviceScanStatus === "ESCANEANDO" ? "◎ ESCANEANDO..." : "⌕ SELECCIONAR Y ESCANEAR ARCHIVOS"}
+            <button type="button" className="hbg-btn hbg-btn-primary" style={{ marginTop: 10 }} onClick={() => { void startDeviceDirectoryScan(); }} disabled={deviceScanStatus === "ESCANEANDO"}>
+              {deviceScanStatus === "ESCANEANDO" ? "◎ ESCANEANDO..." : "⌕ AUTORIZAR CARPETA Y ESCANEAR"}
             </button>
             <div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 10, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-secondary)" }}>
               <label style={{ display: "flex", alignItems: "center", gap: 7 }}>
