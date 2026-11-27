@@ -102,3 +102,11 @@ export function resolveAutoDjSessionQueueIds(
   }
   return result;
 }
+
+
+/** Convert VIBRA's 0–100 UI percentage into a safe normalized audio gain. */
+export function normalizeVibraVolumePercent(percent: number): number {
+  return Number.isFinite(percent)
+    ? Math.max(0, Math.min(100, percent)) / 100
+    : 0;
+}
