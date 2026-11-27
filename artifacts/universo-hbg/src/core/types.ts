@@ -101,6 +101,18 @@ export interface HBGCoreIdentity {
   protocolVersion: "1";
 }
 
+export interface HBGPlayerState {
+  /** Stable library identifier; null means no selected track. */
+  trackId: string | null;
+  isPlaying: boolean;
+  /** Normalized player volume from 0 to 100. */
+  volume: number;
+}
+
+export type HBGPlayerStateSubscriber = (
+  state: HBGPlayerState | null,
+) => void;
+
 export type HBGContextSubscriber = (
   key: string,
   value: unknown | undefined,
