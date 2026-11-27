@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { UniversoScreen } from "../components/UniversoScreen";
 import { hbgCore, HBG_CORE_EVENTS } from "../core/hbgCore";
+import { remoteApiEnabled } from "../core/apiConfig";
 import {
   generateInstintoHook,
   generateInstintoIdea,
@@ -283,6 +284,7 @@ export function InstintoModule() {
     let generatedWithAI = false;
 
     try {
+      if (!remoteApiEnabled()) throw new Error("La API remota está deshabilitada en esta compilación.");
       const response = await fetch("/api/core/chat", {
         method: "POST",
         credentials: "include",
