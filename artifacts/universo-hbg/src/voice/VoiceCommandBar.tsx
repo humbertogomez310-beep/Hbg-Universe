@@ -61,24 +61,22 @@ export function VoiceCommandBar({ accentColor }: { accentColor: string }) {
 
   const speak = useCallback(
     (text: string): Promise<void> => {
-      if (!speechEnabled) return Promise.resolve();
-      if (typeof window === "undefined" || !("speechSynthesis" in window)) return Promise.resolve();
+      if (!speechEnabled || typeof window === "undefined") return Promise.resolve();
+      const bridge = getAndroidBridge();
+      if (!bridge) return Promise.resolve();
       return new Promise((resolve) => {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = "es-ES";
         let settled = false;
-        let watchdog: number | null = null;
         const finish = () => {
           if (settled) return;
           settled = true;
-          if (watchdog !== null) window.clearTimeout(watchdog);
+          window.clearTimeout(watchdog);
+          window.removeEventListener("hbg:tts-complete", finish);
           resolve();
         };
-        utterance.onend = finish;
-        utterance.onerror = finish;
-        watchdog = window.setTimeout(finish, SPEECH_WATCHDOG_MS);
+        const watchdog = window.setTimeout(finish, SPEECH_WATCHDOG_MS);
+        window.addEventListener("hbg:tts-complete", finish, { once: true });
         try {
-          window.speechSynthesis.speak(utterance);
+          if (!bridge.speak(text)) finish();
         } catch {
           finish();
         }
