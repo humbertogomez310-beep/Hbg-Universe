@@ -3,6 +3,7 @@ import { useVoiceCapture } from "./useVoiceCapture";
 import { interpretUtterance } from "./lingua";
 import { executeVoiceAction } from "./actionExecutor";
 import { beginVoiceAudioSession } from "../core/audioManager";
+import { hbgCore } from "../core/hbgCore";
 import { VOICE_COMMAND_CATALOG } from "./voiceCommandCatalog";
 import {
   clampVoiceWidgetPosition,
