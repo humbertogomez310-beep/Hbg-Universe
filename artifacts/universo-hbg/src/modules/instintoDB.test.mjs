@@ -6,6 +6,7 @@ import {
   persistInstintoFallbackRecord,
   readInstintoFallbackData,
   readLegacyInstintoData,
+  shouldApplyInstintoFallback,
 } from "./instintoDB.ts";
 
 function createStorage(values = {}) {
@@ -58,7 +59,11 @@ test("fallback writes mark each changed record for reconciliation after IndexedD
   const storage = createStorage();
   assert.equal(persistInstintoFallbackRecord("lyrics", [{ id: "l1" }], storage), true);
   assert.deepEqual(JSON.parse(storage.values.__hbg_instinto_fallback_pending_v1__), ["lyrics"]);
-  assert.deepEqual(JSON.parse(storage.values.hbg_instinto_lyrics_v2), [{ id: "l1" }]);
+  const fallback = JSON.parse(storage.values.hbg_instinto_lyrics_v2);
+  assert.equal(fallback.format, "hbg-instinto-record-fallback-v1");
+  assert.equal(typeof fallback.revision, "number");
+  assert.deepEqual(fallback.value, [{ id: "l1" }]);
+  assert.deepEqual(readLegacyInstintoData(storage).lyrics, [{ id: "l1" }]);
   assert.deepEqual(getInstintoMigrationKeys(true, storage.values.__hbg_instinto_fallback_pending_v1__), ["lyrics"]);
 });
 
@@ -115,4 +120,38 @@ test("failed atomic backup staging leaves no partial collection writes", () => {
   };
   assert.equal(persistInstintoFallbackData(data, storage), false);
   assert.deepEqual(values, {});
+});
+
+
+test("a stale fallback cannot replace a newer committed IndexedDB revision", () => {
+  assert.equal(shouldApplyInstintoFallback(100, 101, true), false);
+  assert.equal(shouldApplyInstintoFallback(100, 100, true), false);
+});
+
+test("a newer versioned fallback is reconciled over an older IndexedDB value", () => {
+  assert.equal(shouldApplyInstintoFallback(102, 101, true), true);
+  assert.equal(shouldApplyInstintoFallback(102, null, true), true);
+});
+
+test("an unversioned legacy fallback only imports when its IndexedDB record is absent", () => {
+  assert.equal(shouldApplyInstintoFallback(null, null, false), true);
+  assert.equal(shouldApplyInstintoFallback(null, null, true), false);
+});
+
+test("full fallback backups keep per-record revisions when a later edit is staged", () => {
+  const storage = createStorage();
+  const data = {
+    notes: [{ id: "n1" }],
+    lyrics: [{ id: "l1" }],
+    projects: [{ id: "p1" }],
+    draft: { title: "Draft", content: "Text", category: "notas", tags: [] },
+  };
+  assert.equal(persistInstintoFallbackData(data, storage), true);
+  const first = JSON.parse(storage.values.__hbg_instinto_fallback_backup_v1__);
+  const oldRevision = first.revisions.notes;
+  assert.equal(typeof oldRevision, "number");
+  assert.equal(persistInstintoFallbackRecord("notes", [{ id: "n1", title: "Updated" }], storage), true);
+  const second = JSON.parse(storage.values.__hbg_instinto_fallback_backup_v1__);
+  assert.ok(second.revisions.notes > oldRevision);
+  assert.deepEqual(readInstintoFallbackData(storage).notes, [{ id: "n1", title: "Updated" }]);
 });
