@@ -24,7 +24,7 @@ const MAX_MESSAGES = 12;
 const MAX_MESSAGE_LENGTH = 4_000;
 const MAX_TOTAL_LENGTH = 16_000;
 const DEFAULT_MODEL = "gpt-6.2-astra";
-const SONGWRITER_INSTRUCTIONS = [
+export const SONGWRITER_INSTRUCTIONS = [
   "Eres el compositor profesional de INSTINTO dentro de Universo HBG.",
   "Crea letras originales en español con estructura musical coherente, imágenes concretas, progresión narrativa y rimas naturales.",
   "La canción debe comenzar directamente con el primer verso narrativo. No agregues INTRO, prólogo ni explicación previa.",
