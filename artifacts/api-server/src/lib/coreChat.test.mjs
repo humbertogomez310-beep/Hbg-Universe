@@ -3,6 +3,9 @@ import test from "node:test";
 import {
   coreAIStatus,
   CoreChatError,
+  buildCoreSongPrompt,
+  parseCoreSongRequest,
+  SONGWRITER_INSTRUCTIONS,
   extractCoreResponseText,
   generateCoreReply,
   parseCoreChatMessages,
@@ -99,4 +102,42 @@ test("HBG Core reports missing and unavailable remote providers without exposing
     coreAIStatus({ OPENAI_API_KEY: "configured", OPENAI_MODEL: "test-model" }),
     { available: true, provider: "openai", model: "test-model" },
   );
+});
+
+
+test("INSTINTO songwriter validates bounded input and builds a structured song request", () => {
+  assert.deepEqual(
+    parseCoreSongRequest({ title: "Volver", concept: "Una historia para volver a empezar", genre: "balada" }),
+    { title: "Volver", concept: "Una historia para volver a empezar", genre: "balada" },
+  );
+  assert.throws(() => parseCoreSongRequest({ concept: "corto", genre: "pop" }), (error) =>
+    error instanceof CoreChatError && error.code === "INVALID_SONG_REQUEST",
+  );
+  assert.throws(() => parseCoreSongRequest({ concept: "Una historia suficientemente larga", genre: "unknown" }), CoreChatError);
+  assert.throws(() => parseCoreSongRequest({ concept: "Una historia suficientemente larga", genre: "pop", role: "owner" }), CoreChatError);
+  assert.match(buildCoreSongPrompt({ title: "Volver", concept: "Una historia para volver a empezar", genre: "balada" }), /Género: balada/);
+  assert.match(SONGWRITER_INSTRUCTIONS, /No agregues INTRO/);
+  assert.match(SONGWRITER_INSTRUCTIONS, /H\.\.\. B\.\.\. G\.\.\./);
+});
+
+test("HBG Core applies task-specific songwriter instructions and expanded output budget server-side", async () => {
+  let request;
+  await generateCoreReply(
+    [{ role: "user", content: "Crea una canción sobre empezar de nuevo." }],
+    {
+      apiKey: "test-secret",
+      additionalInstructions: SONGWRITER_INSTRUCTIONS,
+      maxOutputTokens: 2_400,
+      fetcher: async (_url, init) => {
+        request = JSON.parse(init.body);
+        return new Response(JSON.stringify({
+          output_text: "[VERSO 1]\\nLa historia comienza.",
+        }), { status: 200 });
+      },
+    },
+  );
+  assert.equal(request.max_output_tokens, 2_400);
+  assert.equal(request.store, false);
+  assert.match(request.instructions, /compositor profesional de INSTINTO/);
+  assert.match(request.instructions, /No agregues INTRO/);
 });

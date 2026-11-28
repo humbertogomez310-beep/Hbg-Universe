@@ -5,6 +5,9 @@ import {
   CoreChatError,
   generateCoreReply,
   parseCoreChatMessages,
+  parseCoreSongRequest,
+  buildCoreSongPrompt,
+  SONGWRITER_INSTRUCTIONS,
 } from "../lib/coreChat";
 
 const router: IRouter = Router();
@@ -28,6 +31,39 @@ function allowRequest(userId: string, now = Date.now()): boolean {
 
 router.get("/core/status", requirePermission("core.action.execute"), (_req, res) => {
   res.json({ success: true, ...coreAIStatus() });
+});
+
+router.post("/core/songwriter", requirePermission("core.action.execute"), async (req, res) => {
+  const body: unknown = req.body;
+  const userId = req.hbgAuth!.user.id;
+  if (!allowRequest(userId)) {
+    res.status(429).json({
+      success: false,
+      error: "Alcanzaste el límite temporal de generación con IA.",
+      code: "RATE_LIMITED",
+    });
+    return;
+  }
+
+  try {
+    const request = parseCoreSongRequest(body);
+    const reply = await generateCoreReply(
+      [{ role: "user", content: buildCoreSongPrompt(request) }],
+      { additionalInstructions: SONGWRITER_INSTRUCTIONS, maxOutputTokens: 2_400 },
+    );
+    res.json({ success: true, ...reply, provider: "openai", task: "songwriter" });
+  } catch (error) {
+    if (error instanceof CoreChatError) {
+      res.status(error.status).json({ success: false, error: error.message, code: error.code });
+      return;
+    }
+    req.log.error({ err: error }, "INSTINTO songwriter generation failed");
+    res.status(502).json({
+      success: false,
+      error: "No se pudo generar la canción.",
+      code: "SONGWRITER_PROVIDER_ERROR",
+    });
+  }
 });
 
 router.post("/core/chat", requirePermission("core.action.execute"), async (req, res) => {

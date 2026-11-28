@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readLegacyInstintoData } from "./instintoDB.ts";
+import { parseInstintoFallbackJournal, readLegacyInstintoData } from "./instintoDB.ts";
 
 function createStorage(values) {
   return {
@@ -34,4 +34,20 @@ test("legacy INSTINTO migration reader safely defaults malformed values", () => 
   assert.deepEqual(data.lyrics, []);
   assert.deepEqual(data.projects, []);
   assert.deepEqual(data.draft, { title: "", content: "ok", category: "notas", tags: ["x"] });
+});
+
+
+test("fallback journal accepts only known legacy keys and removes duplicates", () => {
+  assert.deepEqual(
+    parseInstintoFallbackJournal(JSON.stringify([
+      "hbg_instinto_notes_v2",
+      "hbg_instinto_notes_v2",
+      "__unknown__",
+      "hbg_instinto_lyrics_v2",
+      42,
+    ])),
+    ["hbg_instinto_notes_v2", "hbg_instinto_lyrics_v2"],
+  );
+  assert.deepEqual(parseInstintoFallbackJournal("{broken"), []);
+  assert.deepEqual(parseInstintoFallbackJournal(null), []);
 });
