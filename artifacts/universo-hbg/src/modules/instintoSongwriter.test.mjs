@@ -41,7 +41,7 @@ test("songwriter parser handles plain text and rejects empty output", () => {
 test("offline scaffold starts with a verse, includes sections and preserves HBG signature", () => {
   const sections = generateInstintoLocalSongScaffold({ concept: "un viaje para recuperar la confianza", genre: "balada" });
   assert.equal(sections[0].type, "verso");
-  assert.equal(sections.some((section) => (section.type as string) === "intro"), false);
+  assert.equal(sections.some((section) => section.type === "intro"), false);
   assert.ok(sections.some((section) => section.type === "coro"));
   assert.ok(sections.some((section) => section.type === "puente"));
   assert.ok(sections.some((section) => section.content.includes("H... B... G...")));
