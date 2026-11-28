@@ -9,6 +9,7 @@ on:
     branches:
       - main
       - replit-agent
+      - local-first/**
 
 permissions:
   contents: read
