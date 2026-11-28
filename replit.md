@@ -57,6 +57,11 @@ No modificar las protecciones de HBG Authority para facilitar una función. La I
 - `BASE_PATH`: ruta base del frontend; en el deployment actual es `/`.
 - `OPENAI_API_KEY`: opcional; secreto solo del servidor para habilitar conversación remota de HBG CORE. Nunca debe exponerse al frontend.
 - `OPENAI_MODEL`: opcional; modelo de Responses API. Por defecto `gpt-6.2-astra`.
+- `HBG_ALLOWED_ORIGINS`: lista separada por comas de orígenes HTTPS autorizados para llamadas CORS con cookies desde la PWA publicada.
+- `VITE_HBG_API_BASE_URL`: origen HTTPS del servicio API para compilaciones frontend que se sirven desde un host distinto. Si se omite, el frontend usa el mismo origen.
+- `VITE_HBG_API_ENABLED`: establecer `false` solo para compilaciones Local-first sin API; para la PWA conectada a HBG Core debe estar habilitado.
+- INSTINTO usa `POST /api/core/songwriter`, autenticado con sesión HBG, permiso `core.action.execute`, límite por usuario y clave OpenAI únicamente del lado servidor.
+
 
 La comprobación `/api/healthz` valida conectividad y existencia de las tablas esenciales de HBG. Si falta alguna, devuelve HTTP 503.
 
