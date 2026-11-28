@@ -258,7 +258,13 @@ function readInstintoFallbackSnapshot(storage: LegacyStorage | null): InstintoFa
 }
 
 export function readInstintoFallbackData(storage: LegacyStorage | null): InstintoData | null {
-  return readInstintoFallbackSnapshot(storage)?.data ?? null;
+  const snapshot = readInstintoFallbackSnapshot(storage);
+  if (snapshot) return snapshot.data;
+  const hasPendingJournal = readPendingFallbackKeys(storage).length > 0;
+  const hasVersionedRecord = RECORD_KEYS.some((key) =>
+    parseFallbackRecord(safeReadLegacyValue(storage, LEGACY_KEYS[key]))?.versioned,
+  );
+  return hasPendingJournal || hasVersionedRecord ? readLegacyInstintoData(storage) : null;
 }
 
 function clearInstintoFallbackBackup(storage: LegacyStorage | null): boolean {
