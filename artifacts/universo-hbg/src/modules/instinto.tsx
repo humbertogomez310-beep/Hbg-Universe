@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { UniversoScreen } from "../components/UniversoScreen";
 import { hbgCore, HBG_CORE_EVENTS } from "../core/hbgCore";
-import { remoteApiEnabled } from "../core/apiConfig";
+import { hbgApiUrl, remoteApiEnabled } from "../core/apiConfig";
 import {
   generateInstintoHook,
   generateInstintoIdea,
@@ -10,7 +10,6 @@ import {
 } from "./instintoInspiration";
 import { loadInstintoData, saveInstintoRecord, replaceInstintoData } from "./instintoDB";
 import {
-  buildInstintoSongPrompt,
   generateInstintoLocalSongScaffold,
   parseInstintoSongSections,
 } from "./instintoSongwriter";
@@ -285,13 +284,11 @@ export function InstintoModule() {
 
     try {
       if (!remoteApiEnabled()) throw new Error("La API remota está deshabilitada en esta compilación.");
-      const response = await fetch("/api/core/chat", {
+      const response = await fetch(hbgApiUrl("/api/core/songwriter"), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: [{ role: "user", content: buildInstintoSongPrompt(request) }],
-        }),
+        body: JSON.stringify(request),
       });
       const result: unknown = await response.json().catch(() => null);
       const payload = typeof result === "object" && result !== null
@@ -302,10 +299,12 @@ export function InstintoModule() {
       }
       sections = parseInstintoSongSections(payload.text) as LyricSection[];
       generatedWithAI = true;
-    } catch {
+    } catch (error) {
       // Offline/static deployments remain usable. The UI clearly labels this
       // as a local scaffold rather than pretending it came from an AI model.
+      const reason = error instanceof Error ? error.message : "No se pudo contactar HBG Core.";
       sections = generateInstintoLocalSongScaffold(request) as LyricSection[];
+      setSongGenerationStatus(`IA remota no disponible (${reason}). Se creó un esquema local editable; tus letras anteriores se conservaron.`);
     }
 
     const now = new Date().toISOString();
@@ -319,9 +318,9 @@ export function InstintoModule() {
     };
     saveLyrics([lyric, ...lyrics]);
     setActiveLyric(lyric);
-    setSongGenerationStatus(generatedWithAI
-      ? "Canción nueva generada con IA. Tu biblioteca anterior se conservó intacta."
-      : "IA remota no disponible: se creó un esquema local editable, no una generación IA completa. Tus canciones anteriores se conservaron.");
+    if (generatedWithAI) {
+      setSongGenerationStatus("Canción nueva generada con IA por HBG Core. Tu biblioteca anterior se conservó intacta.");
+    }
     setSongConcept("");
     setView("letras");
     setSongGenerationBusy(false);
