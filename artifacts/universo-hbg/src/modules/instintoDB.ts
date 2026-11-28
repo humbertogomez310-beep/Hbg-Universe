@@ -590,5 +590,3 @@ export async function replaceInstintoData(data: InstintoData): Promise<void> {
     }
   });
 }
-
-}
