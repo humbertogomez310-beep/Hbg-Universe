@@ -7,6 +7,7 @@ import {
   parseCoreChatMessages,
   parseCoreSongRequest,
   buildCoreSongPrompt,
+  SONGWRITER_INSTRUCTIONS,
 } from "../lib/coreChat";
 
 const router: IRouter = Router();
