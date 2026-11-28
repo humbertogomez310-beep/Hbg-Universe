@@ -31,10 +31,33 @@ app.use(
   }),
 );
 // El navegador manda el origen como "https://dominio"; REPLIT_DOMAINS trae solo "dominio".
+function normalizeAllowedOrigin(value: string): string | undefined {
+  const candidate = value.trim();
+  if (!candidate) return undefined;
+  try {
+    const url = new URL(candidate.includes("://") ? candidate : `https://${candidate}`);
+    if (
+      (url.protocol !== "https:" && url.protocol !== "http:") ||
+      url.username ||
+      url.password ||
+      url.pathname !== "/" ||
+      url.search ||
+      url.hash
+    ) return undefined;
+    return url.origin;
+  } catch {
+    return undefined;
+  }
+}
+
 const allowedOrigins = new Set(
-  [process.env.REPLIT_DEV_DOMAIN, ...(process.env.REPLIT_DOMAINS ?? "").split(",")]
-    .filter((domain): domain is string => Boolean(domain))
-    .flatMap((domain) => [domain, `https://${domain}`]),
+  [
+    process.env.REPLIT_DEV_DOMAIN ?? "",
+    ...(process.env.REPLIT_DOMAINS ?? "").split(","),
+    ...(process.env.HBG_ALLOWED_ORIGINS ?? "").split(","),
+  ]
+    .map(normalizeAllowedOrigin)
+    .filter((origin): origin is string => Boolean(origin)),
 );
 
 // Mismo origen: el navegador manda Origin = "https://<host>" y el Host de la petición coincide.

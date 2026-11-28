@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { UniversoScreen } from "../components/UniversoScreen";
 import { hbgCore, HBG_CORE_EVENTS } from "../core/hbgCore";
+import { hbgApiUrl, remoteApiEnabled } from "../core/apiConfig";
 import {
   generateInstintoHook,
   generateInstintoIdea,
@@ -8,6 +9,10 @@ import {
   type InstintoMood,
 } from "./instintoInspiration";
 import { loadInstintoData, saveInstintoRecord, replaceInstintoData } from "./instintoDB";
+import {
+  generateInstintoLocalSongScaffold,
+  parseInstintoSongSections,
+} from "./instintoSongwriter";
 import {
   createInstintoBackup,
   parseInstintoBackup,
@@ -34,7 +39,17 @@ function browserStorage(): Storage | null {
 function persistLegacyValue(key: string, value: unknown): boolean {
   const storage = browserStorage();
   if (!storage) return false;
-  try { storage.setItem(key, JSON.stringify(value)); return true; } catch { return false; }
+  try {
+    storage.setItem(key, JSON.stringify(value));
+    const journalKey = "__instinto_fallback_pending_v1__";
+    let pending: string[] = [];
+    try {
+      const parsed: unknown = JSON.parse(storage.getItem(journalKey) ?? "[]");
+      if (Array.isArray(parsed)) pending = parsed.filter((item): item is string => typeof item === "string");
+    } catch { pending = []; }
+    storage.setItem(journalKey, JSON.stringify([...new Set([...pending, key])]));
+    return true;
+  } catch { return false; }
 }
 
 function loadLegacyCollection<T>(key: string): T[] {
@@ -88,6 +103,12 @@ export function InstintoModule() {
   const [newCategory, setNewCategory] = useState<Category>(draft.category);
   const [newTag, setNewTag] = useState("");
   const [activeTags, setActiveTags] = useState<string[]>(draft.tags);
+  const [filterTags, setFilterTags] = useState<string[]>([]);
+  const [songTitle, setSongTitle] = useState("");
+  const [songConcept, setSongConcept] = useState("");
+  const [songGenre, setSongGenre] = useState("pop");
+  const [songGenerationBusy, setSongGenerationBusy] = useState(false);
+  const [songGenerationStatus, setSongGenerationStatus] = useState("");
   const [search, setSearch] = useState("");
   const [showFavsOnly, setShowFavsOnly] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
@@ -246,6 +267,63 @@ export function InstintoModule() {
     setView("bloc");
     setTimeout(() => textRef.current?.focus(), 100);
     hbgCore.publishEvent("instinto.rhyme_generated", { mood: creativeMood });
+  };
+
+  const generateSong = async () => {
+    const concept = songConcept.trim();
+    if (concept.length < 8) {
+      setSongGenerationStatus("Describe la idea de la canción con al menos 8 caracteres.");
+      return;
+    }
+
+    const request = { title: songTitle.trim(), concept, genre: songGenre };
+    setSongGenerationBusy(true);
+    setSongGenerationStatus("Construyendo una canción nueva…");
+    let sections: LyricSection[];
+    let generatedWithAI = false;
+
+    try {
+      if (!remoteApiEnabled()) throw new Error("La API remota está deshabilitada en esta compilación.");
+      const response = await fetch(hbgApiUrl("/api/core/songwriter"), {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      });
+      const result: unknown = await response.json().catch(() => null);
+      const payload = typeof result === "object" && result !== null
+        ? result as Record<string, unknown>
+        : {};
+      if (!response.ok || payload.success !== true || typeof payload.text !== "string") {
+        throw new Error(typeof payload.error === "string" ? payload.error : "La IA remota no está disponible.");
+      }
+      sections = parseInstintoSongSections(payload.text) as LyricSection[];
+      generatedWithAI = true;
+    } catch (error) {
+      // Offline/static deployments remain usable. The UI clearly labels this
+      // as a local scaffold rather than pretending it came from an AI model.
+      const reason = error instanceof Error ? error.message : "No se pudo contactar HBG Core.";
+      sections = generateInstintoLocalSongScaffold(request) as LyricSection[];
+      setSongGenerationStatus(`IA remota no disponible (${reason}). Se creó un esquema local editable; tus letras anteriores se conservaron.`);
+    }
+
+    const now = new Date().toISOString();
+    const title = request.title || concept.split(/[.!?\r\n]/)[0].slice(0, 60) || "Canción nueva";
+    const lyric: Lyric = {
+      id: `song-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      title,
+      sections,
+      createdAt: now,
+      updatedAt: now,
+    };
+    saveLyrics([lyric, ...lyrics]);
+    setActiveLyric(lyric);
+    if (generatedWithAI) {
+      setSongGenerationStatus("Canción nueva generada con IA por HBG Core. Tu biblioteca anterior se conservó intacta.");
+    }
+    setSongConcept("");
+    setView("letras");
+    setSongGenerationBusy(false);
   };
 
   // Expose only bounded local draft operations to HBG Core. Nothing is saved as
@@ -428,7 +506,7 @@ export function InstintoModule() {
     .filter((n) => showTrash ? n.deleted : !n.deleted)
     .filter((n) => !showFavsOnly || n.favorite)
     .filter((n) => !search || n.content.toLowerCase().includes(search.toLowerCase()) || n.title.toLowerCase().includes(search.toLowerCase()))
-    .filter((n) => activeTags.length === 0 || activeTags.every((t) => n.tags.includes(t)))
+    .filter((n) => filterTags.length === 0 || filterTags.every((t) => n.tags.includes(t)))
     .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
 
   const totalWords = notes.filter((n) => !n.deleted).reduce((acc, n) => acc + countWords(n.content), 0);
@@ -545,7 +623,7 @@ export function InstintoModule() {
           {allTags.length > 0 && (
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
               {allTags.map((tag) => (
-                <button key={tag} className="hbg-badge" style={{ cursor: "pointer", background: activeTags.includes(tag) ? "rgba(0,229,255,0.12)" : undefined, borderColor: activeTags.includes(tag) ? "var(--neon-cyan)" : "var(--border-dim)", color: activeTags.includes(tag) ? "var(--neon-cyan)" : "var(--text-muted)" }} onClick={() => setActiveTags((prev) => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag])}>
+                <button key={tag} className="hbg-badge" style={{ cursor: "pointer", background: filterTags.includes(tag) ? "rgba(0,229,255,0.12)" : undefined, borderColor: filterTags.includes(tag) ? "var(--neon-cyan)" : "var(--border-dim)", color: filterTags.includes(tag) ? "var(--neon-cyan)" : "var(--text-muted)" }} onClick={() => setFilterTags((prev) => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag])}>
                   #{tag}
                 </button>
               ))}
@@ -599,6 +677,44 @@ export function InstintoModule() {
       {/* LETRAS */}
       {view === "letras" && (
         <div>
+          <div className="hbg-card" style={{ marginBottom: 14, borderColor: "rgba(255,64,129,0.35)" }}>
+            <div className="section-title">// generador de canciones · INSTINTO SONGWRITER</div>
+            <input
+              className="hbg-input"
+              placeholder="Título de la canción (opcional)…"
+              value={songTitle}
+              onChange={(event) => setSongTitle(event.target.value)}
+              maxLength={100}
+              style={{ marginBottom: 8 }}
+            />
+            <textarea
+              className="hbg-input hbg-textarea"
+              placeholder="Describe la historia, emoción o idea central de la canción…"
+              value={songConcept}
+              onChange={(event) => setSongConcept(event.target.value)}
+              maxLength={1200}
+              rows={3}
+              style={{ marginBottom: 8 }}
+            />
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <select className="hbg-input" value={songGenre} onChange={(event) => setSongGenre(event.target.value)} style={{ flex: 1, minWidth: 130 }}>
+                <option value="pop">Pop</option>
+                <option value="urbano">Urbano</option>
+                <option value="rap">Rap / Hip-hop</option>
+                <option value="rock">Rock</option>
+                <option value="regional">Regional</option>
+                <option value="balada">Balada</option>
+                <option value="libre">Libre / experimental</option>
+              </select>
+              <button className="hbg-btn hbg-btn-primary" onClick={() => void generateSong()} disabled={songGenerationBusy || songConcept.trim().length < 8}>
+                {songGenerationBusy ? "GENERANDO…" : "♪ GENERAR CANCIÓN"}
+              </button>
+            </div>
+            {songGenerationStatus && <div role="status" style={{ marginTop: 8, fontFamily: "var(--font-mono)", fontSize: 10, lineHeight: 1.6, color: "var(--text-muted)" }}>{songGenerationStatus}</div>}
+            <div style={{ marginTop: 6, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)" }}>
+              La generación remota requiere HBG Core con IA configurada. Sin conexión se crea un esquema local editable. Cada canción nueva se guarda aparte; no sobrescribe tus letras.
+            </div>
+          </div>
           <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
             <input className="hbg-input" placeholder="Título de la letra..." value={newLyricTitle} onChange={(e) => setNewLyricTitle(e.target.value)} style={{ flex: 1 }} onKeyDown={(e) => e.key === "Enter" && addLyric()} />
             <button className="hbg-btn hbg-btn-primary" onClick={addLyric}>+ NUEVA LETRA</button>
@@ -638,7 +754,7 @@ export function InstintoModule() {
                 </div>
 
                 <div style={{ display: "flex", gap: 5, marginBottom: 10, flexWrap: "wrap" }}>
-                  {(["intro", "verso", "coro", "puente", "outro"] as LyricSection["type"][]).map((t) => (
+                  {(["verso", "coro", "puente", "outro"] as LyricSection["type"][]).map((t) => (
                     <button key={t} className="hbg-badge" style={{ cursor: "pointer", background: `${SEC_COLORS[t]}12`, borderColor: `${SEC_COLORS[t]}40`, color: SEC_COLORS[t] }} onClick={() => addSection(t)}>+ {t.toUpperCase()}</button>
                   ))}
                 </div>
