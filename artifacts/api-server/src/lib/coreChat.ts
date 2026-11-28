@@ -66,7 +66,7 @@ export function buildCoreSongPrompt(request: CoreSongRequest): string {
     request.title ? "Título sugerido: " + request.title : "Propón un título breve.",
     "Género: " + request.genre + ".",
     "Idea e historia: " + request.concept,
-  ].join("\\n");
+  ].join("\n");
 }
 
 
