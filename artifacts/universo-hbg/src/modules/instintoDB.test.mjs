@@ -155,3 +155,18 @@ test("full fallback backups keep per-record revisions when a later edit is stage
   assert.ok(second.revisions.notes > oldRevision);
   assert.deepEqual(readInstintoFallbackData(storage).notes, [{ id: "n1", title: "Updated" }]);
 });
+
+
+test("versioned per-record fallback remains readable if the journal write fails", () => {
+  const values = {};
+  const storage = {
+    getItem(key) { return values[key] ?? null; },
+    setItem(key, value) {
+      if (key === "__hbg_instinto_fallback_pending_v1__") throw new Error("quota exceeded");
+      values[key] = value;
+    },
+    removeItem(key) { delete values[key]; },
+  };
+  assert.equal(persistInstintoFallbackRecord("lyrics", [{ id: "l2" }], storage), true);
+  assert.deepEqual(readInstintoFallbackData(storage).lyrics, [{ id: "l2" }]);
+});
